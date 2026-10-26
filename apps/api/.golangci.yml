@@ -1,0 +1,55 @@
+# Harness file (protected). Every rule here is documented in docs/harness/rules.md.
+# Change only via PR with "Harness change: Y" and a rationale.
+version: "2"
+
+run:
+  timeout: 3m
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - depguard
+    - noctxroot
+    - domainiso
+  settings:
+    custom:
+      noctxroot:
+        type: module
+        description: "context.Background/TODO only in cmd/ and tests (rules.md#go-no-root-context)"
+      domainiso:
+        type: module
+        description: "no cross-domain store/api imports (rules.md#go-domain-isolation)"
+    depguard:
+      rules:
+        # rules.md#go-db-only-in-store
+        db-only-in-store:
+          files:
+            - "$all"
+            - "!**/internal/*/store/**"
+            - "!**/internal/platform/**"
+          deny:
+            - pkg: github.com/jackc/pgx
+              desc: "[go-db-only-in-store] DB drivers belong in internal/<domain>/store (or platform). Fix: add a sqlc query in db/queries/<domain>.sql, run `make gen`, and call the generated store method from the service. See docs/harness/rules.md#go-db-only-in-store"
+            - pkg: database/sql
+              desc: "[go-db-only-in-store] DB drivers belong in internal/<domain>/store (or platform). Fix: add a sqlc query in db/queries/<domain>.sql, run `make gen`, and call the generated store method from the service. See docs/harness/rules.md#go-db-only-in-store"
+        # rules.md#go-http-only-in-api
+        http-only-in-api:
+          files:
+            - "$all"
+            - "!**/internal/*/api/**"
+            - "!**/internal/platform/**"
+            - "!**/cmd/**"
+          deny:
+            - pkg: net/http
+              desc: "[go-http-only-in-api] net/http belongs in internal/<domain>/api, platform or cmd. Fix: keep transport concerns (status codes, headers, requests) in the api layer and pass plain Go types into the service. See docs/harness/rules.md#go-http-only-in-api"
+  exclusions:
+    generated: strict
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/aheumaier/harness-template

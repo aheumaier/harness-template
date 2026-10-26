@@ -1,0 +1,36 @@
+# Harness file (protected). Layer graph for apps/api; see ARCHITECTURE.md and docs/harness/rules.md#go-layers.
+# Vendor (third-party) restrictions live in .golangci.yml (depguard); this file governs project-internal edges only.
+# Cross-domain isolation (no foo -> bar/store|api) is enforced by the domainiso analyzer.
+version: 3
+workdir: .
+allow:
+  depOnAnyVendor: true
+  ignoreNotFoundComponents: true # domains are created by `make new-domain`; zero matches is valid
+
+excludeFiles:
+  - "^.*_test\\.go$"
+
+exclude:
+  - tools
+
+components:
+  cmd:      { in: cmd/** }
+  platform: { in: internal/platform/** }
+  model:    { in: internal/*/model/** }
+  store:    { in: internal/*/store/** }
+  service:  { in: internal/*/service/** }
+  api:      { in: internal/*/api/** }
+
+deps:
+  cmd:
+    anyProjectDeps: true
+  platform:
+    mayDependOn: [platform]
+  model:
+    mayDependOn: [model]
+  store:
+    mayDependOn: [model, store]
+  service:
+    mayDependOn: [model, store, service, platform]
+  api:
+    mayDependOn: [model, service, api, platform]
