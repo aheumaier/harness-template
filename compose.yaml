@@ -1,0 +1,20 @@
+# Per-worktree Postgres. Project name, image and port come from .env.local (scripts/setup-worktree.sh),
+# so every worktree gets its own container, volume and port. Local development only.
+services:
+  db:
+    image: ${POSTGRES_IMAGE:?run make setup}
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports:
+      - "127.0.0.1:${DB_PORT:?run make setup}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - db:/var/lib/postgresql/data
+volumes:
+  db: {}

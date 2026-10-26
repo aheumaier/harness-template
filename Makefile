@@ -10,17 +10,32 @@ export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 export PATH := $(CURDIR)/.bin:$(CURDIR)/node_modules/.bin:$(PATH)
 
 RUN  := scripts/harness/run.sh
+# Load this worktree's ports/DB URL (written by `make setup`) into a recipe's shell.
+WITH_ENV := [[ -f .env.local ]] || { echo "no .env.local: run make setup" >&2; exit 1; }; set -a; source .env.local; set +a;
 API  := apps/api
 GCL  := .bin/golangci-lint-custom
 ANALYZERS_SRC := $(shell find $(API)/tools/analyzers -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
 
 ##@ Workflow
-.PHONY: help setup check check-all
+.PHONY: help setup check check-all dev db-up db-reset
 
 help: ## Show targets
 	@awk 'BEGIN{FS=":.*##"} /^##@/{printf "\n%s\n",substr($$0,5)} /^[a-z0-9-]+:.*##/{printf "  %-18s %s\n",$$1,$$2}' $(MAKEFILE_LIST)
 
-setup: tools deps ## Install pinned tools and dependencies
+setup: ## Tools, deps, this worktree's Postgres (own ports) + migrations, .env.local
+	@scripts/setup-worktree.sh
+
+dev: db-up ## Run API + web for this worktree (Ctrl-C stops both)
+	@$(WITH_ENV) trap 'kill 0' EXIT; \
+	  echo "api http://$$HTTP_ADDR  web http://localhost:$$WEB_PORT"; \
+	  (cd $(API) && go run ./cmd/api) & (cd apps/web && node_modules/.bin/vite) & wait
+
+db-up: ## Start this worktree's Postgres
+	@$(WITH_ENV) docker compose --progress quiet up -d --wait db
+
+db-reset: ## Drop this worktree's database volume, recreate, migrate
+	@$(WITH_ENV) docker compose --progress quiet down -v; docker compose --progress quiet up -d --wait db
+	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
 
 check: ## Fast sensors (<60s warm): format, lint, arch, unit tests, gen-check
 	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers schema-doc-fresh lint-web arch-web typecheck-web test-web
@@ -109,7 +124,7 @@ schema-doc-fresh:
 	@$(RUN) schema-doc db-schema-doc-fresh -- scripts/gen-schema-doc.sh --check
 
 test-integration: ## Integration tests against the worktree's Postgres (.env.local)
-	@$(RUN) go-integration go-tests-pass --dir $(API) -- bash -c 'set -a; source ../../.env.local; set +a; go test -race -count=1 -tags=integration ./...'
+	@$(WITH_ENV) $(RUN) go-integration go-tests-pass --dir $(API) -- go test -race -count=1 -tags=integration ./...
 
 ##@ Generation
 .PHONY: gen gen-check gen-sqlc gen-atlas-sum gen-oapi gen-api-client
