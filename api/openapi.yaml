@@ -1,0 +1,86 @@
+openapi: 3.1.0
+info:
+  title: harness-template API
+  version: 0.1.0
+  contact:
+    name: API owners (see .github/CODEOWNERS)
+    url: https://github.com/aheumaier/harness-template
+  description: |
+    THE contract. Spec-first: change this file, run `make gen`, then implement.
+    Each tag maps to one generated strict server (apps/api/internal/<tag>/api) and is a domain,
+    except `platform` (plumbing). Errors are RFC 9457 problem details (application/problem+json).
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: platform
+    description: Operational plumbing (not a business domain).
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Liveness and database readiness
+      description: Returns 200 when the process is up and the database answers a ping within 2s, else 503.
+      tags: [platform]
+      security: []
+      responses:
+        '200':
+          description: Service and database are reachable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+  # harness:domain-paths (generator marker, keep)
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+    Problem:
+      description: RFC 9457 problem details.
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          default: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+  responses:
+    ClientError:
+      description: The request was invalid or not permitted.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ServiceUnavailable:
+      description: A dependency (e.g. the database) is unavailable.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ServerError:
+      description: Unexpected server error.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

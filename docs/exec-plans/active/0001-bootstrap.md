@@ -11,10 +11,10 @@ the harness: guides (feedforward) + sensors (feedback). No business domains.
 
 | # | Phase | Exit criterion | State |
 |---|-------|----------------|-------|
-| 0 | git init, exec plan, tool pinning, `make check` skeleton, run.sh | `make check` green | todo |
-| 1 | Go backend skeleton, platform, /healthz, depguard, go-arch-lint, custom analyzer, govulncheck, race tests | `make check` green | todo |
-| 2 | Atlas migrations, migrate lint, squawk, sqlc, schema doc | `make check` green | todo |
-| 3 | OpenAPI 3.1, oapi-codegen strict server, Spectral, oasdiff | `make check` green | todo |
+| 0 | git init, exec plan, tool pinning, `make check` skeleton, run.sh | `make check` green | done |
+| 1 | Go backend skeleton, platform, /healthz, depguard, go-arch-lint, custom analyzer, govulncheck, race tests | `make check` green | done |
+| 2 | Atlas migrations, migrate lint, squawk, sqlc, schema doc | `make check` green | done |
+| 3 | OpenAPI 3.1, oapi-codegen strict server, Spectral, oasdiff | `make check` green | done |
 | 4 | pnpm + Turbo, web app, api-client (orval+zod), dep-cruiser, ESLint, knip, Vitest | `make check` green | todo |
 | 5 | setup-worktree.sh, dev/db-up/db-reset, per-worktree ports | two worktrees up simultaneously | todo |
 | 6 | check / check-all / gen-check, fixtures, harness-selftest | selftest green | todo |
@@ -56,10 +56,9 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
 
 - A1: Go module lives in `apps/api` as `github.com/aheumaier/harness-template/apps/api` (repo-path-correct
   module path for a monorepo subdir). Analyzer is a nested module so plugin deps stay out of the app.
-- A2: oapi-codegen `include-tags` lets us generate one strict server per domain (needed so the generator
-  can add a path without breaking the build). Verify in Phase 3.
-- A3: go-arch-lint glob components tolerate zero matches (no domains exist). Verify in Phase 1.
-- A4: sqlc tolerates an empty query set per domain; else generator emits a trivial query. Verify Phase 2/7.
+- A2: oapi-codegen `include-tags` lets us generate one strict server per domain. **Confirmed** (v2.8.1, ADR 0005).
+- A3: go-arch-lint glob components tolerate zero matches. **Confirmed** with `ignoreNotFoundComponents: true`.
+- A4: sqlc rejects zero packages and empty query files. **Resolved:** `make gen` skips sqlc without domains; generator emits one trivial query.
 - A5: Docker is available locally and in CI (Atlas dev DB, Postgres for integration tests).
 - A6: Agent-file `tools:` cannot restrict Bash to one command; restrict via a per-agent PreToolUse hook. Verify Phase 9.
 - A7: "rm -rf outside the repo" cannot be fully expressed as a deny pattern; covered by deny patterns + PreToolUse hook.
@@ -67,7 +66,16 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
 ## Deviations from prompt
 
 - TypeScript 6.0.3 instead of latest 7.0.2 (peer-dep constraint, see table).
+- Atlas **Community Edition** build: official binary gates `migrate lint` behind Pro login since v0.38.
+  BC analyzers are Pro-only; renames are caught as DS103 destructive + squawk `renaming-column` (ADR 0004).
+- pnpm installed into `.bin/.pnpm` via npm (corepack/pnpm self-switch to 12.x failed with ENOEXEC).
+- Second custom analyzer `domainiso`: go-arch-lint globs cannot express "same domain only" (ADR 0003).
+- Auth stub is fail-closed: requires explicit `AUTH_MODE=dev-stub` (security review finding).
+- golang.org/x/text bumped to v0.43.0 (govulncheck GO-2026-6629/-5970 via pgx).
+- macOS make 3.81: no `--output-sync`, `.SHELLFLAGS` ignored; recipes use explicit `set -e` where needed.
+- Spectral built-ins `operation-operationId`/`operation-tags` replaced by custom rules (rule id in message).
 
 ## Log
 
 - 2026-10-27: inputs fixed (name `harness-template`, owner `@aheumaier`). git initialised.
+- 2026-10-27: phases 0–3 done; each sensor verified to fire on a hand-made violation.

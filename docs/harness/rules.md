@@ -104,6 +104,50 @@ Format per rule: rule · why · sensor · remediation · fixture.
 - **Remediation:** Run `make gen-schema-doc` (needs Docker) and commit the result.
 - **Fixture:** covered by `fixtures/db-destructive-migration` side effects · Status: seed
 
+## Contract (api/openapi.yaml)
+
+### api-kebab-case-paths
+- **Rule:** Path segments are lowercase kebab-case; path parameters are `{camelCase}`.
+- **Why:** One URL style across domains; agents copy whatever they see first.
+- **Sensor:** Spectral `api-kebab-case-paths` (`.spectral.yaml`), `make lint-api`.
+- **Remediation:** Rename the path to lowercase words joined by `-` (e.g. `/order-items/{orderItemId}`), then `make gen`.
+- **Fixture:** `fixtures/api-snake-case-path` · Status: seed
+
+### api-camel-case-properties
+- **Rule:** Schema property names are camelCase.
+- **Why:** Generated Go and TS types map 1:1 to JSON without per-field tags or renames.
+- **Sensor:** Spectral `api-camel-case-properties`, `make lint-api`.
+- **Remediation:** Rename the property to camelCase (e.g. `created_at` → `createdAt`) and run `make gen`.
+- **Fixture:** `fixtures/api-snake-case-property` · Status: seed
+
+### api-operation-metadata
+- **Rule:** Every operation has an `operationId` and exactly one tag (its owning domain).
+- **Why:** operationId names the generated Go method and TS hook; the tag selects the generated server package (one strict server per domain).
+- **Sensor:** Spectral `api-operation-id`, `api-operation-tags`, `api-operation-single-tag`, `make lint-api`.
+- **Remediation:** Add a unique camelCase `operationId` (verbNoun, e.g. `listOrders`) and exactly one tag naming the owning domain.
+- **Fixture:** `fixtures/api-missing-operation-id` · Status: seed
+
+### api-documented-errors
+- **Rule:** Every operation documents at least one 4xx and one 5xx response.
+- **Why:** Clients (and the generated zod parsers) must know the error shape for every call.
+- **Sensor:** Spectral `api-documented-4xx`, `api-documented-5xx`, `make lint-api`.
+- **Remediation:** Add `'4XX': {$ref: '#/components/responses/ClientError'}` and `'5XX': {$ref: '#/components/responses/ServerError'}` to the operation's responses.
+- **Fixture:** covered by `fixtures/api-error-not-problem-json` · Status: seed
+
+### api-errors-problem-json
+- **Rule:** Every 4xx/5xx response has only `application/problem+json` content (RFC 9457 `Problem` schema).
+- **Why:** One error format end to end; `internal/platform/problem` writes it, the api-client parses it.
+- **Sensor:** Spectral `api-errors-problem-json`, `make lint-api`.
+- **Remediation:** `$ref` one of `#/components/responses/{ClientError,ServerError,ServiceUnavailable}`, or use content `application/problem+json` with schema `$ref: '#/components/schemas/Problem'`.
+- **Fixture:** `fixtures/api-error-not-problem-json` · Status: seed
+
+### api-no-breaking-change
+- **Rule:** No breaking change to the contract compared to the merge base with `main` unless a CODEOWNER approves.
+- **Why:** Deployed clients cannot be changed atomically with the server.
+- **Sensor:** oasdiff `breaking --fail-on ERR` (`scripts/harness/contract-check.sh`), `make contract-check`, required check `contract-gate` (`.github/workflows/contract-gate.yml`).
+- **Remediation:** Make the change additive (new optional field, new path, deprecate before removing); if the break is intended, explain it in the PR and get CODEOWNERS approval on contract-gate.
+- **Fixture:** `fixtures/api-breaking-change` · Status: seed
+
 ## Generated code
 
 ### gen-up-to-date

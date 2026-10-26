@@ -9,3 +9,5 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0002](0002-go-service-layout.md) | Go service layout: module in `apps/api`, net/http, slog, pgx | accepted |
 | [0003](0003-layer-enforcement.md) | Layer enforcement: go-arch-lint + depguard + custom analyzers | accepted |
 | [0004](0004-migrations-atlas-squawk-sqlc.md) | Migrations: Atlas CE, squawk, sqlc | accepted |
+| [0005](0005-spec-first-contract.md) | Spec-first contract, one strict server per tag, RFC 9457 errors | accepted |
+| [0006](0006-contract-gate.md) | Breaking contract changes need a human (contract-gate) | accepted |

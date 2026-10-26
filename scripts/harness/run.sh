@@ -27,8 +27,8 @@ if [[ $status -eq 0 ]]; then
   exit 0
 fi
 
-# Strip ANSI colour codes so output is legible to agents and in CI logs.
-sed -i.bak $'s/\x1b\\[[0-9;]*m//g' "$log" && rm -f "$log.bak"
+# Strip ANSI colour codes and OSC-8 hyperlinks so output is legible to agents and in CI logs.
+sed -i.bak -e $'s/\x1b\\[[0-9;]*m//g' -e $'s/\x1b]8;;[^\x1b]*\x1b\\\\//g' "$log" && rm -f "$log.bak"
 
 remediation() { # rule-id -> remediation line from rules.md
   awk -v id="$1" '
@@ -39,7 +39,8 @@ remediation() { # rule-id -> remediation line from rules.md
 }
 
 {
-  echo "✗ sensor '${sensor}' failed (exit ${status}) — cwd: ${dir#"$ROOT"/}"
+  rel="${dir#"$ROOT"}"; rel="${rel#/}"
+  echo "✗ sensor '${sensor}' failed (exit ${status}) — cwd: ${rel:-.}"
   echo "  command: $*"
   echo "────────────────────────────────────────────────────────────"
   lines=$(wc -l <"$log" | tr -d ' ')

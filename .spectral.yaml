@@ -1,0 +1,93 @@
+# Harness file (protected). OpenAPI style + contract rules. docs/harness/rules.md#api-*
+extends: [["spectral:oas", recommended]]
+
+rules:
+  # --- seed rules (each has an entry in docs/harness/rules.md) ---------------------------------
+  api-kebab-case-paths:
+    description: Path segments are kebab-case (parameters excepted).
+    message: "[api-kebab-case-paths] Path '{{property}}' is not kebab-case. Fix: use lowercase words joined by '-', e.g. /order-items/{orderItemId}."
+    severity: error
+    given: $.paths[*]~
+    then:
+      function: pattern
+      functionOptions:
+        match: "^(/([a-z0-9]+(-[a-z0-9]+)*|\\{[a-zA-Z][a-zA-Z0-9]*\\}))+$"
+
+  api-camel-case-properties:
+    description: Schema property names are camelCase.
+    message: "[api-camel-case-properties] Property '{{property}}' is not camelCase. Fix: rename it (e.g. created_at -> createdAt) and regenerate with `make gen`."
+    severity: error
+    given: $..properties[*]~
+    then:
+      function: casing
+      functionOptions:
+        type: camel
+
+  # Built-ins replaced by the rules below so failures carry a rule id and a fix.
+  operation-operationId: off
+  operation-tags: off
+
+  api-operation-id:
+    description: Every operation has an operationId.
+    message: "[api-operation-metadata] Operation has no operationId. Fix: add a unique camelCase operationId (verbNoun, e.g. listOrders); it names the generated Go method and TS hook."
+    severity: error
+    given: $.paths[*][get,put,post,delete,patch,head,options,trace]
+    then:
+      field: operationId
+      function: truthy
+
+  api-operation-tags:
+    description: Every operation has tags.
+    message: "[api-operation-metadata] Operation has no tags. Fix: add exactly one tag naming the owning domain; the tag selects the generated server package."
+    severity: error
+    given: $.paths[*][get,put,post,delete,patch,head,options,trace]
+    then:
+      field: tags
+      function: truthy
+
+  api-operation-single-tag:
+    description: Exactly one tag per operation (the owning domain).
+    message: "[api-operation-metadata] Operation must have exactly one tag (its domain). Fix: keep only the owning domain's tag."
+    severity: error
+    given: $.paths[*][get,put,post,delete,patch,head,options,trace]
+    then:
+      field: tags
+      function: length
+      functionOptions:
+        max: 1
+
+  api-documented-4xx:
+    description: Every operation documents at least one 4xx response.
+    message: "[api-documented-errors] Operation documents no 4xx response. Fix: add '4XX': {$ref: '#/components/responses/ClientError'} (or specific 4xx codes)."
+    severity: error
+    given: $.paths[*][get,put,post,delete,patch,head,options,trace].responses
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          not: { propertyNames: { not: { pattern: "^4(\\d\\d|XX)$" } } }
+
+  api-documented-5xx:
+    description: Every operation documents at least one 5xx response.
+    message: "[api-documented-errors] Operation documents no 5xx response. Fix: add '5XX': {$ref: '#/components/responses/ServerError'}."
+    severity: error
+    given: $.paths[*][get,put,post,delete,patch,head,options,trace].responses
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          not: { propertyNames: { not: { pattern: "^5(\\d\\d|XX)$" } } }
+
+  api-errors-problem-json:
+    description: Every 4xx/5xx response is RFC 9457 application/problem+json with the shared Problem schema.
+    message: "[api-errors-problem-json] Error response must use only application/problem+json. Fix: $ref one of #/components/responses/{ClientError,ServerError,ServiceUnavailable} or define content 'application/problem+json' with schema $ref '#/components/schemas/Problem'."
+    severity: error
+    given: $.paths[*][*].responses[?(@property.match(/^[45]/))]
+    then:
+      field: content
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          required: [application/problem+json]
+          propertyNames: { const: application/problem+json }

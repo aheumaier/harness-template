@@ -1,0 +1,9 @@
+# Generated strict server for OpenAPI tag "platform". Run via `make gen`.
+package: health
+output: api.gen.go
+generate:
+  std-http-server: true
+  strict-server: true
+  models: true
+output-options:
+  include-tags: [platform]

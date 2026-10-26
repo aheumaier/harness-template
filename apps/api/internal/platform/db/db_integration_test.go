@@ -30,8 +30,10 @@ func TestPoolAndHealthz(t *testing.T) {
 		t.Fatalf("pgcrypto missing; migrations not applied? %v", err)
 	}
 
+	mux := http.NewServeMux()
+	health.Register(mux, pool)
 	rec := httptest.NewRecorder()
-	health.Handler(pool).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("healthz = %d", rec.Code)
 	}

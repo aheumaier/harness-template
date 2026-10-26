@@ -27,7 +27,7 @@ check: ## Fast sensors (<60s warm): format, lint, arch, unit tests, gen-check
 	@$(MAKE) gen-check
 
 check-all: check ## Everything: check + integration, contract, migration, security, dead code
-	@$(MAKE) -k -j4 vuln-go lint-migrations squawk
+	@$(MAKE) -k -j4 vuln-go lint-migrations squawk lint-api contract-check
 	@$(MAKE) test-integration
 
 ##@ Tools
@@ -61,6 +61,16 @@ test-analyzers:
 vuln-go:
 	@$(RUN) govulncheck go-no-known-vulns --dir $(API) -- govulncheck ./...
 
+##@ Contract (api/openapi.yaml)
+.PHONY: lint-api contract-check
+API_RULES := api-kebab-case-paths,api-camel-case-properties,api-operation-metadata,api-documented-errors,api-errors-problem-json
+
+lint-api: ## Spectral style + error-contract rules on the OpenAPI spec
+	@$(RUN) spectral $(API_RULES) -- spectral lint api/openapi.yaml --ruleset .spectral.yaml --fail-severity=warn --quiet
+
+contract-check: ## oasdiff breaking-change check vs merge base with BASE_REF (contract-gate)
+	@$(RUN) oasdiff api-no-breaking-change -- env BASE_REF=$(BASE_REF) scripts/harness/contract-check.sh
+
 ##@ Database
 .PHONY: lint-migrations squawk gen-schema-doc schema-doc-fresh test-integration
 BASE_REF ?= $(shell git rev-parse -q --verify origin/main >/dev/null && echo origin/main || echo main)
@@ -82,8 +92,13 @@ test-integration: ## Integration tests against the worktree's Postgres (.env.loc
 	@$(RUN) go-integration go-tests-pass --dir $(API) -- bash -c 'set -a; source ../../.env.local; set +a; go test -race -count=1 -tags=integration ./...'
 
 ##@ Generation
-.PHONY: gen gen-check gen-sqlc gen-atlas-sum
-gen: gen-sqlc gen-atlas-sum ## Regenerate all generated code (then commit it)
+.PHONY: gen gen-check gen-sqlc gen-atlas-sum gen-oapi
+gen: gen-oapi gen-sqlc gen-atlas-sum ## Regenerate all generated code (then commit it)
+
+gen-oapi: # one strict server per OpenAPI tag: every apps/api/internal/**/oapi-codegen.yaml
+	@for cfg in $$(find $(API)/internal -name oapi-codegen.yaml | sort); do \
+	  (cd $$(dirname $$cfg) && oapi-codegen -config oapi-codegen.yaml $(CURDIR)/api/openapi.yaml) || exit 1; \
+	done
 
 gen-sqlc:
 	@cd $(API) && if grep -q -- '- engine:' sqlc.yaml; then sqlc generate; fi
