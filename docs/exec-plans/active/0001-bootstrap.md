@@ -15,7 +15,7 @@ the harness: guides (feedforward) + sensors (feedback). No business domains.
 | 1 | Go backend skeleton, platform, /healthz, depguard, go-arch-lint, custom analyzer, govulncheck, race tests | `make check` green | done |
 | 2 | Atlas migrations, migrate lint, squawk, sqlc, schema doc | `make check` green | done |
 | 3 | OpenAPI 3.1, oapi-codegen strict server, Spectral, oasdiff | `make check` green | done |
-| 4 | pnpm + Turbo, web app, api-client (orval+zod), dep-cruiser, ESLint, knip, Vitest | `make check` green | todo |
+| 4 | pnpm + Turbo, web app, api-client (orval+zod), dep-cruiser, ESLint, knip, Vitest | `make check` green | done |
 | 5 | setup-worktree.sh, dev/db-up/db-reset, per-worktree ports | two worktrees up simultaneously | todo |
 | 6 | check / check-all / gen-check, fixtures, harness-selftest | selftest green | todo |
 | 7 | new-domain generator + skill + CI probe | probe + `make check` green | todo |
@@ -48,7 +48,8 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
 | TypeScript | **6.0.3** | deviation: 7.0.2 is latest but typescript-eslint 8.72.1 peer is `<6.1.0` |
 | Vite / plugin-react / Vitest | 8.3.5 / 6.1.2 / 5.0.5 | |
 | React / TanStack Query | 19.3.1 / 5.105.0 | |
-| ESLint / typescript-eslint | 10.13.0 / 8.72.1 | flat config |
+| ESLint / typescript-eslint | 10.13.0 / **8.72.0** | flat config; 8.72.1 rejected by pnpm minimumReleaseAge |
+| eslint-plugin-react-hooks / @eslint/js | 7.1.1 / 10.0.1 | |
 | orval / zod | 8.45.0 / 4.6.7 | |
 | dependency-cruiser / knip | 18.7.0 / 6.43.0 | |
 
@@ -73,9 +74,12 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
 - Auth stub is fail-closed: requires explicit `AUTH_MODE=dev-stub` (security review finding).
 - golang.org/x/text bumped to v0.43.0 (govulncheck GO-2026-6629/-5970 via pgx).
 - macOS make 3.81: no `--output-sync`, `.SHELLFLAGS` ignored; recipes use explicit `set -e` where needed.
+- typescript-eslint 8.72.0 (8.72.1 younger than pnpm 12's default minimumReleaseAge; policy kept).
+- No TS formatter (Prettier) added: not requested; `make check` "format" covers Go only (ADR 0007).
 - Spectral built-ins `operation-operationId`/`operation-tags` replaced by custom rules (rule id in message).
 
 ## Log
 
 - 2026-10-27: inputs fixed (name `harness-template`, owner `@aheumaier`). git initialised.
+- 2026-10-27: phase 4 done (orval forceSuccessResponse avoids zod-parsing error bodies as success).
 - 2026-10-27: phases 0–3 done; each sensor verified to fire on a hand-made violation.

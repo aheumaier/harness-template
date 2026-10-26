@@ -148,6 +148,57 @@ Format per rule: rule · why · sensor · remediation · fixture.
 - **Remediation:** Make the change additive (new optional field, new path, deprecate before removing); if the break is intended, explain it in the PR and get CODEOWNERS approval on contract-gate.
 - **Fixture:** `fixtures/api-breaking-change` · Status: seed
 
+## Web (apps/web, packages/*)
+
+### web-no-direct-http
+- **Rule:** Only `packages/api-client` (generated) talks HTTP: no `fetch`/`XMLHttpRequest`/`window.fetch`, no HTTP libraries (axios, ky, …), no deep imports into the api-client.
+- **Why:** Every call is typed from the contract and its response is zod-parsed at the boundary; hand-written calls bypass both.
+- **Sensor:** ESLint `no-restricted-globals`/`-properties`/`-imports` (`eslint.config.mjs`), `make lint-web`.
+- **Remediation:** Add the operation to `api/openapi.yaml`, run `make gen`, and use the generated `use<OperationId>` hook from `@harness-template/api-client` (e.g. `useGetHealth`).
+- **Fixture:** `fixtures/web-direct-fetch` · Status: seed
+
+### web-domain-pure
+- **Rule:** `packages/domain` imports no React, TanStack, api-client or app code and uses no browser globals.
+- **Why:** Domain logic stays testable in plain Node and reusable outside the browser.
+- **Sensor:** dependency-cruiser `web-domain-pure` (`.dependency-cruiser.cjs`, `make arch-web`) for imports; ESLint `no-restricted-globals` (`make lint-web`) for globals.
+- **Remediation:** Keep the function pure: take what it needs as parameters and do the React/browser/API wiring in `apps/web`.
+- **Fixture:** `fixtures/web-domain-imports-react` · Status: seed
+
+### web-no-cross-app
+- **Rule:** An app under `apps/` never imports another app.
+- **Why:** Apps deploy independently; cross-imports create hidden coupling and duplicate bundles.
+- **Sensor:** dependency-cruiser `web-no-cross-app`, `make arch-web`.
+- **Remediation:** Move the shared code into `packages/` (pure logic into `packages/domain`) and import it from there.
+- **Fixture:** `fixtures/web-cross-app-import` · Status: seed
+
+### web-lint
+- **Rule:** TypeScript passes `typescript-eslint` `strictTypeChecked` and `react-hooks` recommended, with zero warnings and no unused disable directives.
+- **Why:** Type-aware lint catches unsafe `any` flows and hook-order bugs that tsc accepts.
+- **Sensor:** ESLint, `make lint-web`.
+- **Remediation:** Fix the reported line; do not add `eslint-disable` (harness-integrity rejects disables without a reason and rule reference).
+- **Fixture:** none · Status: seed
+
+### web-typecheck
+- **Rule:** All workspace packages type-check under `tsconfig.base.json` (`strict`, `noUncheckedIndexedAccess`).
+- **Why:** The type system carries the contract from the OpenAPI spec into components.
+- **Sensor:** `tsc --noEmit` per package via Turborepo, `make typecheck-web`.
+- **Remediation:** Fix the type error at its source; never widen to `any` or add `@ts-ignore`/`@ts-expect-error`.
+- **Fixture:** none · Status: seed
+
+### web-tests-pass
+- **Rule:** Vitest suites pass.
+- **Why:** Cheapest behavioural sensor for the frontend.
+- **Sensor:** `vitest run` per package via Turborepo, `make test-web`.
+- **Remediation:** Read the first failing test above and fix the code (not the test) unless the behaviour change is intended and documented in the PR.
+- **Fixture:** none · Status: seed
+
+### web-no-dead-code
+- **Rule:** No unused files, exports or dependencies in the JS workspace.
+- **Why:** Agents leave orphans behind; dead code misleads the next agent reading the repo.
+- **Sensor:** knip (`knip.json`), `make knip` (check-all, drift.yml).
+- **Remediation:** Delete the unused file/export/dependency; if it is used in a way knip cannot see, configure it in `knip.json` and say why in the PR.
+- **Fixture:** none · Status: seed
+
 ## Generated code
 
 ### gen-up-to-date

@@ -11,3 +11,4 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0004](0004-migrations-atlas-squawk-sqlc.md) | Migrations: Atlas CE, squawk, sqlc | accepted |
 | [0005](0005-spec-first-contract.md) | Spec-first contract, one strict server per tag, RFC 9457 errors | accepted |
 | [0006](0006-contract-gate.md) | Breaking contract changes need a human (contract-gate) | accepted |
+| [0007](0007-frontend-stack-and-boundaries.md) | Frontend stack and boundaries (pnpm, orval+zod, dep-cruiser) | accepted |

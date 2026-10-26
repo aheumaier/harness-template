@@ -20,20 +20,23 @@ ANALYZERS_SRC := $(shell find $(API)/tools/analyzers -name '*.go' -o -name 'go.m
 help: ## Show targets
 	@awk 'BEGIN{FS=":.*##"} /^##@/{printf "\n%s\n",substr($$0,5)} /^[a-z0-9-]+:.*##/{printf "  %-18s %s\n",$$1,$$2}' $(MAKEFILE_LIST)
 
-setup: tools ## Install pinned tools and dependencies
+setup: tools deps ## Install pinned tools and dependencies
 
 check: ## Fast sensors (<60s warm): format, lint, arch, unit tests, gen-check
-	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers schema-doc-fresh
+	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers schema-doc-fresh lint-web arch-web typecheck-web test-web
 	@$(MAKE) gen-check
 
 check-all: check ## Everything: check + integration, contract, migration, security, dead code
-	@$(MAKE) -k -j4 vuln-go lint-migrations squawk lint-api contract-check
+	@$(MAKE) -k -j4 vuln-go lint-migrations squawk lint-api contract-check knip
 	@$(MAKE) test-integration
 
 ##@ Tools
-.PHONY: tools
+.PHONY: tools deps
 tools: $(GCL) ## Install pinned CLI tools into .bin
 	@scripts/install-tools.sh
+
+deps: ## Install JS dependencies from the lockfile
+	@pnpm install --frozen-lockfile --silent
 
 $(GCL): $(API)/.custom-gcl.yml $(ANALYZERS_SRC) scripts/tool-versions.env
 	@scripts/install-tools.sh
@@ -60,6 +63,23 @@ test-analyzers:
 
 vuln-go:
 	@$(RUN) govulncheck go-no-known-vulns --dir $(API) -- govulncheck ./...
+
+##@ Web sensors (apps/web, packages/*)
+.PHONY: lint-web arch-web typecheck-web test-web knip
+lint-web:
+	@$(RUN) eslint web-no-direct-http,web-domain-pure,web-lint -- eslint --max-warnings=0 .
+
+arch-web:
+	@$(RUN) dependency-cruiser web-domain-pure,web-no-cross-app -- depcruise apps packages --config .dependency-cruiser.cjs --output-type err
+
+typecheck-web:
+	@$(RUN) tsc web-typecheck -- turbo run typecheck --output-logs=errors-only
+
+test-web:
+	@$(RUN) vitest web-tests-pass -- turbo run test --output-logs=errors-only
+
+knip: ## Unused files, exports and dependencies in the JS workspace
+	@$(RUN) knip web-no-dead-code -- knip
 
 ##@ Contract (api/openapi.yaml)
 .PHONY: lint-api contract-check
@@ -92,13 +112,16 @@ test-integration: ## Integration tests against the worktree's Postgres (.env.loc
 	@$(RUN) go-integration go-tests-pass --dir $(API) -- bash -c 'set -a; source ../../.env.local; set +a; go test -race -count=1 -tags=integration ./...'
 
 ##@ Generation
-.PHONY: gen gen-check gen-sqlc gen-atlas-sum gen-oapi
-gen: gen-oapi gen-sqlc gen-atlas-sum ## Regenerate all generated code (then commit it)
+.PHONY: gen gen-check gen-sqlc gen-atlas-sum gen-oapi gen-api-client
+gen: gen-oapi gen-api-client gen-sqlc gen-atlas-sum ## Regenerate all generated code (then commit it)
 
 gen-oapi: # one strict server per OpenAPI tag: every apps/api/internal/**/oapi-codegen.yaml
 	@for cfg in $$(find $(API)/internal -name oapi-codegen.yaml | sort); do \
 	  (cd $$(dirname $$cfg) && oapi-codegen -config oapi-codegen.yaml $(CURDIR)/api/openapi.yaml) || exit 1; \
 	done
+
+gen-api-client: # orval: TanStack Query hooks + zod schemas into packages/api-client/src/gen
+	@cd packages/api-client && node_modules/.bin/orval --config orval.config.ts >/dev/null
 
 gen-sqlc:
 	@cd $(API) && if grep -q -- '- engine:' sqlc.yaml; then sqlc generate; fi

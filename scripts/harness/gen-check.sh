@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 # Every generated path in the repo. Keep in sync with `make gen` (docs/harness/sensors.md).
-GEN_RE='^(apps/api/internal/.*\.gen\.go|apps/api/internal/[^/]+/store/(db|models|[^/]+\.sql)\.go|apps/api/db/migrations/atlas\.sum|packages/api-client/src/.*)$'
+GEN_RE='^(apps/api/internal/.*\.gen\.go|apps/api/internal/[^/]+/store/(db|models|[^/]+\.sql)\.go|apps/api/db/migrations/atlas\.sum|packages/api-client/src/gen/.*)$'
 
 snapshot() {
   git ls-files -co --exclude-standard | grep -E "$GEN_RE" | sort | while read -r f; do

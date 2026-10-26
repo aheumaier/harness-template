@@ -48,8 +48,10 @@ remediation() { # rule-id -> remediation line from rules.md
   if (( lines > MAX_LINES )); then echo "… $((lines - MAX_LINES)) more lines in $log"; fi
   echo "────────────────────────────────────────────────────────────"
   IFS=',' read -ra ids <<<"$rules"
+  # Show the rules named in the output; if the tool names none of them, show them all.
+  any=0; for id in "${ids[@]}"; do grep -q -- "$id" "$log" && any=1; done
   for id in "${ids[@]}"; do
-    if (( ${#ids[@]} == 1 )) || grep -q -- "$id" "$log"; then
+    if (( ! any )) || grep -q -- "$id" "$log"; then
       echo "rule:        $id"
       echo "remediation: $(remediation "$id")"
       echo "docs:        docs/harness/rules.md#$id"
