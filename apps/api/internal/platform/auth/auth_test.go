@@ -7,8 +7,12 @@ import (
 )
 
 func TestMiddleware(t *testing.T) {
+	mw, err := New(ModeDevStub)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var got Principal
-	h := Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = FromContext(r.Context()) }))
+	h := mw(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = FromContext(r.Context()) }))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	h.ServeHTTP(httptest.NewRecorder(), req)
@@ -20,5 +24,11 @@ func TestMiddleware(t *testing.T) {
 	h.ServeHTTP(httptest.NewRecorder(), req)
 	if got.Subject != "alice" {
 		t.Fatalf("want alice, got %+v", got)
+	}
+}
+
+func TestNew_FailsClosed(t *testing.T) {
+	if _, err := New("jwt"); err == nil {
+		t.Fatal("want error for unimplemented mode")
 	}
 }

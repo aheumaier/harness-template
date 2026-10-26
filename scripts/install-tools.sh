@@ -26,8 +26,19 @@ goinstall oapi-codegen  github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 goinstall oasdiff       github.com/oasdiff/oasdiff@"$OASDIFF_VERSION"
 
 if ! stamp_ok atlas "$ATLAS_VERSION"; then
-  echo "installing atlas $ATLAS_VERSION" >&2
+  echo "installing atlas (community edition) $ATLAS_VERSION" >&2
   os=$(uname -s | tr '[:upper:]' '[:lower:]'); arch=$(uname -m); [[ $arch == x86_64 ]] && arch=amd64; [[ $arch == aarch64 ]] && arch=arm64
-  curl -fsSL "https://release.ariga.io/atlas/atlas-${os}-${arch}-${ATLAS_VERSION}" -o "$BIN/atlas"
+  curl -fsSL "https://release.ariga.io/atlas/atlas-community-${os}-${arch}-${ATLAS_VERSION}" -o "$BIN/atlas"
   chmod +x "$BIN/atlas"; stamp atlas "$ATLAS_VERSION"
 fi
+
+# pnpm >=11 ships a native binary via optionalDependencies; older pnpm's self-switching cannot install it,
+# so pin it here. Must equal "packageManager" in package.json.
+if ! stamp_ok pnpm "$PNPM_VERSION"; then
+  echo "installing pnpm $PNPM_VERSION" >&2
+  rm -rf "$BIN/.pnpm"
+  npm install --silent --no-audit --no-fund --prefix "$BIN/.pnpm" "pnpm@$PNPM_VERSION"
+  ln -sf "$BIN/.pnpm/node_modules/.bin/pnpm" "$BIN/pnpm"; stamp pnpm "$PNPM_VERSION"
+fi
+grep -q "\"packageManager\": \"pnpm@$PNPM_VERSION\"" "$ROOT/package.json" \
+  || { echo "package.json packageManager must be pnpm@$PNPM_VERSION (scripts/tool-versions.env)" >&2; exit 1; }

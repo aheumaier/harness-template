@@ -1,0 +1,4 @@
+# sqlc: one entry per domain, appended by `make new-domain`. Generates into internal/<domain>/store.
+# Schema is read from the Atlas migrations, so queries are type-checked against the real schema.
+version: "2"
+sql: []

@@ -43,6 +43,11 @@ func run(ctx context.Context, getenv func(string) string) error {
 	}
 	defer func() { _ = shutdownTracing(context.WithoutCancel(ctx)) }()
 
+	authn, err := auth.New(cfg.AuthMode)
+	if err != nil {
+		return err
+	}
+
 	pool, err := db.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
@@ -51,7 +56,7 @@ func run(ctx context.Context, getenv func(string) string) error {
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           auth.Middleware(routes(pool)),
+		Handler:           authn(routes(pool)),
 		ReadHeaderTimeout: 5 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return ctx },
 	}

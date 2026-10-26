@@ -66,3 +66,49 @@ Format per rule: rule · why · sensor · remediation · fixture.
 - **Sensor:** `govulncheck`, `make vuln-go` (check-all, drift.yml).
 - **Remediation:** Upgrade the module named in the finding (`go get <module>@<fixed-version>` in apps/api, then `go mod tidy`), or bump `GO_TOOLCHAIN` for stdlib findings.
 - **Fixture:** none (depends on external advisory DB) · Status: seed
+
+## Database (apps/api/db)
+
+### db-no-destructive-migration
+- **Rule:** Migrations must not drop tables, columns or schemas (Atlas `destructive` analyzer, error level).
+- **Why:** Drops lose data irreversibly and break running old binaries during deploys.
+- **Sensor:** `atlas migrate lint` (Community Edition), `make lint-migrations`, `migration-gate.yml`.
+- **Remediation:** Use expand/contract: stop reading the column in code first, ship, then drop it in a later migration with an `-- atlas:nolint DS1xx` directive and a reason, approved by CODEOWNERS.
+- **Fixture:** `fixtures/db-destructive-migration` · Status: seed
+
+### db-backward-compatible-migration
+- **Rule:** Migrations must not rename or retype columns/tables in place (Atlas `incompatible` analyzer; in Community Edition renames surface as destructive drops, and squawk `renaming-column` also fires).
+- **Why:** The previous app version is still running during a rolling deploy and will break.
+- **Sensor:** `atlas migrate lint`, `squawk`, `make lint-migrations squawk`.
+- **Remediation:** Add the new column, backfill, switch reads/writes in code, then remove the old column in a later migration.
+- **Fixture:** `fixtures/db-rename-column` · Status: seed
+
+### db-safe-locking
+- **Rule:** Migrations pass squawk: set `lock_timeout`/`statement_timeout`, create indexes concurrently, no NOT NULL columns without defaults on existing tables, etc.
+- **Why:** Long ACCESS EXCLUSIVE locks take production down; squawk knows Postgres lock semantics, Atlas does not.
+- **Sensor:** `squawk` (`.squawk.toml`), `make squawk`, `migration-gate.yml`.
+- **Remediation:** Apply the `help:` fix squawk prints above (start each migration with `SET lock_timeout = '2s'; SET statement_timeout = '30s';`; use `CREATE INDEX CONCURRENTLY` in a file marked `-- atlas:txmode none`).
+- **Fixture:** `fixtures/db-unsafe-lock` · Status: seed
+
+### db-append-only-migrations
+- **Rule:** Never edit or delete a migration that exists on the base branch; add a new one.
+- **Why:** Applied migrations are history; editing them makes environments diverge silently.
+- **Sensor:** `atlas.sum` integrity via `make gen-check` (hash changes) and the modified-file check in `migration-gate.yml`.
+- **Remediation:** Revert your edit to the existing migration and create a new one with `atlas migrate new <name> --env local` (see .claude/skills/add-migration).
+- **Fixture:** none (git-history based; exercised in migration-gate) · Status: seed
+
+### db-schema-doc-fresh
+- **Rule:** `docs/generated/db-schema.md` matches the migrations (stamped with the `atlas.sum` hash).
+- **Why:** Agents read the schema doc instead of replaying migrations in their head.
+- **Sensor:** `scripts/gen-schema-doc.sh --check` (offline) in `make check`; full regeneration in CI.
+- **Remediation:** Run `make gen-schema-doc` (needs Docker) and commit the result.
+- **Fixture:** covered by `fixtures/db-destructive-migration` side effects · Status: seed
+
+## Generated code
+
+### gen-up-to-date
+- **Rule:** Generated code (sqlc stores, oapi-codegen servers, the orval API client, `atlas.sum`) is committed, current, and never hand-edited.
+- **Why:** Generated code is a projection of the contract/schema; hand edits are silently lost and stale output hides contract drift.
+- **Sensor:** `scripts/harness/gen-check.sh` (`make gen-check`, part of `make check`).
+- **Remediation:** Change the source (api/openapi.yaml, db/queries/*.sql, db/migrations) instead, run `make gen`, and commit the regenerated files.
+- **Fixture:** `fixtures/gen-hand-edit-api-client` · Status: seed

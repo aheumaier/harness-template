@@ -1,0 +1,4 @@
+# Harness file (protected). Postgres locking/safety checks for migrations. docs/harness/rules.md#db-safe-locking
+pg_version = "17.0"
+# Atlas applies each migration file inside a transaction.
+assume_in_transaction = true

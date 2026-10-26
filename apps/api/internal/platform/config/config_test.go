@@ -16,7 +16,7 @@ func TestLoad_FailsFastOnMissing(t *testing.T) {
 }
 
 func TestLoad_OK(t *testing.T) {
-	cfg, err := Load(env(map[string]string{"HTTP_ADDR": ":8080", "DATABASE_URL": "postgres://x", "LOG_LEVEL": "debug"}))
+	cfg, err := Load(env(map[string]string{"HTTP_ADDR": ":8080", "DATABASE_URL": "postgres://x", "AUTH_MODE": "dev-stub", "LOG_LEVEL": "debug"}))
 	if err != nil {
 		t.Fatal(err)
 	}

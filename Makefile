@@ -23,10 +23,12 @@ help: ## Show targets
 setup: tools ## Install pinned tools and dependencies
 
 check: ## Fast sensors (<60s warm): format, lint, arch, unit tests, gen-check
-	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers
+	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers schema-doc-fresh
+	@$(MAKE) gen-check
 
-check-all: check ## Everything: check + slow/networked sensors
-	@$(MAKE) -k -j4 vuln-go
+check-all: check ## Everything: check + integration, contract, migration, security, dead code
+	@$(MAKE) -k -j4 vuln-go lint-migrations squawk
+	@$(MAKE) test-integration
 
 ##@ Tools
 .PHONY: tools
@@ -58,3 +60,36 @@ test-analyzers:
 
 vuln-go:
 	@$(RUN) govulncheck go-no-known-vulns --dir $(API) -- govulncheck ./...
+
+##@ Database
+.PHONY: lint-migrations squawk gen-schema-doc schema-doc-fresh test-integration
+BASE_REF ?= $(shell git rev-parse -q --verify origin/main >/dev/null && echo origin/main || echo main)
+ATLAS_LINT_SCOPE ?= --git-base $(BASE_REF)
+
+lint-migrations: ## Atlas migrate lint (destructive + incompatible), needs Docker
+	@$(RUN) atlas-lint db-no-destructive-migration,db-backward-compatible-migration --dir $(API) -- atlas migrate lint --env local $(ATLAS_LINT_SCOPE)
+
+squawk: ## Postgres locking checks on migrations
+	@$(RUN) squawk db-safe-locking -- squawk --config .squawk.toml $(API)/db/migrations/*.sql
+
+gen-schema-doc: ## Regenerate docs/generated/db-schema.md (needs Docker)
+	@scripts/gen-schema-doc.sh
+
+schema-doc-fresh:
+	@$(RUN) schema-doc db-schema-doc-fresh -- scripts/gen-schema-doc.sh --check
+
+test-integration: ## Integration tests against the worktree's Postgres (.env.local)
+	@$(RUN) go-integration go-tests-pass --dir $(API) -- bash -c 'set -a; source ../../.env.local; set +a; go test -race -count=1 -tags=integration ./...'
+
+##@ Generation
+.PHONY: gen gen-check gen-sqlc gen-atlas-sum
+gen: gen-sqlc gen-atlas-sum ## Regenerate all generated code (then commit it)
+
+gen-sqlc:
+	@cd $(API) && if grep -q -- '- engine:' sqlc.yaml; then sqlc generate; fi
+
+gen-atlas-sum:
+	@cd $(API) && atlas migrate hash --env local
+
+gen-check: ## gen + fail if anything changed (generated code must be committed and untouched)
+	@$(RUN) gen-check gen-up-to-date -- scripts/harness/gen-check.sh

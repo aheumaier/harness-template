@@ -15,6 +15,7 @@ type Config struct {
 	DatabaseURL    string
 	LogLevel       slog.Level
 	TracesExporter string // "none" (default) or "stdout"
+	AuthMode       string // validated by auth.New; only "dev-stub" exists today
 }
 
 // Load reads configuration via getenv (os.Getenv in production, a map in tests).
@@ -31,6 +32,7 @@ func Load(getenv func(string) string) (Config, error) {
 	cfg := Config{
 		HTTPAddr:       required("HTTP_ADDR"),
 		DatabaseURL:    required("DATABASE_URL"),
+		AuthMode:       required("AUTH_MODE"),
 		TracesExporter: "none",
 	}
 

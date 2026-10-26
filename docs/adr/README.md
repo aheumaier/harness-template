@@ -8,3 +8,4 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0001](0001-tool-pinning-and-single-entry-point.md) | Tool pinning in `.bin` and Makefile as single entry point | accepted |
 | [0002](0002-go-service-layout.md) | Go service layout: module in `apps/api`, net/http, slog, pgx | accepted |
 | [0003](0003-layer-enforcement.md) | Layer enforcement: go-arch-lint + depguard + custom analyzers | accepted |
+| [0004](0004-migrations-atlas-squawk-sqlc.md) | Migrations: Atlas CE, squawk, sqlc | accepted |
