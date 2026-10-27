@@ -1,0 +1,26 @@
+# Harness file (protected). Focused feedback when migrations change: Atlas lint (destructive and
+# backward-incompatible changes, against the PR base), squawk (locking) and append-only. The same sensors
+# run in ci.yml's check-all, which is the required check; this one is path-filtered.
+# rules.md#db-no-destructive-migration, #db-backward-compatible-migration, #db-safe-locking,
+# #db-append-only-migrations
+name: migration-gate
+
+on:
+  pull_request:
+    paths:
+      - apps/api/db/migrations/**
+
+permissions:
+  contents: read
+
+jobs:
+  migrations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      # -k: report every gate, not just the first red one. Atlas starts its own Docker dev database.
+      - run: make -k migrations-append-only lint-migrations squawk BASE_REF="origin/$GITHUB_BASE_REF"

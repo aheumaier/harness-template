@@ -1,0 +1,64 @@
+# Harness file (protected). Weekly sweep for drift that accumulates without any single PR causing it:
+# dead code, known vulnerabilities in dependencies, a stale schema doc, dead doc links. Findings go to one
+# open issue labelled `drift` (created, or commented on).
+name: drift
+
+on:
+  schedule:
+    - cron: "17 5 * * 1" # Mondays 05:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - run: make setup
+      - name: Sweep
+        id: sweep
+        run: |
+          report="$RUNNER_TEMP/drift.md"
+          fence='```'
+          : >"$report"
+          for target in deadcode-go knip vuln-go docs-links; do
+            if ! out="$(make "$target" 2>&1)"; then
+              printf '### make %s\n\n%s\n%s\n%s\n\n' "$target" "$fence" "$out" "$fence" >>"$report"
+            fi
+          done
+          make gen-schema-doc
+          if ! out="$(git diff --exit-code -- docs/generated)"; then
+            printf '### docs/generated is stale (run make gen-schema-doc)\n\n%sdiff\n%s\n%s\n\n' "$fence" "$out" "$fence" >>"$report"
+          fi
+          echo "report=$report" >>"$GITHUB_OUTPUT"
+          [[ -s "$report" ]] && echo "found=true" >>"$GITHUB_OUTPUT" || echo "found=false" >>"$GITHUB_OUTPUT"
+      - name: Open or update the drift issue
+        if: steps.sweep.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ steps.sweep.outputs.report }}
+        run: |
+          gh label create drift --color BFD4F2 --description "Found by drift.yml" --force
+          issue="$(gh issue list --label drift --state open --json number --jq '.[0].number // empty')"
+          if [[ -n "$issue" ]]; then
+            gh issue comment "$issue" --body-file "$REPORT"
+          else
+            gh issue create --title "Drift: weekly sweep found issues" --label drift --body-file "$REPORT"
+          fi
+
+  # TODO(agent-gc): garbage-collection agent. Once the drift issue is reliable, run a coding agent on a
+  # schedule that takes one finding from the open `drift` issue (or docs/exec-plans/tech-debt-tracker.md),
+  # fixes it on a branch, runs `make check-all` and opens a small PR for human review. Never pushes to main,
+  # never edits harness files. Off until a human sets the repository variable AGENT_GC_ENABLED=true after
+  # configuring the agent runner and its token.
+  agent-gc:
+    if: vars.AGENT_GC_ENABLED == 'true'
+    needs: drift
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "not configured"

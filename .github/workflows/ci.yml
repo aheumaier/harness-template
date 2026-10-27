@@ -1,0 +1,57 @@
+# Harness file (protected). The fresh-clone definition of done, on every PR and on main.
+# Job names are required status checks: keep them in sync with scripts/github-branch-protection.sh.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Sensors that diff against a base (contract, migrations, harness integrity) compare with the PR target.
+  BASE_REF: origin/${{ github.base_ref || 'main' }}
+
+jobs:
+  check-all:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - run: make setup
+      - run: make check-all BASE_REF="$BASE_REF"
+
+  harness-selftest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - run: make setup
+      - run: make harness-selftest
+
+  generator-probe:
+    # The domain generator must keep producing code that passes every fast sensor.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - run: make setup
+      - run: make new-domain NAME=zzz_probe
+      - run: make check
+      - name: Discard the probe
+        if: always()
+        run: |
+          git checkout -- .
+          git clean -fdq -- apps/api api docs packages/api-client
+          git status --porcelain

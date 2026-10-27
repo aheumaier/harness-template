@@ -32,6 +32,8 @@ fail() {
 check() { "$@" || exit 2; } # run.sh already printed the details to stderr
 
 case "$file" in
+  scripts/harness/fixtures/*/files/*) ;; # deliberate violations
+
   *.gen.go | apps/api/internal/*/store/*.go | packages/api-client/src/gen/* | docs/generated/*)
     fail "$file is generated (rules.md#gen-up-to-date). Revert the edit, change the source (api/openapi.yaml, apps/api/db/queries, apps/api/db/migrations) and run \`make gen\`."
     ;;
@@ -47,6 +49,8 @@ case "$file" in
     ;;
 
   apps/api/db/migrations/*.sql)
+    # Rehashing atlas.sum after editing an applied migration would hide the edit from gen-check.
+    check $RUN migrations db-append-only-migrations -- scripts/harness/migrations-append-only.sh
     (cd apps/api && atlas migrate hash --env local) || fail "atlas migrate hash failed"
     check $RUN squawk db-safe-locking -- scripts/harness/squawk.sh
     if docker info >/dev/null 2>&1; then

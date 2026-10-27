@@ -21,7 +21,7 @@ the harness: guides (feedforward) + sensors (feedback). No business domains.
 | 7 | new-domain generator + skill + CI probe | probe + `make check` green | done (CI probe: phase 10) |
 | 8 | AGENTS.md, nested guides, ARCHITECTURE.md, docs | links resolve, AGENTS ≤100 lines | done |
 | 9 | .claude settings, hooks, subagents, skills | hooks tested | done (protection hook: last) |
-| 10 | GitHub workflows, CODEOWNERS, PR template, branch-protection script | YAML valid | todo |
+| 10 | GitHub workflows, CODEOWNERS, PR template, branch-protection script | YAML valid | done (actionlint; not run on GitHub) |
 
 ## Tool and version choices (pinned, verified by running)
 
@@ -54,6 +54,9 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
 | dependency-cruiser / knip | 18.7.0 / 6.43.0 | |
 | shellcheck / shfmt | v0.11.0 / v3.14.1 | shellcheck release tarball; shfmt via `go install` |
 | bats-core | 1.13.0 | npm `bats` (root devDependency) |
+| actionlint | v1.7.12 | `go install`; runs shellcheck on `run:` blocks |
+| Node (CI) | 24.9.0 | `NODE_VERSION` for actions/setup-node; locally any Node matching `engines` |
+| GitHub Actions | checkout v7.0.1, setup-go v7.0.0, setup-node v7.1.0, cache v6.1.0 | pinned to commit SHAs |
 
 ## Open assumptions
 
@@ -92,10 +95,26 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
   `.shellcheckrc` (SC2016 off: single-quoted awk/sed/Go templates), `.editorconfig` (shfmt style), bats tests in
   `scripts/test/` for hooks, run.sh, check-links.sh, squawk.sh and new-domain name validation. Existing scripts
   reformatted with shfmt; `# shellcheck disable` follows the suppression format of golden principle 4.
+- Protected harness paths are one list, `scripts/harness/protected-paths.txt` (CODEOWNERS mirrors it). Beyond
+  the prompt's list it adds `.custom-gcl.yml`, `.squawk.toml`, `.shellcheckrc`, `.editorconfig`, `knip.json`,
+  `tsconfig.base.json`, `apps/api/tools/analyzers/`, `docs/harness/`, `CLAUDE.md` and `Makefile`: each one
+  either configures a sensor or is the sensor's entry point.
+- Added sensors `ci-workflows-valid` (actionlint, in `make check`), `harness-integrity` and
+  `migrations-append-only` (in `make check-all`); the integrity and append-only checks are scripts so CI and
+  local runs are identical. Config-loosening detection is a keyword heuristic (TD-2).
+- `harness-change-approved` PR label waives only the config check (human decision, documented in ci.md).
+- `drift.yml` agent-GC stub is gated by repository variable `AGENT_GC_ENABLED` (actionlint rejects `if: false`).
+- `.claude/settings.json` keeps the deny rule `Bash(rm -rf /*)` (reviewer suggested dropping it as redundant
+  with guard-bash; the agent's own removal was refused by the session's permission classifier: left to a human).
+- guard-bash hardened after review: fails closed on unparsable input, resolves wrappers (`sudo`, `env`,
+  `xargs`, …), line continuations, here-strings, `HEAD`/`@` push targets and `.env` reads through any command.
 - Generator inserts at `harness:*` marker comments in openapi.yaml, routes.go and QUALITY.md; refuses dirty files.
 
 ## Log
 
+- 2026-10-27: phase 10 done: 5 workflows + composite setup action, CODEOWNERS, PR template,
+  branch-protection script (dry run by default; not run). New sensors: actionlint, harness-integrity,
+  migrations-append-only; 4 fixtures. Workflows validated with actionlint only; never executed on GitHub.
 - 2026-10-27: phase 9 done: settings (deny rules), fast-check PostToolUse hook (now also shell), guard-bash
   PreToolUse hook (first version parsed a commit-message heredoc as commands and blocked its own commit; fixed,
   regression test added), reviewer subagents. Added shellcheck/shfmt/bats: 22 tests, 2 fixtures; mutation of

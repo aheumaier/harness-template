@@ -1,0 +1,27 @@
+# Harness files (AGENTS.md golden principle 5): agents propose changes to these in the PR description
+# instead of making them. Read by scripts/harness/integrity-check.sh and the .claude/hooks protection
+# hook; .github/CODEOWNERS mirrors this list.
+#
+# One git pathspec glob per line (`*` also matches `/`). `config` marks a linter/sensor config that
+# harness-integrity guards against loosening (rule: harness-config-not-loosened).
+*.golangci.yml config
+*.go-arch-lint.yml config
+*.custom-gcl.yml config
+*.dependency-cruiser.* config
+*eslint.config.* config
+*.spectral.yaml config
+*atlas.hcl config
+*.squawk.toml config
+*.shellcheckrc config
+knip.json config
+tsconfig.base.json config
+.claude/settings.json config
+.editorconfig
+scripts/harness/*
+apps/api/tools/analyzers/*
+.claude/*
+.github/*
+docs/harness/*
+AGENTS.md
+CLAUDE.md
+Makefile

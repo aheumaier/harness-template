@@ -27,6 +27,7 @@ goinstall sqlc github.com/sqlc-dev/sqlc/cmd/sqlc@"$SQLC_VERSION"
 goinstall oapi-codegen github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@"$OAPI_CODEGEN_VERSION"
 goinstall oasdiff github.com/oasdiff/oasdiff@"$OASDIFF_VERSION"
 goinstall shfmt mvdan.cc/sh/v3/cmd/shfmt@"$SHFMT_VERSION"
+goinstall actionlint github.com/rhysd/actionlint/cmd/actionlint@"$ACTIONLINT_VERSION"
 
 if ! stamp_ok atlas "$ATLAS_VERSION"; then
   echo "installing atlas (community edition) $ATLAS_VERSION" >&2

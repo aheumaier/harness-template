@@ -102,9 +102,9 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ### db-append-only-migrations
 - **Rule:** Never edit or delete a migration that exists on the base branch; add a new one.
 - **Why:** Applied migrations are history; editing them makes environments diverge silently.
-- **Sensor:** `atlas.sum` integrity via `make gen-check` (hash changes) and the modified-file check in `migration-gate.yml`.
-- **Remediation:** Revert your edit to the existing migration and create a new one with `atlas migrate new <name> --env local` (see .claude/skills/add-migration).
-- **Fixture:** none (git-history based; exercised in migration-gate) · Status: seed
+- **Sensor:** `scripts/harness/migrations-append-only.sh` (`make migrations-append-only`, in `make check-all` and `migration-gate.yml`; fast-check hook per migration, before `atlas.sum` is rehashed).
+- **Remediation:** Revert your edit to the existing migration (`git checkout $BASE_REF -- <file>`) and put the change in a new one with `atlas migrate new <name> --env local` (see .claude/skills/add-migration).
+- **Fixture:** `fixtures/db-edited-migration` · Status: seed
 
 ### db-schema-doc-fresh
 - **Rule:** `docs/generated/db-schema.md` matches the migrations (stamped with the `atlas.sum` hash).
@@ -220,7 +220,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ## Shell (scripts/, .claude/hooks/)
 
 ### sh-shellcheck
-- **Rule:** Every shell script and bats file passes shellcheck (`.shellcheckrc`); a `# shellcheck disable=` needs `# reason: … (rule: <id>)` on the same line.
+- **Rule:** Every shell script and bats file passes shellcheck (`.shellcheckrc`); a `# shellcheck disable=` needs a reason ([harness-suppression-reason](#harness-suppression-reason)).
 - **Why:** The harness itself is shell: an unquoted variable or a failed `cd` in a sensor or hook silently turns it green or deletes the wrong path.
 - **Sensor:** shellcheck (`make lint-sh`, part of `make check`; fast-check hook per file).
 - **Remediation:** Fix the line shellcheck names (the SCxxxx code links to https://www.shellcheck.net/wiki/SCxxxx); quote expansions, add `|| exit` after `cd`, and prefer an explicit `if` to `a && b || c`.
@@ -234,11 +234,41 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Fixture:** `fixtures/sh-unformatted` · Status: seed
 
 ### sh-tests-pass
-- **Rule:** The bats tests in `scripts/test/` pass; a script under `scripts/` or `.claude/hooks/` with branching logic has a `scripts/test/<script>.bats`.
+- **Rule:** The bats tests in `scripts/test/` pass; a new script under `scripts/` or `.claude/hooks/` with branching logic comes with a `scripts/test/<script>.bats` (existing gaps: docs/exec-plans/tech-debt-tracker.md).
 - **Why:** Sensors and hooks are code that guards all other code: a hook that blocks too much stalls agents, one that blocks too little is a false sense of safety.
 - **Sensor:** bats-core (`make test-sh`, part of `make check`). Scripts that need the full toolchain (`selftest.sh`, `gen-check.sh`, `contract-check.sh`, `new-domain.sh` end to end) are exercised by `make harness-selftest` and the CI generator probe instead.
 - **Remediation:** Read the first `not ok` test and its `expected output to contain` lines, fix the script (not the test) unless the behaviour change is intended and stated in the PR.
 - **Fixture:** none (like go-tests-pass) · Status: seed
+
+## Harness integrity and CI (.github/)
+
+### harness-suppression-reason
+- **Rule:** Every added `//nolint`, `eslint-disable`, `@ts-expect-error` or `# shellcheck disable` has `reason: … (rule: <id>)` on the same line; `@ts-ignore` is never allowed.
+- **Why:** A bare suppression silently turns a sensor off; the reason and rule id make each exception reviewable and greppable.
+- **Sensor:** `scripts/harness/integrity-check.sh` on lines added since the merge base with `BASE_REF` (`make harness-integrity`, in `make check-all` and `harness-integrity.yml`).
+- **Remediation:** Fix the code instead; if the suppression is truly needed, append `reason: <why it is safe> (rule: <rule-id>)` on the same line, and replace `@ts-ignore` with a fixed type or a reasoned `@ts-expect-error`.
+- **Fixture:** `fixtures/harness-suppression-no-reason` · Status: seed
+
+### harness-config-not-loosened
+- **Rule:** Lines in harness configs (`config` entries in `scripts/harness/protected-paths.txt`) are not removed, and added lines do not disable, exclude, ignore, skip or downgrade (`off`/`warn`) checks, unless a human approves.
+- **Why:** The cheapest way to make a red sensor green is to weaken its config; that must be a visible human decision, not an agent's shortcut.
+- **Sensor:** `scripts/harness/integrity-check.sh` (keyword heuristic on the diff; `make harness-integrity`, `harness-integrity.yml`). Waived only by `HARNESS_CHANGE_APPROVED=1`, set in CI by the `harness-change-approved` PR label.
+- **Remediation:** Revert the config change and fix the code; if the rule itself is wrong, explain why in the PR description (Harness change: Y + rationale) and ask a code owner to add the `harness-change-approved` label.
+- **Fixture:** `fixtures/harness-config-loosened` · Status: seed
+
+### harness-files-protected
+- **Rule:** Agents do not edit harness files (`scripts/harness/protected-paths.txt`); they propose the change in the PR description. A human allows edits by starting the agent session with `HARNESS_EDIT=1`.
+- **Why:** A sensor the agent can edit is a suggestion: the cheapest fix for a red check is to change the check.
+- **Sensor:** PreToolUse hook `.claude/hooks/protect-harness.sh` (file tools exactly; shell writes heuristically) for Claude Code; `.github/CODEOWNERS` review and `harness-config-not-loosened` for every agent.
+- **Remediation:** Do not edit the file: fix the code the sensor points at, or describe the harness change (file, diff, why) in the PR description under "Harness change".
+- **Fixture:** none (a hook, not a make target); `scripts/test/protect-harness.bats` · Status: seed
+
+### ci-workflows-valid
+- **Rule:** GitHub workflows and composite actions pass actionlint, including shellcheck on every `run:` block.
+- **Why:** A broken workflow fails only after push, or worse, never runs the gate it was meant to run.
+- **Sensor:** actionlint (`make lint-ci`, part of `make check`).
+- **Remediation:** Fix the line actionlint names (unknown context/expression, bad `needs`/`if`, or the shellcheck code in a `run:` block); pin new actions to a full commit SHA with a `# vX.Y.Z` comment.
+- **Fixture:** `fixtures/ci-invalid-workflow` · Status: seed
 
 ## Docs
 

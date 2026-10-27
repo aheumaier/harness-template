@@ -1,0 +1,28 @@
+# Harness file (protected). Red only when api/openapi.yaml breaks existing clients (oasdiff, ERR level).
+# Runs on every PR (not path-filtered) so it can be a required check; it exits 0 fast when the spec is
+# unchanged. rules.md#api-no-breaking-change
+name: contract-gate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  api-no-breaking-change:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: apps/api/go.mod
+          cache: false
+      - name: Install oasdiff (version from scripts/tool-versions.env)
+        run: |
+          source scripts/tool-versions.env
+          GOBIN="$PWD/.bin" go install "github.com/oasdiff/oasdiff@$OASDIFF_VERSION"
+      - run: make contract-check BASE_REF="origin/$GITHUB_BASE_REF"

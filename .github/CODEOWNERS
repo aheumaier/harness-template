@@ -1,0 +1,30 @@
+# Harness file (protected). Changes to these paths need a review from the harness owner.
+# The harness part mirrors scripts/harness/protected-paths.txt; keep both in sync.
+# Enforced once branch protection requires code-owner reviews (scripts/github-branch-protection.sh).
+
+# Harness: guides, sensors and their configs
+.golangci.yml               @aheumaier
+.go-arch-lint.yml           @aheumaier
+.custom-gcl.yml             @aheumaier
+.dependency-cruiser.*       @aheumaier
+eslint.config.*             @aheumaier
+.spectral.yaml              @aheumaier
+atlas.hcl                   @aheumaier
+.squawk.toml                @aheumaier
+.shellcheckrc               @aheumaier
+.editorconfig               @aheumaier
+knip.json                   @aheumaier
+tsconfig.base.json          @aheumaier
+Makefile                    @aheumaier
+/scripts/harness/           @aheumaier
+/apps/api/tools/analyzers/  @aheumaier
+/.claude/                   @aheumaier
+/.github/                   @aheumaier
+/docs/harness/              @aheumaier
+/AGENTS.md                  @aheumaier
+/CLAUDE.md                  @aheumaier
+/ARCHITECTURE.md            @aheumaier
+
+# Contract and schema: changes here reach clients and production data
+/api/openapi.yaml               @aheumaier
+/apps/api/db/migrations/        @aheumaier

@@ -23,3 +23,7 @@ load helpers
   run -0 "$REPO/.claude/hooks/fast-check.sh" scripts/harness/squawk.sh
   [ -z "$output" ]
 }
+
+@test "skips fixture overlays (deliberate violations)" {
+  run -0 "$REPO/.claude/hooks/fast-check.sh" scripts/harness/fixtures/sh-unquoted-variable/files/scripts/clean.sh
+}

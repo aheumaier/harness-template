@@ -1,0 +1,8 @@
+name: fx-invalid
+on: pull_request
+jobs:
+  fx:
+    needs: fx-missing
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo fixture

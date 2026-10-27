@@ -1,0 +1,14 @@
+## What and why
+
+<!-- One paragraph. Link the exec plan (docs/exec-plans/active/…) for multi-step work. -->
+
+## Checklist
+
+- [ ] **Contract change** (`api/openapi.yaml`): Y / N
+      If Y: `make gen` output is committed; breaking changes are intentional and versioned (contract-gate).
+- [ ] **Migration** (`apps/api/db/migrations/`): Y / N
+      If Y: new file only, expand/migrate/contract, `make gen` output committed (migration-gate).
+- [ ] **Harness change** (see `scripts/harness/protected-paths.txt`): Y / N
+      If Y, rationale: <!-- which rule is wrong or missing, and why the change does not weaken it -->
+- [ ] **ADR**: <!-- link to docs/adr/NNNN-….md, or "none needed" -->
+- [ ] `make check-all` is green locally.

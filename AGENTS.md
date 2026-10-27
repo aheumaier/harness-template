@@ -15,7 +15,7 @@ global versions.
 |---------|------|
 | `make setup` | Once per clone/worktree: tools, JS deps, this worktree's own Postgres + ports (`.env.local`). |
 | `make check` | After every change. Fast (<60 s warm): format, lint, layers, unit tests, generated code up to date. |
-| `make check-all` | Before you open a PR: `check` + migrations, contract, vulnerabilities, dead code, integration tests. |
+| `make check-all` | Before you open a PR: `check` + migrations, contract, harness integrity, vulnerabilities, dead code, integration tests. |
 | `make gen` | After editing `api/openapi.yaml`, `apps/api/db/queries/*.sql` or migrations. Commit the output. |
 | `make new-domain NAME=billing` | To start a new business domain. Never create `apps/api/internal/<domain>/` by hand. |
 
@@ -57,6 +57,7 @@ The frontend mirrors this: `packages/domain` is pure TS (no React, no browser AP
 | Why the repo is built this way | [docs/design-docs/core-beliefs.md](docs/design-docs/core-beliefs.md), [docs/adr/](docs/adr/README.md) |
 | Current database schema (generated) | [docs/generated/db-schema.md](docs/generated/db-schema.md) |
 | Domain health | [docs/QUALITY.md](docs/QUALITY.md) |
+| CI checks, required status checks, label bypass | [docs/harness/ci.md](docs/harness/ci.md) |
 | Security and reliability defaults | [docs/SECURITY.md](docs/SECURITY.md), [docs/RELIABILITY.md](docs/RELIABILITY.md) |
 | Area-specific rules | `AGENTS.md` in [apps/api/internal/](apps/api/internal/AGENTS.md), [apps/api/db/](apps/api/db/AGENTS.md), [api/](api/AGENTS.md), [apps/web/](apps/web/AGENTS.md) |
 | Step-by-step recipes | [new-domain](.claude/skills/new-domain/SKILL.md), [add-endpoint](.claude/skills/add-endpoint/SKILL.md), [add-migration](.claude/skills/add-migration/SKILL.md) |
