@@ -184,14 +184,14 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ### web-lint
 - **Rule:** TypeScript passes `typescript-eslint` `strictTypeChecked` and `react-hooks` recommended, with zero warnings and no unused disable directives.
 - **Why:** Type-aware lint catches unsafe `any` flows and hook-order bugs that tsc accepts.
-- **Sensor:** ESLint, `make lint-web`.
+- **Sensor:** ESLint, `make lint-web`; fast-check hook per edited file.
 - **Remediation:** Fix the reported line; do not add `eslint-disable` (harness-integrity rejects disables without a reason and rule reference).
 - **Fixture:** none · Status: seed
 
 ### web-typecheck
 - **Rule:** All workspace packages type-check under `tsconfig.base.json` (`strict`, `noUncheckedIndexedAccess`).
 - **Why:** The type system carries the contract from the OpenAPI spec into components.
-- **Sensor:** `tsc --noEmit` per package via Turborepo, `make typecheck-web`.
+- **Sensor:** `tsc --noEmit` per package via Turborepo, `make typecheck-web` (part of `make check`). Not in the fast-check hook: tsc checks a whole package, too slow per edit (NFR-H2).
 - **Remediation:** Fix the type error at its source; never widen to `any` or add `@ts-ignore`/`@ts-expect-error`.
 - **Fixture:** none · Status: seed
 

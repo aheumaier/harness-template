@@ -73,9 +73,8 @@ case "$file" in
     ;;
 
   apps/*.ts | apps/*.tsx | packages/*.ts | packages/*.tsx | apps/*.js | apps/*.mjs | packages/*.js | packages/*.mjs)
+    # The file only. No tsc: it checks the whole package (NFR-H2, exec plan 0002); make check typechecks.
     check $RUN eslint web-no-direct-http,web-domain-pure,web-lint -- eslint --max-warnings=0 "$file"
-    pkg="$(cut -d/ -f1-2 <<<"$file")"
-    [[ -f "$pkg/tsconfig.json" ]] && check $RUN tsc web-typecheck --dir "$pkg" -- tsc --noEmit
     ;;
 
   *.sh | *.bash | *.bats)
