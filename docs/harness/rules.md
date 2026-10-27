@@ -264,6 +264,13 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Remediation:** Do not edit the file: fix the code the sensor points at, or describe the harness change (file, diff, why) in the PR description under "Harness change".
 - **Fixture:** none (a hook, not a make target); `scripts/test/protect-harness.bats` · Status: seed
 
+### harness-latency-budget
+- **Rule:** Every sensor finishes within its budget in `scripts/harness/budgets.txt` (`default` row: 5 s, NFR-H5); the budgets are the latency NFRs of exec plan 0002 ([ADR 0013](../adr/0013-harness-nfr-budgets.md)).
+- **Why:** Agents run `make check` after every change, so harness latency is agent throughput; it degrades a little per PR, and no single review notices.
+- **Sensor:** `scripts/harness/run.sh` times every sensor, appends it to `.cache/harness/timings.jsonl` and prints `harness: sensor '<id>' took <t> s (budget <b> s, <nfr>)` when over budget. A warning only: the sensor keeps its own exit status.
+- **Remediation:** Make the sensor do less (scope it to the change, use the tool's cache, skip it when its inputs did not change: exec plan 0002 phases 1–2); if the budget itself is wrong, propose a new row in `budgets.txt` in the PR description (Harness change: Y).
+- **Fixture:** none (warns, never fails; the selftest asserts a failure); `scripts/test/run.bats` · Status: seed
+
 ### ci-workflows-valid
 - **Rule:** GitHub workflows and composite actions pass actionlint, including shellcheck on every `run:` block.
 - **Why:** A broken workflow fails only after push, or worse, never runs the gate it was meant to run.
