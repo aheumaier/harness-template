@@ -9,7 +9,8 @@
 #   holds no OpenAPI document (the contract lives only in api/openapi.yaml).
 # specs-required-for-features: when a `feat` commit since the merge base with BASE_REF (or a feat PR_TITLE)
 #   changes apps/ or api/ outside the harness files (protected-paths.txt), the change must also add or
-#   add or change (not just delete) a committed specs/<dir>/. NO_SPEC_NEEDED=1 (the `no-spec-needed` PR label) skips this rule only.
+#   change (not just delete) a committed specs/<dir>/. NO_SPEC_NEEDED=1 (the `no-spec-needed` PR label)
+#   skips this rule only.
 #
 # Reads from HARNESS_ROOT (default: this repo) so CI runs the base branch's copy against the PR head.
 # Fails closed (exit 2) when the base or the range cannot be read.
