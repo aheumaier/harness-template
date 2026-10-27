@@ -278,6 +278,13 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Remediation:** Remove the state the sensor depends on besides the tree: caches keyed on time or not on inputs, network calls, unseeded randomness, test order, shared temp files, tests that write into the tree. Make output order-stable (sort it). Never retry a sensor until it passes.
 - **Fixture:** `fixtures/harness-nondeterministic`; `scripts/test/determinism.bats` · Status: seed
 
+### harness-scope
+- **Rule:** `make check` (scope `changed`) may skip a sensor only when none of its inputs and no harness file (`protected-paths.txt`) changed since the merge base, counting staged, unstaged and untracked files; `make check-all` and CI (scope `full`, `HARNESS_SCOPE=full`) run every sensor. Skipped today: `lint-sh`, `fmt-check-sh`, `test-sh` (inputs: `*.sh`, `*.bash`, `*.bats`, `scripts/**`), the main cost of `make check` (NFR-H3, [ADR 0013](../adr/0013-harness-nfr-budgets.md)).
+- **Why:** Agents run `make check` after every change; a sensor whose inputs did not change can only repeat its last verdict, so running it costs time and finds nothing.
+- **Sensor:** `scripts/harness/unchanged.sh` decides; the target prints `<target>: skipped, …` instead of running. It fails closed: no merge base (`BASE_REF`), a git error or scope `full` means run. Timing rows (`harness-latency-budget`) carry the scope.
+- **Remediation:** A skipped sensor that should have run means its trigger pathspecs miss an input: add the input to the `$(call sh_sensor,…)` pathspecs in the Makefile (Harness change: Y); to run everything now, `make check-all` or `HARNESS_SCOPE=full make check`.
+- **Fixture:** none (decides whether a sensor runs, never fails); `scripts/test/unchanged.bats` · Status: seed
+
 ### ci-workflows-valid
 - **Rule:** GitHub workflows and composite actions pass actionlint, including shellcheck on every `run:` block.
 - **Why:** A broken workflow fails only after push, or worse, never runs the gate it was meant to run.

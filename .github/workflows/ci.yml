@@ -17,6 +17,8 @@ concurrency:
 env:
   # Sensors that diff against a base (contract, migrations, harness integrity) compare with the PR target.
   BASE_REF: origin/${{ github.base_ref || 'main' }}
+  # CI runs every sensor; only a local `make check` skips the ones whose inputs did not change (rules.md#harness-scope).
+  HARNESS_SCOPE: full
 
 jobs:
   check-all:

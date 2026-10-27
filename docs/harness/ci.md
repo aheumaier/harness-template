@@ -1,7 +1,9 @@
 # CI and branch protection
 
 CI runs the same `make` targets you run locally; a workflow adds no checks of its own. If CI is red, the
-same target is red on your machine (with `BASE_REF=origin/main` for diff-based sensors).
+same target is red on your machine (with `BASE_REF=origin/main` for diff-based sensors). CI sets
+`HARNESS_SCOPE=full`, so every sensor runs; a local `make check` skips those whose inputs did not change
+([harness-scope](rules.md#harness-scope)).
 
 ## Workflows (`.github/workflows/`)
 

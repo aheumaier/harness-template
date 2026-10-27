@@ -49,7 +49,8 @@ check: ## Fast sensors (<60s warm): format, lint, arch, unit tests, gen-check
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
 CHECK_ALL_SKIP ?=
-check-all: check ## Everything: check + integration, contract, migration, security, dead code
+check-all: export HARNESS_SCOPE := full
+check-all: check ##Everything: check + integration, contract, migration, security, dead code
 	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go lint-migrations squawk migrations-append-only lint-api contract-check knip harness-integrity commits specs)
 	@$(MAKE) test-integration
 
@@ -154,15 +155,19 @@ test-integration: ## Integration tests against the worktree's Postgres (.env.loc
 # Every shell script and bats file, except fixture overlays (deliberate violations).
 # .specify/ is spec-kit's vendored code (ADR 0011): replaced on upgrade, not edited.
 SH_FILES = $(shell git ls-files -co --exclude-standard '*.sh' '*.bash' '*.bats' 'scripts/git-hooks/*' ':!:scripts/harness/fixtures/*/files/**' ':!:.specify/**')
+# $(call sh_sensor,<command>): in make check, runs only when a shell, bats or harness file changed
+# (rules.md#harness-scope); make check-all and CI always run it.
+sh_sensor = if scripts/harness/unchanged.sh '*.sh' '*.bash' '*.bats' 'scripts/*'; then \
+	echo "$@: skipped, no shell or harness file changed (make check-all runs it)"; else $(1); fi
 
 lint-sh: ## shellcheck (.shellcheckrc) on every shell script
-	@$(RUN) shellcheck sh-shellcheck -- shellcheck -f gcc $(SH_FILES)
+	@$(call sh_sensor,$(RUN) shellcheck sh-shellcheck -- shellcheck -f gcc $(SH_FILES))
 
 fmt-check-sh: ## shfmt (style from .editorconfig) on every shell script
-	@$(RUN) shfmt sh-format -- shfmt -d $(SH_FILES)
+	@$(call sh_sensor,$(RUN) shfmt sh-format -- shfmt -d $(SH_FILES))
 
 test-sh: ## bats tests for scripts/ and .claude/hooks/ (scripts/test)
-	@$(RUN) bats sh-tests-pass -- bats scripts/test
+	@$(call sh_sensor,$(RUN) bats sh-tests-pass -- bats scripts/test)
 
 ##@ CI and harness integrity (.github/, protected harness files)
 .PHONY: lint-ci harness-integrity commits specs
