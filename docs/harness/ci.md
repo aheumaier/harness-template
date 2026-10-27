@@ -15,6 +15,7 @@ same target is red on your machine (with `BASE_REF=origin/main` for diff-based s
 | | | `pr-conventions` | the **base branch's** `make commits specs` against the PR head and title (Conventional Commits, PR title ≤ 90 characters, spec-kit specs) | yes |
 | `migration-gate.yml` | PR touching `apps/api/db/migrations/**` | `migrations` | append-only, Atlas lint, squawk | no (path-filtered; same sensors in `check-all`) |
 | `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, schema doc, doc links → one open `drift` issue | no |
+| `harness-nfr.yml` | nightly, manual | `harness-nfr` | p95 per sensor over 7 days of `harness-timings-check-all` artifacts vs `budgets.txt` (`scripts/harness/nfr-report.sh`, alerts only) and `make harness-determinism` (`make check` twice; fails on any difference) → one open `harness-nfr` issue | no |
 
 `.github/actions/setup` installs the pinned toolchain (`scripts/tool-versions.env`) and caches `.bin`,
 Go modules and the pnpm store. Actions are pinned to commit SHAs; `make lint-ci` (actionlint) validates all

@@ -17,7 +17,7 @@ GCL  := .bin/golangci-lint-custom
 ANALYZERS_SRC := $(shell find $(API)/tools/analyzers -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
 
 ##@ Workflow
-.PHONY: help setup check check-all harness-selftest new-domain dev db-up db-migrate db-reset
+.PHONY: help setup check check-all harness-selftest harness-determinism new-domain dev db-up db-migrate db-reset
 
 help: ## Show targets
 	@awk 'BEGIN{FS=":.*##"} /^##@/{printf "\n%s\n",substr($$0,5)} /^[a-z0-9-]+:.*##/{printf "  %-18s %s\n",$$1,$$2}' $(MAKEFILE_LIST)
@@ -55,6 +55,11 @@ check-all: check ## Everything: check + integration, contract, migration, securi
 
 harness-selftest: ## Every fixture in scripts/harness/fixtures must be rejected by its sensor (FIXTURE=name for one)
 	@scripts/harness/selftest.sh $(FIXTURE)
+
+# NFR-R1, nightly in harness-nfr.yml. The selftest fixture swaps the target for one whose verdict alternates.
+DETERMINISM_TARGET ?= check
+harness-determinism: ## Run make check twice on this tree: same exit status, findings and tree (NFR-R1)
+	@$(RUN) determinism harness-deterministic -- scripts/harness/determinism.sh $(MAKE) $(DETERMINISM_TARGET)
 
 ##@ Tools
 .PHONY: tools deps

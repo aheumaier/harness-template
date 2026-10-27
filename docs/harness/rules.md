@@ -267,9 +267,16 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ### harness-latency-budget
 - **Rule:** Every sensor and hook finishes within its budget in `scripts/harness/budgets.txt` (`default` row: 5 s, NFR-H5; PreToolUse hooks 50 ms, NFR-H1; `fast-check` 1 s, NFR-H2); the budgets are the latency NFRs of exec plan 0002 ([ADR 0013](../adr/0013-harness-nfr-budgets.md)).
 - **Why:** Agents run `make check` after every change, so harness latency is agent throughput; it degrades a little per PR, and no single review notices.
-- **Sensor:** `scripts/harness/timing.sh`, used by `scripts/harness/run.sh` and every hook in `.claude/hooks/`, times each run, appends it to `.cache/harness/timings.jsonl` and prints `harness: sensor '<id>' took <t> s (budget <b> s, <nfr>)` (or `hook '<name>'`) when over budget. In GitHub Actions the line is also a `::warning` annotation and a job-summary entry, and `ci.yml` uploads `timings.jsonl` as the `harness-timings-check-all` artifact. A warning only: the sensor or hook keeps its own exit status.
+- **Sensor:** `scripts/harness/timing.sh`, used by `scripts/harness/run.sh` and every hook in `.claude/hooks/`, times each run, appends it to `.cache/harness/timings.jsonl` and prints `harness: sensor '<id>' took <t> s (budget <b> s, <nfr>)` (or `hook '<name>'`) when over budget. In GitHub Actions the line is also a `::warning` annotation and a job-summary entry, and `ci.yml` uploads `timings.jsonl` as the `harness-timings-check-all` artifact. Nightly, `harness-nfr.yml` computes each name's p95 over the last 7 days of those artifacts (`scripts/harness/nfr-report.sh`) and opens or comments on one `harness-nfr` issue for every p95 over budget. A warning only: the sensor or hook keeps its own exit status.
 - **Remediation:** Make the sensor or hook do less (scope it to the change, use the tool's cache, skip it when its inputs did not change: exec plan 0002 phases 1–2); if the budget itself is wrong, propose a new row in `budgets.txt` in the PR description (Harness change: Y).
-- **Fixture:** none (warns, never fails; the selftest asserts a failure); `scripts/test/run.bats`, `scripts/test/timing.bats` · Status: seed
+- **Fixture:** none (warns, never fails; the selftest asserts a failure); `scripts/test/run.bats`, `scripts/test/timing.bats`, `scripts/test/nfr-report.bats` · Status: seed
+
+### harness-deterministic
+- **Rule:** The same tree gives the same verdict, the same findings and the same tree after `make check`, run after run (NFR-R1, [ADR 0013](../adr/0013-harness-nfr-budgets.md)).
+- **Why:** A sensor that flips between runs teaches agents to rerun until green, and then every rule is only as strong as its flakiest sensor.
+- **Sensor:** `scripts/harness/determinism.sh` (`make harness-determinism`) runs `make check` twice and compares exit status, findings (sorted output lines, durations and temp paths masked) and `git status`. Nightly on `main` in `harness-nfr.yml`, which fails and opens or comments on the `harness-nfr` issue.
+- **Remediation:** Remove the state the sensor depends on besides the tree: caches keyed on time or not on inputs, network calls, unseeded randomness, test order, shared temp files, tests that write into the tree. Make output order-stable (sort it). Never retry a sensor until it passes.
+- **Fixture:** `fixtures/harness-nondeterministic`; `scripts/test/determinism.bats` · Status: seed
 
 ### ci-workflows-valid
 - **Rule:** GitHub workflows and composite actions pass actionlint, including shellcheck on every `run:` block.
