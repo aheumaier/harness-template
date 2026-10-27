@@ -38,7 +38,7 @@ ln -s "$ROOT/.bin" "$work/.bin"
 for nm in apps/*/node_modules packages/*/node_modules; do # pnpm workspace links are relative: copy them
   [[ -d "$nm" ]] && cp -R "$nm" "$work/$nm"
 done
-g() { git -C "$work" -c user.name=harness-selftest -c user.email=selftest@localhost "$@"; }
+g() { git -C "$work" -c core.hooksPath=/dev/null -c user.name=harness-selftest -c user.email=selftest@localhost "$@"; }
 g init -q -b main
 printf '/node_modules\n/.bin\n' >>"$work/.git/info/exclude"
 g add -A && g commit -qm base
@@ -63,8 +63,12 @@ for name in "${names[@]}"; do
   dir="$FIXTURES/$name"
   [[ -f "$dir/fixture.conf" ]] || { echo "✗ $name: no $dir/fixture.conf" >&2; fail=$((fail + 1)); continue; }
   RULE='' TARGET='' EXPECT='' NEEDS_DOCKER=0
-  # shellcheck disable=SC1091
-  source "$dir/fixture.conf"
+  # Parsed, not sourced: only these keys, values optionally single- or double-quoted.
+  while IFS='=' read -r key val; do
+    val="${val#[\'\"]}"; val="${val%[\'\"]}"
+    case "$key" in RULE) RULE="$val" ;; TARGET) TARGET="$val" ;; EXPECT) EXPECT="$val" ;; NEEDS_DOCKER) NEEDS_DOCKER="$val" ;; esac
+  done < <(grep -E '^(RULE|TARGET|EXPECT|NEEDS_DOCKER)=' "$dir/fixture.conf")
+  [[ "$TARGET" =~ ^[a-z0-9-]+$ && -n "$RULE" && -n "$EXPECT" ]] || { echo "✗ $name: bad fixture.conf" >&2; fail=$((fail + 1)); continue; }
   if [[ "$NEEDS_DOCKER" == 1 ]] && ! docker_ok; then
     if [[ "${SELFTEST_SKIP_DOCKER:-0}" == 1 ]]; then echo "- $name: skipped (no Docker)"; skip=$((skip + 1)); continue; fi
     echo "✗ $name: needs Docker (or SELFTEST_SKIP_DOCKER=1)" >&2; fail=$((fail + 1)); continue
