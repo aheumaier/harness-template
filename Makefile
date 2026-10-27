@@ -17,13 +17,16 @@ GCL  := .bin/golangci-lint-custom
 ANALYZERS_SRC := $(shell find $(API)/tools/analyzers -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
 
 ##@ Workflow
-.PHONY: help setup check check-all harness-selftest dev db-up db-reset
+.PHONY: help setup check check-all harness-selftest new-domain dev db-up db-reset
 
 help: ## Show targets
 	@awk 'BEGIN{FS=":.*##"} /^##@/{printf "\n%s\n",substr($$0,5)} /^[a-z0-9-]+:.*##/{printf "  %-18s %s\n",$$1,$$2}' $(MAKEFILE_LIST)
 
 setup: ## Tools, deps, this worktree's Postgres (own ports) + migrations, .env.local
 	@scripts/setup-worktree.sh
+
+new-domain: ## Scaffold a domain through every layer: make new-domain NAME=billing
+	@scripts/new-domain.sh $(NAME)
 
 dev: db-up ## Run API + web for this worktree (Ctrl-C stops both)
 	@$(WITH_ENV) trap 'kill 0' EXIT; \

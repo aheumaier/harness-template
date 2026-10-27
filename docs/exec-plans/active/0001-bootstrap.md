@@ -18,7 +18,7 @@ the harness: guides (feedforward) + sensors (feedback). No business domains.
 | 4 | pnpm + Turbo, web app, api-client (orval+zod), dep-cruiser, ESLint, knip, Vitest | `make check` green | done |
 | 5 | setup-worktree.sh, dev/db-up/db-reset, per-worktree ports | two worktrees up simultaneously | done |
 | 6 | check / check-all / gen-check, fixtures, harness-selftest | selftest green | done |
-| 7 | new-domain generator + skill + CI probe | probe + `make check` green | todo |
+| 7 | new-domain generator + skill + CI probe | probe + `make check` green | done (CI probe: phase 10) |
 | 8 | AGENTS.md, nested guides, ARCHITECTURE.md, docs | links resolve, AGENTS ≤100 lines | todo |
 | 9 | .claude settings, hooks, subagents, skills | hooks tested | todo |
 | 10 | GitHub workflows, CODEOWNERS, PR template, branch-protection script | YAML valid | todo |
@@ -78,9 +78,15 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
 - No TS formatter (Prettier) added: not requested; `make check` "format" covers Go only (ADR 0007).
 - Spectral built-ins `operation-operationId`/`operation-tags` replaced by custom rules (rule id in message).
 - harness-selftest links node_modules/.bin into the temp copy instead of copying them (305 MB + 381 MB).
+- Generator stub goes beyond "stubs": one `GET /<kebab>/status` operation + `Ping` query wire every layer, so
+  oapi-codegen, sqlc and the route are exercised (empty tags/query files are rejected by the tools, A4).
+- The "empty" migration holds only the lock/statement timeout header squawk requires.
+- Generator inserts at `harness:*` marker comments in openapi.yaml, routes.go and QUALITY.md; refuses dirty files.
 
 ## Log
 
+- 2026-10-27: phase 7 done: `make new-domain NAME=zzz_probe` → `make check` (~6 s) and `check-all` green, endpoint
+  served 200; two domains in one tree (FORCE=1) green; invalid/reserved/duplicate names rejected.
 - 2026-10-27: phase 6 done: 18 fixtures, `make harness-selftest` green (~20 s). First run passed the Atlas
   fixtures for the wrong reason (atlas.sum mismatch, `set -e` ignored inside an `&&` chain); EXPECT now pins the
   tool's own diagnostic code (DS102/DS103). `deadcode` exits 0 on findings, so `deadcode-go` fails on output.
