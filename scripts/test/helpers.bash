@@ -30,3 +30,10 @@ sandbox() {
   done
   git -C "$SANDBOX" init -q
 }
+
+# sandbox_base: commit everything in $SANDBOX as branch main (the BASE_REF for diff-based checks).
+sandbox_base() {
+  git -C "$SANDBOX" add -A
+  git -C "$SANDBOX" -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false commit -qm base
+  git -C "$SANDBOX" branch -M main
+}
