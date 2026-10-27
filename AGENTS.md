@@ -59,7 +59,7 @@ The frontend mirrors this: `packages/domain` is pure TS (no React, no browser AP
 | Domain health | [docs/QUALITY.md](docs/QUALITY.md) |
 | CI checks, required status checks, label bypass | [docs/harness/ci.md](docs/harness/ci.md) |
 | Security and reliability defaults | [docs/SECURITY.md](docs/SECURITY.md), [docs/RELIABILITY.md](docs/RELIABILITY.md) |
-| Area-specific rules | `AGENTS.md` in [apps/api/internal/](apps/api/internal/AGENTS.md), [apps/api/db/](apps/api/db/AGENTS.md), [api/](api/AGENTS.md), [apps/web/](apps/web/AGENTS.md) |
+| Area-specific rules | `AGENTS.md` in [apps/api/internal/](apps/api/internal/AGENTS.md), [apps/api/db/](apps/api/db/AGENTS.md), [api/](api/AGENTS.md), [apps/web/](apps/web/AGENTS.md); each has a sibling `CLAUDE.md` that is just `@AGENTS.md` |
 | Step-by-step recipes | [new-domain](.claude/skills/new-domain/SKILL.md), [add-endpoint](.claude/skills/add-endpoint/SKILL.md), [add-migration](.claude/skills/add-migration/SKILL.md) |
 
 ## Working agreements
