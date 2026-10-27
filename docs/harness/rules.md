@@ -59,7 +59,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ### go-tests-pass
 - **Rule:** `go test -race` passes for the app and the analyzers.
 - **Why:** Tests are the cheapest behavioural sensor; the race detector catches concurrency bugs agents rarely reason about.
-- **Sensor:** `make test-go`, `make test-analyzers`.
+- **Sensor:** `make test-go`, `make test-analyzers` (Go test cache in `make check`, `-count=1` in `make check-all` and CI: [harness-scope](#harness-scope)).
 - **Remediation:** Read the first failing test above, fix the code (not the test) unless the behaviour change is intended and documented in the PR.
 - **Fixture:** none · Status: seed
 
@@ -214,7 +214,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ### gen-up-to-date
 - **Rule:** Generated code (sqlc stores, oapi-codegen servers, the orval API client, `atlas.sum`) is committed, current, and never hand-edited.
 - **Why:** Generated code is a projection of the contract/schema; hand edits are silently lost and stale output hides contract drift.
-- **Sensor:** `scripts/harness/gen-check.sh` (`make gen-check`, part of `make check`).
+- **Sensor:** `scripts/harness/gen-check.sh` (`make gen-check`, part of `make check`; skipped while unchanged since its last green run, [harness-scope](#harness-scope)).
 - **Remediation:** Change the source (api/openapi.yaml, db/queries/*.sql, db/migrations) instead, run `make gen`, and commit the regenerated files.
 - **Fixture:** `fixtures/gen-hand-edit-api-client` · Status: seed
 
@@ -274,16 +274,16 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ### harness-deterministic
 - **Rule:** The same tree gives the same verdict, the same findings and the same tree after `make check`, run after run (NFR-R1, [ADR 0013](../adr/0013-harness-nfr-budgets.md)).
 - **Why:** A sensor that flips between runs teaches agents to rerun until green, and then every rule is only as strong as its flakiest sensor.
-- **Sensor:** `scripts/harness/determinism.sh` (`make harness-determinism`) runs `make check` twice and compares exit status, findings (sorted output lines, durations and temp paths masked) and `git status`. Nightly on `main` in `harness-nfr.yml`, which fails and opens or comments on the `harness-nfr` issue.
+- **Sensor:** `scripts/harness/determinism.sh` (`make harness-determinism`) runs `make check` twice in scope `full` (in `changed` scope the [gen-check stamp](#harness-scope) makes the second run skip by design) and compares exit status, findings (sorted output lines, durations and temp paths masked) and `git status`. Nightly on `main` in `harness-nfr.yml`, which fails and opens or comments on the `harness-nfr` issue.
 - **Remediation:** Remove the state the sensor depends on besides the tree: caches keyed on time or not on inputs, network calls, unseeded randomness, test order, shared temp files, tests that write into the tree. Make output order-stable (sort it). Never retry a sensor until it passes.
 - **Fixture:** `fixtures/harness-nondeterministic`; `scripts/test/determinism.bats` · Status: seed
 
 ### harness-scope
-- **Rule:** `make check` (scope `changed`) may skip a sensor only when none of its inputs and no harness file (`protected-paths.txt`) changed since the merge base, counting staged, unstaged and untracked files; `make check-all` and CI (scope `full`, `HARNESS_SCOPE=full`) run every sensor. Skipped today: `lint-sh`, `fmt-check-sh`, `test-sh` (inputs: `*.sh`, `*.bash`, `*.bats`, `scripts/**`), the main cost of `make check` (NFR-H3, [ADR 0013](../adr/0013-harness-nfr-budgets.md)).
+- **Rule:** `make check` (scope `changed`) may skip a sensor only when none of its inputs and no harness file (`protected-paths.txt`) changed since the merge base, counting staged, unstaged and untracked files; `make check-all` and CI (scope `full`, `HARNESS_SCOPE=full`) run every sensor. Skipped today: `lint-sh`, `fmt-check-sh`, `test-sh` (inputs: `*.sh`, `*.bash`, `*.bats`, `scripts/**`), the main cost of `make check` (NFR-H3, [ADR 0013](../adr/0013-harness-nfr-budgets.md)); `gen-check` while its inputs and the generated files hash to the stamp of its last green run. Cached only in scope `changed`: Go test results (`test-go`, `test-analyzers` without `-count=1`; integration tests always `-count=1`) and the dependency-cruiser graph (`--cache node_modules/.cache/depcruise`).
 - **Why:** Agents run `make check` after every change; a sensor whose inputs did not change can only repeat its last verdict, so running it costs time and finds nothing.
-- **Sensor:** `scripts/harness/unchanged.sh` decides; the target prints `<target>: skipped, …` instead of running. It fails closed: no merge base (`BASE_REF`), a git error or scope `full` means run. Timing rows (`harness-latency-budget`) carry the scope.
-- **Remediation:** A skipped sensor that should have run means its trigger pathspecs miss an input: add the input to the `$(call sh_sensor,…)` pathspecs in the Makefile (Harness change: Y); to run everything now, `make check-all` or `HARNESS_SCOPE=full make check`.
-- **Fixture:** none (decides whether a sensor runs, never fails); `scripts/test/unchanged.bats` · Status: seed
+- **Sensor:** `scripts/harness/unchanged.sh` decides (`gen-check.sh --unchanged` for `gen-check`); the target prints `<target>: skipped, …` instead of running. It fails closed: no merge base (`BASE_REF`), a git error, a missing or unmatched stamp, or any scope but `changed` means run and uncached. Timing rows (`harness-latency-budget`) carry the scope.
+- **Remediation:** A skipped sensor that should have run means its trigger pathspecs miss an input: add the input to the `$(call sh_sensor,…)` pathspecs in the Makefile or to `INPUTS` in `gen-check.sh` (Harness change: Y); to run everything now, `make check-all` or `HARNESS_SCOPE=full make check`.
+- **Fixture:** none (decides whether a sensor runs, never fails); `scripts/test/unchanged.bats`, `scripts/test/gen-check.bats` · Status: seed
 
 ### ci-workflows-valid
 - **Rule:** GitHub workflows and composite actions pass actionlint, including shellcheck on every `run:` block.

@@ -10,6 +10,11 @@ export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 export PATH := $(CURDIR)/.bin:$(CURDIR)/node_modules/.bin:$(PATH)
 
 RUN  := scripts/harness/run.sh
+# Tool caches only in make check (scope `changed`, also when unset); any other scope, as in make check-all
+# and CI (`full`), runs uncached (rules.md#harness-scope). Recursive (=): check-all sets the scope per target.
+CACHED = $(filter changed,$(or $(HARNESS_SCOPE),changed))
+GO_TEST_COUNT = $(if $(CACHED),,-count=1)
+DEPCRUISE_CACHE = $(if $(CACHED),--cache node_modules/.cache/depcruise)
 # Load this worktree's ports/DB URL (written by `make setup`) into a recipe's shell.
 WITH_ENV := [[ -f .env.local ]] || { echo "no .env.local: run make setup" >&2; exit 1; }; set -a; source .env.local; set +a;
 API  := apps/api
@@ -58,6 +63,8 @@ harness-selftest: ## Every fixture in scripts/harness/fixtures must be rejected 
 	@scripts/harness/selftest.sh $(FIXTURE)
 
 # NFR-R1, nightly in harness-nfr.yml. The selftest fixture swaps the target for one whose verdict alternates.
+# Scope `full`: in `changed` scope run 1 would stamp gen-check and run 2 skip it, a difference by design.
+harness-determinism: export HARNESS_SCOPE := full
 DETERMINISM_TARGET ?= check
 harness-determinism: ## Run make check twice on this tree: same exit status, findings and tree (NFR-R1)
 	@$(RUN) determinism harness-deterministic -- scripts/harness/determinism.sh $(MAKE) $(DETERMINISM_TARGET)
@@ -89,10 +96,10 @@ arch-go:
 	@$(RUN) go-arch-lint go-layers --dir $(API) -- go-arch-lint check --output-color=false
 
 test-go:
-	@$(RUN) go-test go-tests-pass --dir $(API) -- go test -race -count=1 -short ./...
+	@$(RUN) go-test go-tests-pass --dir $(API) -- go test -race $(GO_TEST_COUNT) -short ./...
 
 test-analyzers:
-	@$(RUN) analyzer-tests go-tests-pass --dir $(API)/tools/analyzers -- go test -count=1 ./...
+	@$(RUN) analyzer-tests go-tests-pass --dir $(API)/tools/analyzers -- go test $(GO_TEST_COUNT) ./...
 
 vuln-go:
 	@$(RUN) govulncheck go-no-known-vulns --dir $(API) -- govulncheck ./...
@@ -106,7 +113,7 @@ lint-web:
 	@$(RUN) eslint web-no-direct-http,web-domain-pure,web-lint -- eslint --max-warnings=0 .
 
 arch-web:
-	@$(RUN) dependency-cruiser web-domain-pure,web-no-cross-app -- depcruise apps packages --config .dependency-cruiser.cjs --output-type err
+	@$(RUN) dependency-cruiser web-domain-pure,web-no-cross-app -- depcruise apps packages --config .dependency-cruiser.cjs --output-type err $(DEPCRUISE_CACHE)
 
 typecheck-web:
 	@$(RUN) tsc web-typecheck -- turbo run typecheck --output-logs=errors-only
@@ -209,4 +216,6 @@ gen-atlas-sum:
 	@cd $(API) && atlas migrate hash --env local
 
 gen-check: ## gen + fail if anything changed (generated code must be committed and untouched)
-	@$(RUN) gen-check gen-up-to-date -- scripts/harness/gen-check.sh
+	@if scripts/harness/gen-check.sh --unchanged; then \
+	  echo "$@: skipped, generator inputs and outputs unchanged since the last green run (make check-all runs it)"; \
+	else $(RUN) gen-check gen-up-to-date -- scripts/harness/gen-check.sh; fi
