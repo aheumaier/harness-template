@@ -32,7 +32,8 @@ fail() {
 check() { "$@" || exit 2; } # run.sh already printed the details to stderr
 
 case "$file" in
-  scripts/harness/fixtures/*/files/*) ;; # deliberate violations
+  scripts/harness/fixtures/*/files/*) ;;        # deliberate violations
+  .specify/scripts/* | .specify/templates/*) ;; # vendored spec-kit (ADR 0011): replaced on upgrade, not linted
 
   *.gen.go | apps/api/internal/*/store/*.go | packages/api-client/src/gen/* | docs/generated/*)
     fail "$file is generated (rules.md#gen-up-to-date). Revert the edit, change the source (api/openapi.yaml, apps/api/db/queries, apps/api/db/migrations) and run \`make gen\`."

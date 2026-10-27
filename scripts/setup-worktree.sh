@@ -70,6 +70,16 @@ fi
 # --- tools + deps -------------------------------------------------------------------------------------
 make --no-print-directory tools deps
 
+# --- git hooks ----------------------------------------------------------------------------------------
+# commit-msg checks Conventional Commits locally (rules.md#git-conventional-commits). Never replaces a
+# hooks path someone else set (husky, lefthook, ...).
+hooks="$(git config --get core.hooksPath || true)"
+if [[ -z "$hooks" || "$hooks" == scripts/git-hooks ]]; then
+  git config core.hooksPath scripts/git-hooks
+else
+  log "core.hooksPath is '$hooks': not installing scripts/git-hooks (make commits still checks commit messages)"
+fi
+
 # --- database -----------------------------------------------------------------------------------------
 if [[ "${SKIP_DB:-0}" == 1 ]]; then
   log "SKIP_DB=1: not starting Postgres"

@@ -35,7 +35,8 @@ while IFS= read -r md; do
       }
     fi
   done < <(awk '/^```/ { code = !code; next } !code' "$md" | sed -e 's/`[^`]*`//g' | grep -oE '\]\([^)]+\)' | sed -E 's/^\]\((.*)\)$/\1/' || true)
-done < <(git ls-files -co --exclude-standard '*.md' | grep -vE '(^|/)(node_modules|fixtures)/')
+done < <(git ls-files -co --exclude-standard '*.md' ':!:.specify/templates/*' ':!:.claude/skills/speckit-*' |
+  grep -vE '(^|/)(node_modules|fixtures)/') # vendored spec-kit (ADR 0011) is not ours to fix
 
 while IFS= read -r agents; do
   claude="$(dirname "$agents")/CLAUDE.md"

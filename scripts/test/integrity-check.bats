@@ -92,6 +92,16 @@ add() { printf '%s\n' "${@:2}" >>"$SANDBOX/$1"; }
   HARNESS_CHANGE_APPROVED=1 check -0
 }
 
+@test "ignores vendored .specify/ in the suppression check, not extensionless git hooks" {
+  mkdir -p "$SANDBOX/.specify/scripts/bash" "$SANDBOX/scripts/git-hooks"
+  add .specify/scripts/bash/x.sh "$SHELLCHECK"
+  add scripts/git-hooks/commit-msg "$SHELLCHECK"
+  git -C "$SANDBOX" add -A
+  HARNESS_CHANGE_APPROVED=1 check -1
+  has 'scripts/git-hooks/commit-msg:1: suppression without'
+  [[ "$output" != *'.specify/'* ]]
+}
+
 @test "the PR's .gitattributes cannot hide a hunk" {
   printf '%s\n' '*.go -diff' '*.toml binary' >"$SANDBOX/.gitattributes"
   add x.go "f() $NOLINT"

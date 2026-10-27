@@ -4,8 +4,9 @@ Every architectural rule exists twice: as a pointer an agent can read (here, lin
 deterministic sensor that fails with the remediation below. `scripts/harness/run.sh` prints the
 **Remediation** line of a rule verbatim when its sensor fails, so keep it one actionable sentence.
 
-Status: **seed** = created with the template. New rules must be earned (link the incident/PR that motivated
-them) and need a fixture in `scripts/harness/fixtures/` before they merge.
+Status: **seed** = created with the template; **team-convention** = a convention the team already follows,
+adopted as a rule by a recorded decision (ADR) instead of an incident. New rules must be earned (link the
+incident/PR that motivated them) and need a fixture in `scripts/harness/fixtures/` before they merge.
 
 Format per rule: rule · why · sensor · remediation · fixture. `make harness-selftest` applies every fixture to
 a temp copy of the repo and asserts its sensor fails with the expected message and this remediation
@@ -220,7 +221,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ## Shell (scripts/, .claude/hooks/)
 
 ### sh-shellcheck
-- **Rule:** Every shell script and bats file passes shellcheck (`.shellcheckrc`); a `# shellcheck disable=` needs a reason ([harness-suppression-reason](#harness-suppression-reason)).
+- **Rule:** Every shell script, bats file and git hook (`scripts/git-hooks/`) passes shellcheck (`.shellcheckrc`); a `# shellcheck disable=` needs a reason ([harness-suppression-reason](#harness-suppression-reason)). Vendored `.specify/` (spec-kit, [ADR 0011](../adr/0011-conventional-commits-and-spec-kit.md)) is excluded here and in `sh-format`: it is replaced on upgrade, not edited.
 - **Why:** The harness itself is shell: an unquoted variable or a failed `cd` in a sensor or hook silently turns it green or deletes the wrong path.
 - **Sensor:** shellcheck (`make lint-sh`, part of `make check`; fast-check hook per file).
 - **Remediation:** Fix the line shellcheck names (the SCxxxx code links to https://www.shellcheck.net/wiki/SCxxxx); quote expansions, add `|| exit` after `cd`, and prefer an explicit `if` to `a && b || c`.
@@ -245,7 +246,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ### harness-suppression-reason
 - **Rule:** Every added suppression (`//nolint`, `//lint:ignore`, `//lint:file-ignore`, `eslint-disable`, `/* eslint … */`, `@ts-expect-error`, `# shellcheck disable`, `-- atlas:nolint`, `-- squawk-ignore`) has `reason: … (rule: <id>)` on the same line, where `<id>` is a `### <id>` heading in this file; `@ts-ignore` and `@ts-nocheck` are never allowed.
 - **Why:** A bare suppression silently turns a sensor off; the reason and rule id make each exception reviewable and greppable.
-- **Sensor:** `scripts/harness/integrity-check.sh` on lines added since the merge base with `BASE_REF` in Go, TS/JS, shell, SQL and workflow files (`make harness-integrity`, in `make check-all` and `harness-integrity.yml`, which runs the base branch's copy of the script; the PR's `.gitattributes` cannot hide a hunk).
+- **Sensor:** `scripts/harness/integrity-check.sh` on lines added since the merge base with `BASE_REF` in Go, TS/JS, shell, SQL, git hook and workflow files, not vendored `.specify/` (`make harness-integrity`, in `make check-all` and `harness-integrity.yml`, which runs the base branch's copy of the script; the PR's `.gitattributes` cannot hide a hunk).
 - **Remediation:** Fix the code instead; if the suppression is truly needed, append `reason: <why it is safe> (rule: <rule-id>)` on the same line with an id from this file as it is on the base branch, and replace `@ts-ignore`/`@ts-nocheck` with a fixed type or a reasoned `@ts-expect-error`.
 - **Fixture:** `fixtures/harness-suppression-no-reason` · Status: seed
 
@@ -269,6 +270,34 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Sensor:** actionlint (`make lint-ci`, part of `make check`).
 - **Remediation:** Fix the line actionlint names (unknown context/expression, bad `needs`/`if`, or the shellcheck code in a `run:` block); pin new actions to a full commit SHA with a `# vX.Y.Z` comment.
 - **Fixture:** `fixtures/ci-invalid-workflow` · Status: seed
+
+## Commits and specs (git history, specs/)
+
+Team conventions, not earned from an incident: the team already writes Conventional Commits and specifies
+product features with [spec-kit](https://github.com/github/spec-kit); PR #1 adopted them as rules, a
+deliberate exception recorded in [ADR 0011](../adr/0011-conventional-commits-and-spec-kit.md).
+In CI these run in the `pr-conventions` job of `harness-integrity.yml` (base branch's scripts, PR title as data).
+
+### git-conventional-commits
+- **Rule:** Every non-merge commit subject on a branch, and the PR title, is `<type>(<scope>)!: <description>` (scope and `!` optional; scope lowercase `[a-z0-9._/-]`) with type one of build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test. A subject is at most 100 characters, the PR title at most 90.
+- **Why:** The subject is the changelog and the release signal (`feat` = minor, `!` = major); a squash merge of several commits makes the PR title plus ` (#N)` the commit on `main`, so the title is checked too, with room for the suffix.
+- **Sensor:** `scripts/harness/check-commits.sh` on `BASE_REF..HEAD` and `PR_TITLE` (`make commits`, in `make check-all` locally); the `commit-msg` git hook (`scripts/git-hooks/`, installed by `make setup`) rejects a bad message before the commit exists.
+- **Remediation:** Reword the subject as `<type>(<scope>): <imperative description>`, e.g. `feat(billing): add invoice export`: the last commit with `git commit --amend`, older ones with `git rebase -i` and `reword`, the PR title in the PR.
+- **Fixture:** `fixtures/git-commit-not-conventional` · Status: team-convention (PR #1)
+
+### specs-structure
+- **Rule:** Every `specs/<dir>/` is a directory (not a symlink) named `NNN-kebab-slug` with a unique `NNN`, contains `spec.md`, contains `plan.md` once it has `tasks.md`, no Markdown file in it has an open clarification (a `[NEEDS CLARIFICATION: …]` marker, or a plan field left as `: NEEDS CLARIFICATION`; `checklists/` is skipped because it names the marker), and no file in it is an OpenAPI document (`contracts/` describes the change to `api/openapi.yaml` in prose).
+- **Why:** spec-kit's commands find a feature by its numbered directory and build plan → tasks on spec; an open clarification merged into `main` is a decision nobody made; a second OpenAPI document escapes Spectral, oasdiff and `make gen` and drifts from the one contract.
+- **Sensor:** `scripts/harness/check-specs.sh` (`make specs`, in `make check-all`).
+- **Remediation:** Create spec directories with `/speckit-specify` (never by hand), run `/speckit-plan` before `/speckit-tasks`, resolve every `NEEDS CLARIFICATION` with `/speckit-clarify` or by writing the decision into the spec, and put contract changes in `api/openapi.yaml` (the spec's `contracts/` only lists the operations and schemas).
+- **Fixture:** `fixtures/specs-open-clarification` · Status: team-convention (PR #1)
+
+### specs-required-for-features
+- **Rule:** A `feat` commit (or a `feat` PR title) that changes `apps/` or `api/`, other than harness files in `scripts/harness/protected-paths.txt` (analyzers, linter configs), comes with an added or changed (not only deleted) `specs/<NNN-slug>/` committed in the same change. Untracked files do not count: CI sees only commits. Harness and infrastructure work is planned in `docs/exec-plans/` instead.
+- **Why:** A product feature without a spec has requirements only in a chat log; the spec is what reviewers and the next agent check the code against.
+- **Sensor:** `scripts/harness/check-specs.sh` against the merge base with `BASE_REF` (`make specs`, `make check-all`). Waived only by `NO_SPEC_NEEDED=1`, set in CI by the `no-spec-needed` PR label (a human decision).
+- **Remediation:** Write the spec with `/speckit-specify` (then `/speckit-plan`, `/speckit-tasks`) and commit `specs/<NNN-slug>/` with the feature; if the change is not a product feature, use another commit type, or ask a reviewer for the `no-spec-needed` label.
+- **Fixture:** `fixtures/specs-feat-without-spec` · Status: team-convention (PR #1)
 
 ## Docs
 

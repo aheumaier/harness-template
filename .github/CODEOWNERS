@@ -19,6 +19,7 @@ tsconfig*.json              @aheumaier
 /Makefile                   @aheumaier
 /scripts/harness/           @aheumaier
 /scripts/test/              @aheumaier
+/scripts/git-hooks/         @aheumaier
 /scripts/tool-versions.env  @aheumaier
 /scripts/install-tools.sh   @aheumaier
 /scripts/gen-schema-doc.sh  @aheumaier
@@ -27,6 +28,7 @@ tsconfig*.json              @aheumaier
 /.claude/                   @aheumaier
 /.github/                   @aheumaier
 /docs/harness/              @aheumaier
+/.specify/                  @aheumaier
 /AGENTS.md                  @aheumaier
 /CLAUDE.md                  @aheumaier
 

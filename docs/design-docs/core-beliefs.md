@@ -35,6 +35,6 @@ framework; sqlc over an ORM; versions pinned and installed into `.bin/`.
 ## 5. Repo is the system of record
 
 Anything not in the repository does not exist for an agent: decisions, plans, debt, quality and schema
-all live here as text and are kept current by sensors where possible. *Consequences:* ADRs, exec plans,
+all live here as text and are kept current by sensors where possible. *Consequences:* ADRs, exec plans, feature specs,
 `docs/QUALITY.md`, `docs/exec-plans/tech-debt-tracker.md` and the generated schema doc; Slack threads and
 tribal knowledge are copied in or lost.

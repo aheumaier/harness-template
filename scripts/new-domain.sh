@@ -3,7 +3,7 @@
 #
 #   scripts/new-domain.sh <name>        (make new-domain NAME=<name>)
 #
-# Creates apps/api/internal/<name>/{model,store,service,api} (+ AGENTS.md), db/queries/<name>.sql, an empty
+# Creates apps/api/internal/<name>/{model,store,service,api} (+ AGENTS.md, CLAUDE.md), db/queries/<name>.sql, an empty
 # migration, an OpenAPI tag + stub operation (GET /<kebab>/status) + schema, a sqlc.yaml entry, the route
 # registration in cmd/api/routes.go and a docs/QUALITY.md row; then runs `make gen fmt gen-schema-doc`.
 # Insertions go before `harness:domain-*` / `harness:quality-rows` markers. Undo before committing:
@@ -64,6 +64,7 @@ cat >"$D/AGENTS.md" <<EOF
 - The generated \`GET /$kebab/status\` stub only proves the wiring: replace it with real operations.
 - Done = \`make check\` green and the \`$name\` row in docs/QUALITY.md updated.
 EOF
+echo '@AGENTS.md' >"$D/CLAUDE.md" # rules.md#docs-claude-imports-agents
 
 cat >"$D/model/model.go" <<EOF
 // Package model holds the $name domain's types. It imports nothing from other layers.

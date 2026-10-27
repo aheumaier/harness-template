@@ -29,11 +29,24 @@ scripts/github-branch-protection.sh config
 scripts/install-tools.sh config
 scripts/gen-schema-doc.sh config
 scripts/harness/* config
+scripts/git-hooks/* config
 scripts/test/*
 apps/api/tools/analyzers/* config
 .claude/hooks/* config
 .claude/*
 .github/*
 docs/harness/*
+# spec-kit (ADR 0011): vendored code, and the inputs that change what every speckit-* skill does
+# (extension hooks, presets), and the constitution every /speckit-plan checks against (a guide, like AGENTS.md).
+.specify/memory/*
+.specify/scripts/*
+.specify/templates/*
+.specify/workflows/*
+.specify/integrations/*
+.specify/init-options.json
+.specify/integration.json
+.specify/extensions.yml
+.specify/extensions/*
+.specify/presets/*
 AGENTS.md
 CLAUDE.md

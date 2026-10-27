@@ -15,7 +15,7 @@ global versions.
 |---------|------|
 | `make setup` | Once per clone/worktree: tools, JS deps, this worktree's own Postgres + ports (`.env.local`). |
 | `make check` | After every change. Fast (<60 s warm): format, lint, layers, unit tests, generated code up to date. |
-| `make check-all` | Before you open a PR: `check` + migrations, contract, harness integrity, vulnerabilities, dead code, integration tests. |
+| `make check-all` | Before you open a PR: `check` + migrations, contract, harness integrity, commit messages, specs, vulnerabilities, dead code, integration tests. |
 | `make gen` | After editing `api/openapi.yaml`, `apps/api/db/queries/*.sql` or migrations. Commit the output. |
 | `make new-domain NAME=billing` | To start a new business domain. Never create `apps/api/internal/<domain>/` by hand. |
 
@@ -44,8 +44,10 @@ The frontend mirrors this: `packages/domain` is pure TS (no React, no browser AP
 5. **Harness files are not yours to change.** Linter configs, `scripts/harness/**`, `.claude/**`,
    `.github/**` and this file are protected. If a rule is wrong, propose the change in the PR description.
 6. **Done means green.** `make check` before you say a task is done; `make check-all` before a PR.
-7. **The repo is the system of record.** Decisions go in [docs/adr/](docs/adr/README.md), multi-step work in
-   [docs/exec-plans/](docs/exec-plans/), known debt in
+7. **The repo is the system of record.** Decisions go in [docs/adr/](docs/adr/README.md); new product
+   capabilities are specified in `specs/NNN-slug/` with spec-kit (`/speckit-specify` → `/speckit-plan` →
+   `/speckit-tasks`); all other multi-step work (harness, infra, refactors) in
+   [docs/exec-plans/](docs/exec-plans/); known debt in
    [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md).
 
 ## Where to look
@@ -60,12 +62,15 @@ The frontend mirrors this: `packages/domain` is pure TS (no React, no browser AP
 | CI checks, required status checks, label bypass | [docs/harness/ci.md](docs/harness/ci.md) |
 | Security and reliability defaults | [docs/SECURITY.md](docs/SECURITY.md), [docs/RELIABILITY.md](docs/RELIABILITY.md) |
 | Area-specific rules | `AGENTS.md` in [apps/api/internal/](apps/api/internal/AGENTS.md), [apps/api/db/](apps/api/db/AGENTS.md), [api/](api/AGENTS.md), [apps/web/](apps/web/AGENTS.md); each has a sibling `CLAUDE.md` that is just `@AGENTS.md` |
-| Step-by-step recipes | [new-domain](.claude/skills/new-domain/SKILL.md), [add-endpoint](.claude/skills/add-endpoint/SKILL.md), [add-migration](.claude/skills/add-migration/SKILL.md) |
+| Step-by-step recipes | [new-domain](.claude/skills/new-domain/SKILL.md), [add-endpoint](.claude/skills/add-endpoint/SKILL.md), [add-migration](.claude/skills/add-migration/SKILL.md); spec-kit's `speckit-*` skills for specs ([ADR 0011](docs/adr/0011-conventional-commits-and-spec-kit.md)) |
 
 ## Working agreements
 
 - Each git worktree is a fully isolated environment (own DB, own ports): run `make setup` in it first.
 - Keep changes small and in one domain where possible; a PR states contract change, migration and harness
   change (Y/N) in its template.
+- Commit subjects and PR titles are [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
+  (`feat(billing): add invoice export`); the `commit-msg` hook from `make setup` checks each commit. A `feat`
+  touching `apps/` or `api/` ships with its spec in `specs/`.
 - When a sensor is missing for a mistake you or a reviewer caught, add the rule to rules.md with a fixture in
   `scripts/harness/fixtures/` (via a human-approved harness PR) rather than a note in a guide.

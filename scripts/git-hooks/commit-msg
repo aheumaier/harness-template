@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Git commit-msg hook (core.hooksPath=scripts/git-hooks, set by `make setup`): rejects a commit whose
+# subject is not a Conventional Commit, before it exists. rules.md#git-conventional-commits
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+msg="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")" # run.sh changes directory
+exec "$ROOT/scripts/harness/run.sh" commit-msg git-conventional-commits -- "$ROOT/scripts/harness/check-commits.sh" --msg "$msg"
