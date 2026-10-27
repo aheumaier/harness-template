@@ -84,6 +84,25 @@ must not produce.
 | 3 | Go harness binary for parsing sensors ([ADR 0012](../../adr/0012-parsing-sensors-in-go.md)) | ported sensors pass their fixtures; bats tests replaced by Go tests; NFR-H1 met without `node` | proposed |
 | 4 | Agent loop latency | NFR-H2 met for every file type | proposed |
 
+## Progress
+
+One slice per commit, in this order (the [loop prompt](0002-loop-prompt.md) works through it). `[ ]` open,
+`[x]` done (`sha — before → after`), `[!]` blocked (reason).
+
+- [ ] P1 (phase 0) `run.sh` records timings to `.cache/harness/timings.jsonl` and warns over budget;
+  `scripts/harness/budgets.txt`; bats tests
+- [ ] P2 (phase 0) hook timing helper; CI `::warning` + job summary; timings uploaded as artifact
+- [ ] P3 (phase 0) nightly `harness-nfr` workflow (p95 over 7 days, double run for NFR-R1, one issue);
+  rules `harness-latency-budget`, `harness-deterministic` with fixtures
+- [ ] P4 (phase 1) `lint-sh`, `fmt-check-sh`, `test-sh` in `check` only when shell/harness files changed
+- [ ] P5 (phase 1) bats sandbox: symlink executables, copy on write, teardown asserts the repo is unchanged
+- [ ] P6 (phase 1) no `-count=1` in `check`; eslint and depcruise caches; `gen-check` skipped on unchanged inputs
+- [ ] P7 (phase 1/4) fast-check: no whole-package `tsc` per edit
+- [ ] P8 (phase 3) Go module `apps/api/tools/harness` + Makefile staleness rule; port `guard-bash`
+- [ ] P9 (phase 3) port `check-links`
+- [ ] P10 (phase 3) port `integrity-check`
+- [ ] P11 (phase 2) `affected.sh`; scoped Go and web targets; full run on config changes
+
 ### Phase 0 — measure and alert
 
 1. `run.sh` already wraps every sensor: it appends one line per run to `.cache/harness/timings.jsonl`
