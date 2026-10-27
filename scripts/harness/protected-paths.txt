@@ -17,7 +17,7 @@
 knip.json config
 *tsconfig*.json config
 .claude/settings.json config
-.editorconfig
+.editorconfig config
 *.gitattributes config
 Makefile config
 .github/workflows/* config
@@ -27,6 +27,7 @@ scripts/harness/protected-paths.txt config
 scripts/tool-versions.env config
 scripts/github-branch-protection.sh config
 scripts/install-tools.sh config
+scripts/gen-schema-doc.sh config
 scripts/harness/* config
 scripts/test/*
 apps/api/tools/analyzers/* config

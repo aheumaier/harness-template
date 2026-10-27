@@ -144,3 +144,28 @@ add() { printf '%s\n' "${@:2}" >>"$SANDBOX/$1"; }
   has 'x.go:2: suppression without'
   [[ "$output" != *harness-config-not-loosened* ]]
 }
+
+@test "a // or /* line in a config is not a comment: it can comment a setting out" {
+  mkdir -p "$SANDBOX/apps/web"
+  printf '%s\n' '{' '  "strict": true' '}' >"$SANDBOX/apps/web/tsconfig.json"
+  git -C "$SANDBOX" add -A
+  git -C "$SANDBOX" -c user.name=t -c user.email=t@localhost -c commit.gpgsign=false commit -qm ts
+  printf '%s\n' '{' '  /*' '  "strict": true' '  // */' '}' >"$SANDBOX/apps/web/tsconfig.json"
+  check -1
+  has 'apps/web/tsconfig.json:2: added harness config line:   /*'
+}
+
+@test "looks rule ids up in its own rules.md, not the change's" {
+  pr="$BATS_TEST_TMPDIR/pr"
+  git clone -q "$SANDBOX" "$pr"
+  printf '%s\n' '### made-up-rule' >>"$pr/docs/harness/rules.md"
+  printf '%s\n' "f() $NOLINT // reason: trust me (rule: made-up-rule)" >>"$pr/x.go"
+  HARNESS_ROOT="$pr" HARNESS_CHANGE_APPROVED=1 BASE_REF=main run -1 "$SANDBOX/scripts/harness/integrity-check.sh"
+  has "x.go:2: suppression names 'made-up-rule', not a rule id"
+}
+
+@test "fails closed without config entries" {
+  printf '%s\n' '# emptied' >"$SANDBOX/scripts/harness/protected-paths.txt"
+  check -2
+  has 'refusing to pass'
+}

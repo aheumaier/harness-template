@@ -128,6 +128,10 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
 
 - 2026-10-27: second phase-10 review: base-branch gates via `pull_request_target` (ADR 0010), sensor code
   and `.gitattributes` as `config`, `.gitattributes`-proof diff, `lint:file-ignore` marker, mktemp leak.
+- 2026-10-27: third review: PR head via second checkout (private repos), only `#` lines are config comments,
+  diff failures and an empty config list fail closed, rule ids from the base rules.md, no external `$ref` in
+  the spec, `gen-schema-doc.sh`/`.editorconfig` as `config`. Nested CLAUDE.md import their AGENTS.md (new rule
+  docs-claude-imports-agents, user request). 71 bats tests, 26 fixtures.
 - 2026-10-27: phase 10 review fixes: CHECK_ALL_SKIP + `breaking-change-approved` waiver, base-branch
   integrity check, strict config rule, more suppression markers/sources + rule-id validation, fail-closed
   merge base, CODEOWNERS mirror test, least-privilege workflow tokens. 64 bats tests.

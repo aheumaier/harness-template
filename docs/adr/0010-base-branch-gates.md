@@ -10,11 +10,12 @@ admin can skip (`enforce_admins: false`).
 
 ## Decision
 - `harness-integrity.yml` and `contract-gate.yml` use `pull_request_target`. The workspace is the base branch
-  (workflow, Makefile, scripts, protected-path list, tool versions). The PR head is a detached worktree, and
-  the sensors read it through `HARNESS_ROOT`.
+  (workflow, Makefile, scripts, protected-path list, rules.md, tool versions). The PR head is a second
+  checkout (`pr-head/`, no persisted credentials), and the sensors read it through `HARNESS_ROOT`.
 - Safety invariants, each restated in both workflow headers:
-  1. Nothing from the PR tree is executed. It is read with git, awk and grep, and its spec is parsed by oasdiff.
-  2. Only `head.sha` reaches a `run:` block, and only through `env`.
+  1. Nothing from the PR tree is executed. It is read with git, awk and grep, and its spec is parsed by
+     oasdiff only after a check that it has no external `$ref` (no URL fetch, no file outside the spec).
+  2. Only `head.sha` is used, as the checkout ref; no PR-controlled text reaches a `run:` block.
   3. `permissions: contents: read`, `persist-credentials: false`, and no secrets.
 - `harness-config-not-loosened` covers sensor code (scripts/harness, analyzers, hooks, install script)
   and `.gitattributes`, as well as configs.

@@ -51,3 +51,9 @@ check() { BASE_REF=main run "$@" "$SANDBOX/scripts/harness/contract-check.sh"; }
   HARNESS_ROOT="$pr" BASE_REF=origin/main run -1 "$SANDBOX/scripts/harness/contract-check.sh"
   has 'breaks clients compared to origin/main'
 }
+
+@test "fails an external \$ref: oasdiff would fetch or read it" {
+  printf '%s\n' 'components:' '  schemas:' '    X: { $ref: "https://example.com/x.yaml" }' >>"$SANDBOX/api/openapi.yaml"
+  BREAKING_CHANGE_APPROVED=1 check -1
+  has 'has an external $ref'
+}

@@ -21,6 +21,7 @@ tsconfig*.json              @aheumaier
 /scripts/test/              @aheumaier
 /scripts/tool-versions.env  @aheumaier
 /scripts/install-tools.sh   @aheumaier
+/scripts/gen-schema-doc.sh  @aheumaier
 /scripts/github-branch-protection.sh  @aheumaier
 /apps/api/tools/analyzers/  @aheumaier
 /.claude/                   @aheumaier

@@ -5,7 +5,8 @@
 #
 # pull_request_target, like harness-integrity.yml: workflow, Makefile, script and oasdiff version come from
 # the base branch; the PR's spec is only parsed. Same safety constraints (docs/adr/0010-base-branch-gates.md):
-# no PR code executed, only head.sha in `run:` via env, `contents: read`, no secrets.
+# no PR code executed, only head.sha used (as the checkout ref), `contents: read`, no secrets.
+# The PR's spec must not have external $refs (contract-check.sh), so oasdiff reads nothing else.
 name: contract-gate
 
 on:
@@ -24,15 +25,16 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Fetch the PR head (read, never executed)
-        env:
-          PR_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          git fetch --no-tags origin "$PR_SHA"
-          git worktree add --detach "$RUNNER_TEMP/pr" "$PR_SHA"
+      - name: Check out the PR head (read, never executed)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr-head
+          fetch-depth: 0
+          persist-credentials: false
       - name: Did api/openapi.yaml change?
         id: spec
-        working-directory: ${{ runner.temp }}/pr
+        working-directory: pr-head
         run: |
           base="$(git merge-base HEAD "origin/$GITHUB_BASE_REF")"
           if git diff --quiet "$base" -- api/openapi.yaml; then echo changed=false; else echo changed=true; fi >>"$GITHUB_OUTPUT"
@@ -49,5 +51,5 @@ jobs:
       - if: steps.spec.outputs.changed == 'true'
         run: make contract-check BASE_REF="origin/$GITHUB_BASE_REF"
         env:
-          HARNESS_ROOT: ${{ runner.temp }}/pr
+          HARNESS_ROOT: ${{ github.workspace }}/pr-head
           BREAKING_CHANGE_APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'breaking-change-approved') && '1' || '0' }}

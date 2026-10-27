@@ -9,10 +9,10 @@
 #                                  non-comment line. Waived only by a human: HARNESS_CHANGE_APPROVED=1 (CI:
 #                                  the `harness-change-approved` PR label).
 #
-# This script, its marker lists and protected-paths.txt come from the script's own directory; the change is
-# read from HARNESS_ROOT (default: the same repo). CI runs the base branch's copy against the PR checkout,
-# so a PR cannot weaken the check that judges it. Rule ids are looked up in the PR's rules.md: a PR may add
-# a rule and cite it, and a fake heading shows up in the code-owned docs/harness/ diff.
+# This script, its marker lists, protected-paths.txt and the rules.md that rule ids are looked up in come
+# from the script's own checkout; the change is read from HARNESS_ROOT (default: the same repo). CI runs the
+# base branch's copy against the PR head, so a PR cannot weaken the check that judges it (a suppression may
+# cite a rule only once that rule is on the base branch). Fails closed (exit 2) when the diff cannot be read.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -26,7 +26,7 @@ base="$(BASE_REF="$BASE_REF" "$HERE/merge-base.sh")"
 changes() {
   git -c core.quotePath=false ls-files -o --exclude-standard -- "$@" | while IFS= read -r f; do
     awk -v path="$f" '{ print path "\t" NR "\t+\t" $0 }' "$f"
-  done
+  done || return
   git -c core.quotePath=false diff -U0 --text --no-textconv --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ \
     "$base" -- "$@" | awk '
       /^diff --git / { header = 1; next }
@@ -38,6 +38,7 @@ changes() {
     '
 }
 
+RULES="$HERE/../../docs/harness/rules.md"
 fail=0
 
 # --- suppressions -------------------------------------------------------------------------------------
@@ -50,6 +51,7 @@ SOURCES=('*.go' '*.ts' '*.tsx' '*.mts' '*.cts' '*.js' '*.jsx' '*.mjs' '*.cjs' '*
 NEVER='(@ts-ignore|@ts-nocheck)'
 SUPPRESSION='(//[[:space:]]*(nolint|lint:(file-)?ignore)|eslint-disable|/\*[[:space:]]*eslint[[:space:]]|@ts-expect-error|#[[:space:]]*shellcheck[[:space:]]+disable|atlas:nolint|squawk-ignore)'
 REASON='reason: .+\(rule: ([a-z0-9-]+)\)'
+rows="$(changes "${SOURCES[@]}")" || exit 2
 while IFS=$'\t' read -r path line sign text; do
   [[ "$sign" == + ]] || continue
   if [[ "$text" =~ $NEVER ]]; then
@@ -58,29 +60,35 @@ while IFS=$'\t' read -r path line sign text; do
     continue
   elif [[ ! "$text" =~ $REASON ]]; then
     echo "$path:$line: suppression without 'reason: … (rule: <id>)' on the same line [harness-suppression-reason]"
-  elif ! grep -qxF "### ${BASH_REMATCH[1]}" docs/harness/rules.md 2>/dev/null; then
+  elif ! grep -qxF "### ${BASH_REMATCH[1]}" "$RULES"; then
     echo "$path:$line: suppression names '${BASH_REMATCH[1]}', not a rule id in docs/harness/rules.md [harness-suppression-reason]"
   else
     continue
   fi
   fail=1
-done < <(changes "${SOURCES[@]}")
+done <<<"$rows"
 
 # --- harness configs ----------------------------------------------------------------------------------
 # Any non-comment change counts, tightening included: telling a loosening from a tightening needs judgment,
-# and judgment is the human's (the label).
+# and judgment is the human's (the label). Only `#` lines and blank lines are comments: `//` and `/* */` can
+# comment out a JSONC, JS or Go line without the commented line itself looking like code.
 configs=()
 while read -r pattern kind; do
   [[ "$kind" == config ]] && configs+=("$pattern")
 done < <(grep -Ev '^[[:space:]]*(#|$)' "$HERE/protected-paths.txt")
-if [[ "${HARNESS_CHANGE_APPROVED:-0}" != 1 && ${#configs[@]} -gt 0 ]]; then
-  COMMENT='^[[:space:]]*(#|//|/\*|$)' # not a bare `*`: `*.go -diff`, `* @owner` are config
+((${#configs[@]})) || {
+  echo "no \`config\` entries in $HERE/protected-paths.txt: refusing to pass without checking harness configs" >&2
+  exit 2
+}
+if [[ "${HARNESS_CHANGE_APPROVED:-0}" != 1 ]]; then
+  rows="$(changes "${configs[@]}")" || exit 2
+  COMMENT='^[[:space:]]*(#|$)'
   while IFS=$'\t' read -r path line sign text; do
     [[ "$text" =~ $COMMENT ]] && continue
     [[ "$sign" == + ]] && what=added || what=removed
     echo "$path:$line: $what harness config line: $text [harness-config-not-loosened]"
     fail=1
-  done < <(changes "${configs[@]}")
+  done <<<"$rows"
 fi
 
 exit "$fail"

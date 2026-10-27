@@ -9,7 +9,7 @@
 # PR cannot weaken the gate that judges it (with `pull_request`, the PR's own copy of this file would run).
 # Safe only while all of these hold (docs/adr/0010-base-branch-gates.md):
 #   - nothing from the PR tree is executed: it is read with git, awk and grep only;
-#   - only head.sha reaches a `run:` block, through env (never head.ref, title or body);
+#   - only head.sha is used, as the checkout ref (never head.ref, title or body in a `run:` block);
 #   - permissions stay `contents: read` and no secret is referenced.
 name: harness-integrity
 
@@ -29,13 +29,14 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Fetch the PR head (read, never executed)
-        env:
-          PR_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          git fetch --no-tags origin "$PR_SHA"
-          git worktree add --detach "$RUNNER_TEMP/pr" "$PR_SHA"
+      - name: Check out the PR head (read, never executed)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr-head
+          fetch-depth: 0
+          persist-credentials: false
       - run: make harness-integrity BASE_REF="origin/$GITHUB_BASE_REF"
         env:
-          HARNESS_ROOT: ${{ runner.temp }}/pr
+          HARNESS_ROOT: ${{ github.workspace }}/pr-head
           HARNESS_CHANGE_APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'harness-change-approved') && '1' || '0' }}

@@ -38,8 +38,8 @@ Diff-based sensors fail closed (exit 2) when `BASE_REF` is missing or shallow; C
 
 `contract-gate` and `harness-integrity` use `pull_request_target`: the workflow, Makefile and scripts come
 from the base branch, so a PR cannot rewrite the gate that judges it ([ADR 0010](../adr/0010-base-branch-gates.md)).
-That trigger is only safe while the PR tree is **read, never executed**, only `head.sha` reaches a `run:`
-block (through `env`), and the job has `contents: read` and no secrets. Keep those invariants in any edit.
+That trigger is only safe while the PR tree is **read, never executed**, only `head.sha` is used (as the
+checkout ref), and the job has `contents: read` and no secrets. Keep those invariants in any edit.
 `ci.yml` has to run PR code, so it runs the PR's own workflow; a PR that weakens it changes a `config`
 path, and the base-branch `harness-integrity` gate stays red until a human adds the label.
 
