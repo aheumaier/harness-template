@@ -5,4 +5,5 @@ it back. Larger paydowns get their own plan in [active/](active/).
 
 | Id | Area | Debt | Impact | Added | Plan |
 |----|------|------|--------|-------|------|
+| TD-2 | github | `main` has no branch protection: the API returns 403 for private repos on GitHub Free, so `scripts/github-branch-protection.sh` is not applied | Required checks and code-owner review are advisory; a red PR can be merged. Locally only guard-bash blocks pushing `main` | 2026-10-27 | Apply the script after a GitHub Pro upgrade or making the repo public |
 | TD-1 | scripts | `install-tools.sh`, `setup-worktree.sh` and `gen-schema-doc.sh` have no bats tests (rule sh-tests-pass); covered only end to end by `make setup` / `make check` | A regression shows up as a failed setup, not a pointed test failure | 2026-10-27 | — |
