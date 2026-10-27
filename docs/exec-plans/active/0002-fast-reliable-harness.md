@@ -59,7 +59,7 @@ reported: [ADR 0013](../../adr/0013-harness-nfr-budgets.md). Numbers land in `sc
 | Id | Requirement | Target | Today | Measured by | On violation |
 |----|-------------|--------|-------|-------------|--------------|
 | NFR-H1 | Each PreToolUse hook, per call | ≤ 50 ms | 43 ms (protect-harness), 43 ms (guard-bash), 42 ms (only-make-check), timing included | hook wrapper timing | warn; alert |
-| NFR-H2 | fast-check (PostToolUse), per edited file | ≤ 1 s | 0.04–0.34 s (`.md` 42 ms; `.ts`: whole-package tsc) | fast-check timing | warn; alert |
+| NFR-H2 | fast-check (PostToolUse), per edited file | ≤ 1 s | 0.04–0.5 s; `.tsx` in apps/web 1.05 s, over budget (type-aware eslint 0.97 s alone; 2026-10-28) | fast-check timing | warn; alert |
 | NFR-H3 | `make check`, change without shell or harness files | ≤ 10 s | 2.9 s (2026-10-28, warm; Go test cache, gen-check stamp) | `run.sh` + make wall time | warn; alert |
 | NFR-H4 | `make check`, any change | ≤ 60 s | 36 s (2026-10-28, shell change, `bats`-bound) | same | warn; alert |
 | NFR-H5 | one sensor in `make check` | ≤ 5 s, or its row in `budgets.txt` | `bats` 27.9 s (2026-10-28), `go-test` 0.37 s, `analyzer-tests` 0.37 s (Go test cache, 2026-10-28; uncached in `full`); rest ≤ 5 s | `run.sh` | warn; alert |
@@ -101,7 +101,8 @@ One slice per commit, in this order (the [loop prompt](0002-loop-prompt.md) work
   a write, teardown checksum of the real `scripts/` and `.claude/hooks/`
 - [x] P6 — c34a098 — `make check` rerun 3.7 → 2.9 s; `go-test` 2.6 → 0.37 s, `analyzer-tests` 1.2 → 0.37 s,
   `gen-check` 0.67 s → skipped (stamp), `depcruise` 0.43 → 0.45 s (cache gains nothing at this size)
-- [ ] P7 (phase 1/4) fast-check: no whole-package `tsc` per edit
+- [x] P7 — e6e282c — fast-check `apps/web/src/App.tsx` 1.5 → 1.05 s, `packages/domain/src/index.ts` 0.59 → 0.50 s;
+  eslint on the file only, tsc stays in `make check`
 - [ ] P8 (phase 3) Go module `apps/api/tools/harness` (protected, CODEOWNERS) + Make target; hook wrappers;
   port `guard-bash` and the JSON input of all four hooks
 - [ ] P9 (phase 3) port `check-links`
@@ -262,3 +263,11 @@ Per [ADR 0012](../../adr/0012-parsing-sensors-in-go.md): `guard-bash` and every 
   dropping the scope test, an input, the outputs from the hash, or stamping before the compare each fails
   `gen-check.bats`. Determinism 0 differences (75 s, full). Selftest 30/30. Integrity names only `Makefile`
   and `gen-check.sh`; the other check-all targets and `test-integration` green.
+- 2026-10-28: P7 (e6e282c). fast-check on a web file ran eslint (0.93 s in apps/web) and whole-package
+  `tsc --noEmit` (0.52 s): 1.5 s per edit. Now eslint on the file only: 1.05 s, still over NFR-H2 (1 s),
+  because type-aware eslint (`strictTypeChecked`) builds the package's type program per call; the rule keeps
+  warning. Not fixed here: `eslint --cache` stays banned (type-aware results), and a persistent eslint or tsc
+  server is out of scope for phase 1. No `tsc --incremental` in `make check`: Turborepo already caches
+  `typecheck` (tsc 0.06 s warm) and a tsbuildinfo would also apply in scope `full`. New sandboxed tests in
+  `fast-check.bats` put fake eslint and tsc on PATH; the "file only" test fails against the old hook.
+  Selftest 30/30. Integrity names only `.claude/hooks/fast-check.sh`; rest of check-all and integration green.
