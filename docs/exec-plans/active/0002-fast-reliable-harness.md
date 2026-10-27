@@ -60,10 +60,10 @@ reported: [ADR 0013](../../adr/0013-harness-nfr-budgets.md). Numbers land in `sc
 |----|-------------|--------|-------|-------------|--------------|
 | NFR-H1 | Each PreToolUse hook, per call | ≤ 50 ms | 43 ms (protect-harness), 43 ms (guard-bash), 42 ms (only-make-check), timing included | hook wrapper timing | warn; alert |
 | NFR-H2 | fast-check (PostToolUse), per edited file | ≤ 1 s | 0.04–0.34 s (`.md` 42 ms; `.ts`: whole-package tsc) | fast-check timing | warn; alert |
-| NFR-H3 | `make check`, change without shell or harness files | ≤ 10 s | 4 s (2026-10-28, warm, Go/web caches hit) | `run.sh` + make wall time | warn; alert |
+| NFR-H3 | `make check`, change without shell or harness files | ≤ 10 s | 2.9 s (2026-10-28, warm; Go test cache, gen-check stamp) | `run.sh` + make wall time | warn; alert |
 | NFR-H4 | `make check`, any change | ≤ 60 s | 36 s (2026-10-28, shell change, `bats`-bound) | same | warn; alert |
-| NFR-H5 | one sensor in `make check` | ≤ 5 s, or its row in `budgets.txt` | `bats` 27.9 s (2026-10-28), `go-test` 6.1 s, `analyzer-tests` 6.0 s (under `-j4`); rest ≤ 5 s | `run.sh` | warn; alert |
-| NFR-H6 | `make check` rerun, nothing changed | ≤ 3 s | ≈ first run (no skip, `-count=1`) | two runs back to back | warn; alert |
+| NFR-H5 | one sensor in `make check` | ≤ 5 s, or its row in `budgets.txt` | `bats` 27.9 s (2026-10-28), `go-test` 0.37 s, `analyzer-tests` 0.37 s (Go test cache, 2026-10-28; uncached in `full`); rest ≤ 5 s | `run.sh` | warn; alert |
+| NFR-H6 | `make check` rerun, nothing changed | ≤ 3 s | 2.9 s (2026-10-28; was 3.7 s) | two runs back to back | warn; alert |
 | NFR-H7 | `make check-all` in CI | ≤ 10 min | not measured | job duration | alert |
 | NFR-R1 | Deterministic: same tree, same verdict and same findings | 0 differences | 0 (`make check` ×2, local, 2026-10-28) | nightly double run | **fail** (nightly) + alert |
 | NFR-R2 | Fail closed: a sensor that cannot run (missing tool, base ref, parse error) exits non-zero | 0 silent passes | partly (merge-base, guard-bash) | fixtures with a broken environment | **fail** |
@@ -99,8 +99,8 @@ One slice per commit, in this order (the [loop prompt](0002-loop-prompt.md) work
   `HARNESS_SCOPE` (`changed` in `check`, `full` in `check-all`/CI), `scripts/harness/unchanged.sh`, rule `harness-scope`
 - [x] P5 — 715693e — `make test-sh` 65.8 → 27.9 s warm (126 tests); executables hardlinked, `own` before
   a write, teardown checksum of the real `scripts/` and `.claude/hooks/`
-- [ ] P6 (phase 1) no `-count=1` in `changed` scope; depcruise cache; `gen-check` stamp over inputs and
-  outputs
+- [x] P6 — c34a098 — `make check` rerun 3.7 → 2.9 s; `go-test` 2.6 → 0.37 s, `analyzer-tests` 1.2 → 0.37 s,
+  `gen-check` 0.67 s → skipped (stamp), `depcruise` 0.43 → 0.45 s (cache gains nothing at this size)
 - [ ] P7 (phase 1/4) fast-check: no whole-package `tsc` per edit
 - [ ] P8 (phase 3) Go module `apps/api/tools/harness` (protected, CODEOWNERS) + Make target; hook wrappers;
   port `guard-bash` and the JSON input of all four hooks
@@ -252,3 +252,13 @@ Per [ADR 0012](../../adr/0012-parsing-sensors-in-go.md): `guard-bash` and every 
   was restored from git. `integrity-check.bats` `add()` now calls `own` on existing files. A1 holds: links
   remove the first-exec cost. The link test skips when the temp dir is on another volume (copy fallback).
   Selftest 30/30. Integrity green (only `scripts/test/`, not config).
+- 2026-10-28: P6 (c34a098). In scope `changed` (`make check`; unset counts as changed) Go tests run without `-count=1`,
+  `arch-web` uses `--cache node_modules/.cache/depcruise`, and `gen-check` skips while a hash of its inputs
+  (sources, generator configs, tool versions, lockfile, Makefile, the script) and of the generated files
+  matches the stamp of its last green run (`gen-check.sh --unchanged`, outside `run.sh` so the target prints
+  the skip). Any other scope runs uncached. The depcruise cache caught a new untracked and an edited tracked
+  violation when warm, but saves nothing at this size; kept for the 2–4 MLOC case. `harness-determinism` now
+  exports scope `full` (as nightly): in `changed` scope run 2 would skip what run 1 stamped. Mutation check:
+  dropping the scope test, an input, the outputs from the hash, or stamping before the compare each fails
+  `gen-check.bats`. Determinism 0 differences (75 s, full). Selftest 30/30. Integrity names only `Makefile`
+  and `gen-check.sh`; the other check-all targets and `test-integration` green.
