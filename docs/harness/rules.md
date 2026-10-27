@@ -7,7 +7,9 @@ deterministic sensor that fails with the remediation below. `scripts/harness/run
 Status: **seed** = created with the template. New rules must be earned (link the incident/PR that motivated
 them) and need a fixture in `scripts/harness/fixtures/` before they merge.
 
-Format per rule: rule · why · sensor · remediation · fixture.
+Format per rule: rule · why · sensor · remediation · fixture. `make harness-selftest` applies every fixture to
+a temp copy of the repo and asserts its sensor fails with the expected message and this remediation
+(`scripts/harness/selftest.sh`; fixture layout documented in its header).
 
 ## Go (apps/api)
 
@@ -66,6 +68,13 @@ Format per rule: rule · why · sensor · remediation · fixture.
 - **Sensor:** `govulncheck`, `make vuln-go` (check-all, drift.yml).
 - **Remediation:** Upgrade the module named in the finding (`go get <module>@<fixed-version>` in apps/api, then `go mod tidy`), or bump `GO_TOOLCHAIN` for stdlib findings.
 - **Fixture:** none (depends on external advisory DB) · Status: seed
+
+### go-no-dead-code
+- **Rule:** No Go function is unreachable from `main` or the tests.
+- **Why:** Agents leave orphans behind; dead code misleads the next agent reading the repo.
+- **Sensor:** `deadcode -test` (golang.org/x/tools), `make deadcode-go` (drift.yml, weekly).
+- **Remediation:** Delete the unreachable function, or call it from the code path (or test) that should use it.
+- **Fixture:** none (weekly drift sensor) · Status: seed
 
 ## Database (apps/api/db)
 

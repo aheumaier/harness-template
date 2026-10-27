@@ -9,7 +9,7 @@ const directHttp = {
 };
 
 export default tseslint.config(
-  { ignores: ['**/node_modules/**', '**/dist/**', '**/coverage/**', 'packages/api-client/src/gen/**', 'apps/api/**', '.bin/**'] },
+  { ignores: ['**/node_modules/**', '**/dist/**', '**/coverage/**', 'packages/api-client/src/gen/**', 'apps/api/**', '.bin/**', 'scripts/harness/fixtures/**'] },
   { linterOptions: { reportUnusedDisableDirectives: 'error' } },
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,

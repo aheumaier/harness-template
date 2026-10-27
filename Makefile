@@ -17,7 +17,7 @@ GCL  := .bin/golangci-lint-custom
 ANALYZERS_SRC := $(shell find $(API)/tools/analyzers -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
 
 ##@ Workflow
-.PHONY: help setup check check-all dev db-up db-reset
+.PHONY: help setup check check-all harness-selftest dev db-up db-reset
 
 help: ## Show targets
 	@awk 'BEGIN{FS=":.*##"} /^##@/{printf "\n%s\n",substr($$0,5)} /^[a-z0-9-]+:.*##/{printf "  %-18s %s\n",$$1,$$2}' $(MAKEFILE_LIST)
@@ -44,6 +44,9 @@ check: ## Fast sensors (<60s warm): format, lint, arch, unit tests, gen-check
 check-all: check ## Everything: check + integration, contract, migration, security, dead code
 	@$(MAKE) -k -j4 vuln-go lint-migrations squawk lint-api contract-check knip
 	@$(MAKE) test-integration
+
+harness-selftest: ## Every fixture in scripts/harness/fixtures must be rejected by its sensor (FIXTURE=name for one)
+	@scripts/harness/selftest.sh $(FIXTURE)
 
 ##@ Tools
 .PHONY: tools deps
@@ -78,6 +81,9 @@ test-analyzers:
 
 vuln-go:
 	@$(RUN) govulncheck go-no-known-vulns --dir $(API) -- govulncheck ./...
+
+deadcode-go: ## Unreachable Go functions (drift.yml; deadcode exits 0, so fail on any output)
+	@$(RUN) deadcode go-no-dead-code --dir $(API) -- bash -c 'out="$$(deadcode -test ./...)"; [[ -z "$$out" ]] || { echo "$$out"; exit 1; }'
 
 ##@ Web sensors (apps/web, packages/*)
 .PHONY: lint-web arch-web typecheck-web test-web knip

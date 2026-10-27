@@ -16,8 +16,8 @@ the harness: guides (feedforward) + sensors (feedback). No business domains.
 | 2 | Atlas migrations, migrate lint, squawk, sqlc, schema doc | `make check` green | done |
 | 3 | OpenAPI 3.1, oapi-codegen strict server, Spectral, oasdiff | `make check` green | done |
 | 4 | pnpm + Turbo, web app, api-client (orval+zod), dep-cruiser, ESLint, knip, Vitest | `make check` green | done |
-| 5 | setup-worktree.sh, dev/db-up/db-reset, per-worktree ports | two worktrees up simultaneously | todo |
-| 6 | check / check-all / gen-check, fixtures, harness-selftest | selftest green | todo |
+| 5 | setup-worktree.sh, dev/db-up/db-reset, per-worktree ports | two worktrees up simultaneously | done |
+| 6 | check / check-all / gen-check, fixtures, harness-selftest | selftest green | done |
 | 7 | new-domain generator + skill + CI probe | probe + `make check` green | todo |
 | 8 | AGENTS.md, nested guides, ARCHITECTURE.md, docs | links resolve, AGENTS ≤100 lines | todo |
 | 9 | .claude settings, hooks, subagents, skills | hooks tested | todo |
@@ -77,8 +77,14 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
 - typescript-eslint 8.72.0 (8.72.1 younger than pnpm 12's default minimumReleaseAge; policy kept).
 - No TS formatter (Prettier) added: not requested; `make check` "format" covers Go only (ADR 0007).
 - Spectral built-ins `operation-operationId`/`operation-tags` replaced by custom rules (rule id in message).
+- harness-selftest links node_modules/.bin into the temp copy instead of copying them (305 MB + 381 MB).
 
 ## Log
+
+- 2026-10-27: phase 6 done: 18 fixtures, `make harness-selftest` green (~20 s). First run passed the Atlas
+  fixtures for the wrong reason (atlas.sum mismatch, `set -e` ignored inside an `&&` chain); EXPECT now pins the
+  tool's own diagnostic code (DS102/DS103). `deadcode` exits 0 on findings, so `deadcode-go` fails on output.
+- 2026-10-27: phase 5 done: two worktrees ran `make dev` simultaneously (distinct ports, separate Postgres).
 
 - 2026-10-27: inputs fixed (name `harness-template`, owner `@aheumaier`). git initialised.
 - 2026-10-27: phase 4 done (orval forceSuccessResponse avoids zod-parsing error bodies as success).
