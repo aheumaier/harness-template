@@ -14,3 +14,4 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0007](0007-frontend-stack-and-boundaries.md) | Frontend stack and boundaries (pnpm, orval+zod, dep-cruiser) | accepted |
 | [0008](0008-per-worktree-isolation.md) | One isolated environment (DB, ports) per git worktree | accepted |
 | [0009](0009-harness-selftest.md) | Sensors are tested with violation fixtures (harness-selftest) | accepted |
+| [0010](0010-base-branch-gates.md) | Label-waivable gates run the base branch's harness (pull_request_target) | accepted |

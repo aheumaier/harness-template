@@ -10,8 +10,8 @@ same target is red on your machine (with `BASE_REF=origin/main` for diff-based s
 | `ci.yml` | PR, push to main | `check-all` | `make setup && make check-all` minus `contract-check` and `harness-integrity` (own workflows, label waivers) | yes |
 | | | `harness-selftest` | every fixture rejected by its sensor ([rules.md](rules.md)) | yes |
 | | | `generator-probe` | `make new-domain NAME=zzz_probe && make check`, then discards the probe and asserts a clean tree | yes |
-| `contract-gate.yml` | PR (incl. label changes) | `api-no-breaking-change` | `make contract-check` when `api/openapi.yaml` changed (oasdiff, red only on breaking changes) | yes |
-| `harness-integrity.yml` | PR (incl. label changes) | `harness-integrity` | the **base branch's** `make harness-integrity` against the PR checkout (`HARNESS_ROOT`) | yes |
+| `contract-gate.yml` | PR via `pull_request_target` (incl. label changes) | `api-no-breaking-change` | the **base branch's** `make contract-check` against the PR's spec when `api/openapi.yaml` changed (oasdiff, red only on breaking changes) | yes |
+| `harness-integrity.yml` | PR via `pull_request_target` (incl. label changes) | `harness-integrity` | the **base branch's** `make harness-integrity` against the PR head (`HARNESS_ROOT`) | yes |
 | `migration-gate.yml` | PR touching `apps/api/db/migrations/**` | `migrations` | append-only, Atlas lint, squawk | no (path-filtered; same sensors in `check-all`) |
 | `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, schema doc, doc links → one open `drift` issue | no |
 
@@ -33,6 +33,15 @@ GitHub lets anyone with triage or write access add a label, including the PR aut
 signal, not a control. The control is the required code-owner review: every harness path and
 `api/openapi.yaml` is in `.github/CODEOWNERS`, so a labelled PR still cannot merge without the owner.
 Diff-based sensors fail closed (exit 2) when `BASE_REF` is missing or shallow; CI checks out full history.
+
+## Base-branch gates
+
+`contract-gate` and `harness-integrity` use `pull_request_target`: the workflow, Makefile and scripts come
+from the base branch, so a PR cannot rewrite the gate that judges it ([ADR 0010](../adr/0010-base-branch-gates.md)).
+That trigger is only safe while the PR tree is **read, never executed**, only `head.sha` reaches a `run:`
+block (through `env`), and the job has `contents: read` and no secrets. Keep those invariants in any edit.
+`ci.yml` has to run PR code, so it runs the PR's own workflow; a PR that weakens it changes a `config`
+path, and the base-branch `harness-integrity` gate stays red until a human adds the label.
 
 ## Branch protection
 

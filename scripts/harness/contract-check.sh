@@ -3,17 +3,19 @@
 # Exit 0 when the spec is new or unchanged in a compatible way; exit 1 with oasdiff's findings otherwise.
 # BREAKING_CHANGE_APPROVED=1 (CI: the `breaking-change-approved` PR label, set by a human) still prints the
 # findings but exits 0. Used by `make contract-check` (check-all) and .github/workflows/contract-gate.yml.
+# The spec is read from HARNESS_ROOT (default: this repo), so CI can judge a PR with the base branch's script.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SPEC=api/openapi.yaml
-cd "$HERE/../.."
+cd "${HARNESS_ROOT:-$HERE/../..}"
 BASE_REF="${BASE_REF:-$("$HERE/merge-base.sh" --ref)}"
 base_commit="$(BASE_REF="$BASE_REF" "$HERE/merge-base.sh")"
 git cat-file -e "$base_commit:$SPEC" 2>/dev/null || exit 0 # no base contract yet: nothing can break
 
-base_spec="$(mktemp -t base-openapi.XXXXXX).yaml"
-trap 'rm -f "$base_spec"' EXIT
+tmp="$(mktemp -t base-openapi.XXXXXX)"
+base_spec="$tmp.yaml" # oasdiff picks the parser by extension
+trap 'rm -f "$tmp" "$base_spec"' EXIT
 git show "$base_commit:$SPEC" >"$base_spec"
 
 if ! oasdiff breaking "$base_spec" "$SPEC" --fail-on ERR --format text; then

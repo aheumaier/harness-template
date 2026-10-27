@@ -43,3 +43,11 @@ check() { BASE_REF=main run "$@" "$SANDBOX/scripts/harness/contract-check.sh"; }
   spec /a
   check -0
 }
+
+@test "judges the spec under HARNESS_ROOT with this script (CI: base script, PR head)" {
+  pr="$BATS_TEST_TMPDIR/pr"
+  git clone -q "$SANDBOX" "$pr"
+  SANDBOX="$pr" spec /a
+  HARNESS_ROOT="$pr" BASE_REF=origin/main run -1 "$SANDBOX/scripts/harness/contract-check.sh"
+  has 'breaks clients compared to origin/main'
+}

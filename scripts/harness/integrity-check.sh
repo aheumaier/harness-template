@@ -21,12 +21,13 @@ BASE_REF="${BASE_REF:-$("$HERE/merge-base.sh" --ref)}"
 base="$(BASE_REF="$BASE_REF" "$HERE/merge-base.sh")"
 
 # changes <pathspec...>: one "path<TAB>line<TAB>+|-<TAB>text" row per added/removed line (removed lines carry
-# their line number on the base side); untracked files count as added.
+# their line number on the base side); untracked files count as added. --text --no-textconv: the PR's
+# .gitattributes (`-diff`, `binary`, textconv) must not turn a hunk into "Binary files differ".
 changes() {
   git -c core.quotePath=false ls-files -o --exclude-standard -- "$@" | while IFS= read -r f; do
     awk -v path="$f" '{ print path "\t" NR "\t+\t" $0 }' "$f"
   done
-  git -c core.quotePath=false diff -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ \
+  git -c core.quotePath=false diff -U0 --text --no-textconv --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ \
     "$base" -- "$@" | awk '
       /^diff --git / { header = 1; next }
       header && /^(---|\+\+\+) [ab]\// { path = substr($0, 7); sub(/\t$/, "", path); next } # "a/" or "b/" + path
@@ -47,7 +48,7 @@ SOURCES=('*.go' '*.ts' '*.tsx' '*.mts' '*.cts' '*.js' '*.jsx' '*.mjs' '*.cjs' '*
   ':!:scripts/harness/fixtures/*/files/*' ':!:scripts/harness/integrity-check.sh'
   ':!:*.gen.go' ':!:apps/api/internal/*/store/*' ':!:packages/api-client/src/gen/*')
 NEVER='(@ts-ignore|@ts-nocheck)'
-SUPPRESSION='(//[[:space:]]*(nolint|lint:ignore)|eslint-disable|/\*[[:space:]]*eslint[[:space:]]|@ts-expect-error|#[[:space:]]*shellcheck[[:space:]]+disable|atlas:nolint|squawk-ignore)'
+SUPPRESSION='(//[[:space:]]*(nolint|lint:(file-)?ignore)|eslint-disable|/\*[[:space:]]*eslint[[:space:]]|@ts-expect-error|#[[:space:]]*shellcheck[[:space:]]+disable|atlas:nolint|squawk-ignore)'
 REASON='reason: .+\(rule: ([a-z0-9-]+)\)'
 while IFS=$'\t' read -r path line sign text; do
   [[ "$sign" == + ]] || continue
@@ -73,7 +74,7 @@ while read -r pattern kind; do
   [[ "$kind" == config ]] && configs+=("$pattern")
 done < <(grep -Ev '^[[:space:]]*(#|$)' "$HERE/protected-paths.txt")
 if [[ "${HARNESS_CHANGE_APPROVED:-0}" != 1 && ${#configs[@]} -gt 0 ]]; then
-  COMMENT='^[[:space:]]*(#|//|/\*|\*|$)'
+  COMMENT='^[[:space:]]*(#|//|/\*|$)' # not a bare `*`: `*.go -diff`, `* @owner` are config
   while IFS=$'\t' read -r path line sign text; do
     [[ "$text" =~ $COMMENT ]] && continue
     [[ "$sign" == + ]] && what=added || what=removed

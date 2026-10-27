@@ -243,16 +243,16 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ## Harness integrity and CI (.github/)
 
 ### harness-suppression-reason
-- **Rule:** Every added suppression (`//nolint`, `//lint:ignore`, `eslint-disable`, `/* eslint … */`, `@ts-expect-error`, `# shellcheck disable`, `-- atlas:nolint`, `-- squawk-ignore`) has `reason: … (rule: <id>)` on the same line, where `<id>` is a `### <id>` heading in this file; `@ts-ignore` and `@ts-nocheck` are never allowed.
+- **Rule:** Every added suppression (`//nolint`, `//lint:ignore`, `//lint:file-ignore`, `eslint-disable`, `/* eslint … */`, `@ts-expect-error`, `# shellcheck disable`, `-- atlas:nolint`, `-- squawk-ignore`) has `reason: … (rule: <id>)` on the same line, where `<id>` is a `### <id>` heading in this file; `@ts-ignore` and `@ts-nocheck` are never allowed.
 - **Why:** A bare suppression silently turns a sensor off; the reason and rule id make each exception reviewable and greppable.
-- **Sensor:** `scripts/harness/integrity-check.sh` on lines added since the merge base with `BASE_REF` in Go, TS/JS, shell, SQL and workflow files (`make harness-integrity`, in `make check-all` and `harness-integrity.yml`, which runs the base branch's copy of the script).
+- **Sensor:** `scripts/harness/integrity-check.sh` on lines added since the merge base with `BASE_REF` in Go, TS/JS, shell, SQL and workflow files (`make harness-integrity`, in `make check-all` and `harness-integrity.yml`, which runs the base branch's copy of the script; the PR's `.gitattributes` cannot hide a hunk).
 - **Remediation:** Fix the code instead; if the suppression is truly needed, append `reason: <why it is safe> (rule: <rule-id>)` on the same line with an id from this file, and replace `@ts-ignore`/`@ts-nocheck` with a fixed type or a reasoned `@ts-expect-error`.
 - **Fixture:** `fixtures/harness-suppression-no-reason` · Status: seed
 
 ### harness-config-not-loosened
-- **Rule:** No non-comment line of a harness config (`config` entries in `scripts/harness/protected-paths.txt`: linter configs, Makefile, workflows, CODEOWNERS, tool versions, the protected-path list itself) is added or removed unless a human approves. Tightening counts too: telling it from loosening takes judgment.
+- **Rule:** No non-comment line of a harness config (`config` entries in `scripts/harness/protected-paths.txt`: linter configs, Makefile, workflows, CODEOWNERS, `.gitattributes`, tool versions, the protected-path list itself, and sensor code: `scripts/harness/`, custom analyzers, Claude hooks, the tool installer) is added or removed unless a human approves. Tightening counts too: telling it from loosening takes judgment.
 - **Why:** The cheapest way to make a red sensor green is to weaken its config; that must be a visible human decision, not an agent's shortcut.
-- **Sensor:** `scripts/harness/integrity-check.sh` on the diff since the merge base with `BASE_REF` (`make harness-integrity`, `harness-integrity.yml`; CI uses the base branch's script and path list, so a PR cannot unprotect itself). Waived only by `HARNESS_CHANGE_APPROVED=1`, set in CI by the `harness-change-approved` PR label.
+- **Sensor:** `scripts/harness/integrity-check.sh` on the diff since the merge base with `BASE_REF` (`make harness-integrity`, `harness-integrity.yml`; CI runs the base branch's workflow, script and path list via `pull_request_target` ([ADR 0010](../adr/0010-base-branch-gates.md)), so a PR cannot unprotect itself). Waived only by `HARNESS_CHANGE_APPROVED=1`, set in CI by the `harness-change-approved` PR label.
 - **Remediation:** Revert the config change and fix the code; if the rule itself is wrong, explain why in the PR description (Harness change: Y + rationale) and ask a code owner to add the `harness-change-approved` label.
 - **Fixture:** `fixtures/harness-config-loosened` · Status: seed
 

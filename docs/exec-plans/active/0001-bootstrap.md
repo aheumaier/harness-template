@@ -106,7 +106,10 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
 - Label waivers (human decisions, ci.md): `harness-change-approved` waives only the config check,
   `breaking-change-approved` the contract gate. CI's `check-all` skips those two sensors (`CHECK_ALL_SKIP`) so
   a waived PR can go green; their own workflows are required checks.
-- CI's harness-integrity runs the base branch's Makefile/script/path list against the PR (`HARNESS_ROOT`).
+- CI's harness-integrity and contract-gate use `pull_request_target`: base-branch workflow/Makefile/scripts,
+  PR head read (never executed) via `HARNESS_ROOT` (ADR 0010; `pull_request` would run the PR's workflow).
+- Sensor code (`scripts/harness/`, analyzers, Claude hooks, installer) and `.gitattributes` are `config` too;
+  the integrity diff uses `--text --no-textconv` so the PR's `.gitattributes` cannot hide hunks.
 - Diff-based sensors fail closed when `BASE_REF` is missing or shallow (`scripts/harness/merge-base.sh`).
 - Branch protection: `enforce_admins: false` (single code owner cannot approve own PR; owner decision),
   required checks pinned to the GitHub Actions app.
@@ -123,6 +126,8 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
 
 ## Log
 
+- 2026-10-27: second phase-10 review: base-branch gates via `pull_request_target` (ADR 0010), sensor code
+  and `.gitattributes` as `config`, `.gitattributes`-proof diff, `lint:file-ignore` marker, mktemp leak.
 - 2026-10-27: phase 10 review fixes: CHECK_ALL_SKIP + `breaking-change-approved` waiver, base-branch
   integrity check, strict config rule, more suppression markers/sources + rule-id validation, fail-closed
   merge base, CODEOWNERS mirror test, least-privilege workflow tokens. 64 bats tests.

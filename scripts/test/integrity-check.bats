@@ -52,7 +52,7 @@ add() { printf '%s\n' "${@:2}" >>"$SANDBOX/$1"; }
 
 @test "flags SQL, staticcheck, inline eslint and workflow suppressions without a reason" {
   add m.sql '-- atlas'':nolint DS103' '-- squawk''-ignore ban-drop-column'
-  add y.go '//lint'':ignore SA1019 old api'
+  add y.go '//lint'':ignore SA1019 old api' '//lint'':file-ignore U1000 generated elsewhere'
   add c.jsx '/* eslint'' no-console: off */'
   mkdir -p "$SANDBOX/.github/workflows"
   add .github/workflows/w.yml "      - run: echo \$x $SHELLCHECK"
@@ -60,6 +60,7 @@ add() { printf '%s\n' "${@:2}" >>"$SANDBOX/$1"; }
   has 'm.sql:1: suppression without'
   has 'm.sql:2: suppression without'
   has 'y.go:1: suppression without'
+  has 'y.go:2: suppression without'
   has 'c.jsx:1: suppression without'
   has '.github/workflows/w.yml:1: suppression without'
 }
@@ -84,11 +85,27 @@ add() { printf '%s\n' "${@:2}" >>"$SANDBOX/$1"; }
   has "BASE_REF 'no-such-branch' is not a commit"
 }
 
-@test "ignores fixture overlays" {
+@test "ignores fixture overlays in the suppression check (a new fixture is still a harness change)" {
   mkdir -p "$SANDBOX/scripts/harness/fixtures/f/files"
   add scripts/harness/fixtures/f/files/x.go "$NOLINT"
   git -C "$SANDBOX" add -A
-  check -0
+  HARNESS_CHANGE_APPROVED=1 check -0
+}
+
+@test "the PR's .gitattributes cannot hide a hunk" {
+  printf '%s\n' '*.go -diff' '*.toml binary' >"$SANDBOX/.gitattributes"
+  add x.go "f() $NOLINT"
+  add .squawk.toml 'excluded_rules = ["ban-drop-column"]'
+  check -1
+  has 'x.go:2: suppression without'
+  has '.squawk.toml:5: added harness config line: excluded_rules'
+  has '.gitattributes:1: added harness config line: *.go -diff'
+}
+
+@test "flags a change to sensor code" {
+  add scripts/harness/merge-base.sh 'exit 0'
+  check -1
+  has 'scripts/harness/merge-base.sh:27: added harness config line: exit 0'
 }
 
 @test "flags a removed or loosening line in a harness config" {

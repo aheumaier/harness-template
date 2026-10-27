@@ -13,6 +13,7 @@ atlas.hcl                   @aheumaier
 .squawk.toml                @aheumaier
 .shellcheckrc               @aheumaier
 .editorconfig               @aheumaier
+.gitattributes              @aheumaier
 knip.json                   @aheumaier
 tsconfig*.json              @aheumaier
 /Makefile                   @aheumaier

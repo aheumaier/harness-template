@@ -1,15 +1,20 @@
 # Harness file (protected). The change must not weaken the harness: every added suppression carries
-# `reason: … (rule: <id>)`, @ts-ignore never appears, harness configs are not loosened.
+# `reason: … (rule: <id>)`, @ts-ignore never appears, harness configs and sensor code are not changed.
 # rules.md#harness-suppression-reason, #harness-config-not-loosened
 #
 # The `harness-change-approved` label waives the config check only (never the suppression check). It is a
 # human decision after reading the rationale in the PR description; CODEOWNERS review still applies.
-# The check itself (Makefile, run.sh, integrity-check.sh, protected-paths.txt) comes from the base branch,
-# so a PR cannot weaken the sensor that judges it; only the change under test comes from the PR.
+#
+# pull_request_target: this workflow file, the Makefile and the scripts all come from the base branch, so a
+# PR cannot weaken the gate that judges it (with `pull_request`, the PR's own copy of this file would run).
+# Safe only while all of these hold (docs/adr/0010-base-branch-gates.md):
+#   - nothing from the PR tree is executed: it is read with git, awk and grep only;
+#   - only head.sha reaches a `run:` block, through env (never head.ref, title or body);
+#   - permissions stay `contents: read` and no secret is referenced.
 name: harness-integrity
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
@@ -20,13 +25,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (base branch)
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Check out the base branch's harness
-        run: git worktree add --detach "$RUNNER_TEMP/base" "origin/$GITHUB_BASE_REF"
-      - run: make -C "$RUNNER_TEMP/base" harness-integrity BASE_REF="origin/$GITHUB_BASE_REF"
+      - name: Fetch the PR head (read, never executed)
         env:
-          HARNESS_ROOT: ${{ github.workspace }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --no-tags origin "$PR_SHA"
+          git worktree add --detach "$RUNNER_TEMP/pr" "$PR_SHA"
+      - run: make harness-integrity BASE_REF="origin/$GITHUB_BASE_REF"
+        env:
+          HARNESS_ROOT: ${{ runner.temp }}/pr
           HARNESS_CHANGE_APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'harness-change-approved') && '1' || '0' }}
