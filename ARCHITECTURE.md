@@ -36,9 +36,12 @@ flowchart LR
 | `apps/web` | Vite + React app. Talks to the API only through `@harness-template/api-client`. |
 | `packages/api-client` | Generated hooks and zod schemas (`src/gen/`, never edited) + hand-written `src/index.ts` (`problemOf`). |
 | `packages/domain` | Pure TypeScript domain logic shared by apps: no React, no browser APIs, no HTTP. |
-| `scripts/harness` | Sensors' glue: `run.sh` (uniform failure output with remediation), `gen-check.sh`, `contract-check.sh`, `check-links.sh`, `selftest.sh` + `fixtures/`. |
+| `scripts/harness` | Sensors' glue: `run.sh` (uniform failure output with remediation), `gen-check.sh`, `contract-check.sh`, `integrity-check.sh`, `check-links.sh`, `check-commits.sh`, `check-specs.sh`, `merge-base.sh`, `selftest.sh` + `fixtures/`. |
+| `scripts/git-hooks` | Git hooks installed by `make setup` (`core.hooksPath`): `commit-msg` checks Conventional Commits. |
 | `scripts/` | `setup-worktree.sh`, `install-tools.sh` (pinned versions in `tool-versions.env`), `new-domain.sh`, `gen-schema-doc.sh`. Shell is code: shellcheck + shfmt (`.shellcheckrc`, `.editorconfig`) and bats tests in `scripts/test/` for these scripts and `.claude/hooks/`. |
 | `docs/` | Rules, ADRs, design docs, exec plans, quality grades, generated schema doc. |
+| `specs/` | Product feature specs (`NNN-slug/`: spec, plan, tasks) written with spec-kit; created by the first `/speckit-specify`. |
+| `.specify/` | Vendored spec-kit 1.1.3 (scripts, templates; never edited) and our `memory/constitution.md` ([ADR 0011](docs/adr/0011-conventional-commits-and-spec-kit.md)). |
 | `.claude/` | Claude Code settings, hooks, subagents and skills. `.github/`: CI gates. |
 
 ## Layers

@@ -1,7 +1,7 @@
 ## What and why
 
 <!-- One paragraph. Link the spec (specs/NNN-…/) for a product feature, or the exec plan
-     (docs/exec-plans/active/…) for harness/infra work. The PR title is a Conventional Commit. -->
+     (docs/exec-plans/active/…) for harness/infra work. The PR title is a Conventional Commit of at most 90 characters. -->
 
 ## Checklist
 

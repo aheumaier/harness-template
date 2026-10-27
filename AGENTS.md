@@ -44,9 +44,10 @@ The frontend mirrors this: `packages/domain` is pure TS (no React, no browser AP
 5. **Harness files are not yours to change.** Linter configs, `scripts/harness/**`, `.claude/**`,
    `.github/**` and this file are protected. If a rule is wrong, propose the change in the PR description.
 6. **Done means green.** `make check` before you say a task is done; `make check-all` before a PR.
-7. **The repo is the system of record.** Decisions go in [docs/adr/](docs/adr/README.md); product features
-   are specified in `specs/NNN-slug/` with spec-kit (`/speckit-specify` → `/speckit-plan` → `/speckit-tasks`);
-   harness and infra work is planned in [docs/exec-plans/](docs/exec-plans/); known debt in
+7. **The repo is the system of record.** Decisions go in [docs/adr/](docs/adr/README.md); new product
+   capabilities are specified in `specs/NNN-slug/` with spec-kit (`/speckit-specify` → `/speckit-plan` →
+   `/speckit-tasks`); all other multi-step work (harness, infra, refactors) in
+   [docs/exec-plans/](docs/exec-plans/); known debt in
    [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md).
 
 ## Where to look

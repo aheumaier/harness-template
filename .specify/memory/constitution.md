@@ -13,7 +13,8 @@ binding. A plan that needs a rule changed proposes a harness change in its PR; i
 
 ### II. Contract first
 Every API change starts in `api/openapi.yaml`, then `make gen`, then the generated interface is implemented
-([ADR 0005](../../docs/adr/0005-spec-first-contract.md)). A plan names the operations and schemas it adds.
+([ADR 0005](../../docs/adr/0005-spec-first-contract.md)). A plan names the operations and schemas it adds;
+its `contracts/` lists them in prose and never holds an OpenAPI document (rules.md#specs-structure).
 
 ### III. Layers and domains
 Backend code lives in `apps/api/internal/<domain>/{model,store,service,api}`, created with
@@ -28,7 +29,8 @@ Tasks end with `make check`; the feature PR with `make check-all`. Commit subjec
 
 ## Governance
 
-This file is amended by PR with `/speckit-constitution`, and only to point at the harness: a new rule goes
+This file is a protected harness file: a human amends it (`HARNESS_EDIT=1`, `/speckit-constitution`) in a
+harness PR, and only to point at the harness: a new rule goes
 into rules.md with a sensor and fixture first. Specs live in `specs/NNN-slug/` (product features only;
 harness and infra work goes in `docs/exec-plans/`, [ADR 0011](../../docs/adr/0011-conventional-commits-and-spec-kit.md)).
 

@@ -167,6 +167,8 @@ lint-ci: ## actionlint (+ shellcheck on run: blocks) on .github/workflows
 harness-integrity: ## Added suppressions carry a reason; harness configs are not loosened (vs BASE_REF)
 	@$(RUN) integrity harness-suppression-reason,harness-config-not-loosened -- env BASE_REF="$(BASE_REF)" scripts/harness/integrity-check.sh
 
+# PR_TITLE reaches these from the pull_request_target job as an env var (ADR 0011): never write $(PR_TITLE)
+# in a recipe, make would expand a title like `$(shell …)` in a job that holds the base branch's checkout.
 commits: ## Commit subjects (and PR_TITLE) since BASE_REF follow Conventional Commits
 	@$(RUN) commits git-conventional-commits -- env BASE_REF="$(BASE_REF)" scripts/harness/check-commits.sh
 

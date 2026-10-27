@@ -43,10 +43,24 @@ msg() { # status message
   has 'subject is 106 characters, max 100'
 }
 
-@test "checks PR_TITLE when set" {
+@test "checks PR_TITLE when set, with room for GitHub's squash suffix" {
   commit 'feat: fine'
   PR_TITLE='Add banner' check -1
   has "PR title: 'Add banner' is not"
+  PR_TITLE="docs: $(printf 'x%.0s' {1..90})" check -1
+  has 'PR title: subject is 96 characters, max 90'
+}
+
+@test "passes an empty range" {
+  check -0
+}
+
+@test "reads the commits in HARNESS_ROOT, not the script's own checkout" {
+  commit 'update stuff'
+  mkdir -p "$BATS_TEST_TMPDIR/base"
+  cp -R "$SANDBOX/scripts" "$BATS_TEST_TMPDIR/base/"
+  HARNESS_ROOT="$SANDBOX" BASE_REF=main run -1 "$BATS_TEST_TMPDIR/base/scripts/harness/check-commits.sh"
+  has "'update stuff' is not"
 }
 
 @test "ignores merge commits" {
@@ -71,4 +85,6 @@ msg() { # status message
   msg -0 "Merge branch 'main' into work"
   msg -0 'Revert "feat: x"'
   msg -0 'fixup! feat: x'
+  run -1 "$SANDBOX/scripts/harness/check-commits.sh" --msg
+  has 'usage: check-commits.sh --msg FILE'
 }
