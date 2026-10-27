@@ -17,7 +17,10 @@ setup() {
 }
 
 check() { BASE_REF=main run "$@" "$SANDBOX/scripts/harness/integrity-check.sh"; }
-add() { printf '%s\n' "${@:2}" >>"$SANDBOX/$1"; }
+add() {
+  [[ ! -e "$SANDBOX/$1" ]] || own "$1" # sandboxed executables are hardlinks to the real files
+  printf '%s\n' "${@:2}" >>"$SANDBOX/$1"
+}
 
 @test "passes when nothing changed" {
   check -0

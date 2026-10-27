@@ -24,16 +24,42 @@ hook() {
     "$2" "${3:-$REPO}" | "$REPO/.claude/hooks/$1"
 }
 
-# sandbox <path...>: throwaway git repo in $SANDBOX with copies of the given repo files (scripts resolve
-# the repo root from their own location, so a copy operates on the sandbox).
+# sandbox <path...>: throwaway git repo in $SANDBOX with the given repo files (scripts resolve the repo root
+# from their own location, so they operate on the sandbox). Executables are hardlinked: macOS assesses every
+# newly written executable on its first exec (~0.35 s each; exec plan 0002). Data files are copied, and so is
+# an executable when the link fails (another volume). A link writes through to the real file: call `own` before
+# a test writes to a sandboxed executable; teardown_file fails the file if one did not.
 sandbox() {
   SANDBOX="$BATS_TEST_TMPDIR/repo"
   local f
   for f in "$@"; do
     mkdir -p "$SANDBOX/$(dirname "$f")"
+    if [[ -x "$REPO/$f" ]] && ln "$REPO/$f" "$SANDBOX/$f" 2>/dev/null; then continue; fi
     cp "$REPO/$f" "$SANDBOX/$f"
   done
   git -C "$SANDBOX" init -q
+}
+
+# own <path...>: replaces sandboxed files with private copies (same content and mode), breaking the hardlink
+# to the real file before a test writes to them.
+own() {
+  local f
+  for f in "$@"; do
+    cp "$SANDBOX/$f" "$SANDBOX/$f.own" && mv -f "$SANDBOX/$f.own" "$SANDBOX/$f"
+  done
+}
+
+# Write-through guard for the hardlinks above, in every bats file that loads this one: the real harness
+# scripts must be byte-identical after the file's tests. A checksum, not `git diff --quiet`, so uncommitted
+# harness edits of the developer do not fail it. A file that needs its own setup_file/teardown_file calls these.
+harness_cksum() { (cd "$REPO" && find scripts .claude/hooks -type f -exec cksum {} + | LC_ALL=C sort -k3); }
+setup_file() { harness_cksum >"$BATS_FILE_TMPDIR/harness.cksum"; }
+teardown_file() {
+  harness_cksum >"$BATS_FILE_TMPDIR/harness.cksum.after"
+  cmp -s "$BATS_FILE_TMPDIR/harness.cksum" "$BATS_FILE_TMPDIR/harness.cksum.after" && return 0
+  echo "a test wrote through a sandbox hardlink into the real harness files (restore them with git; call own <path> before writing):" >&2
+  diff "$BATS_FILE_TMPDIR/harness.cksum" "$BATS_FILE_TMPDIR/harness.cksum.after" >&2
+  return 1
 }
 
 # sandbox_base: commit everything in $SANDBOX as branch main (the BASE_REF for diff-based checks).
