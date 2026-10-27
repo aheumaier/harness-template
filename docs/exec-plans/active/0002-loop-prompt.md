@@ -102,7 +102,10 @@ Measure hooks with `HARNESS_EDIT` unset (`env -u HARNESS_EDIT`): it short-circui
 
 **6. Verify.** Run `make check`, then `make harness-selftest` (set `SELFTEST_SKIP_DOCKER=1` only if Docker is
 unavailable, and say so). For slices touching CI, a sensor's wiring, scoping, or the Makefile, also run
-`make check-all`. If verification fails, fix the cause; do not edit the sensor to pass. If you cannot get
+`make check-all`. Its `harness-integrity` step fails on every slice with `harness-config-not-loosened`
+findings for the protected files you changed: that is the human gate (the PR label), not a defect. Check
+that it names only files this slice changed, do not set `HARNESS_CHANGE_APPROVED`, and run the rest of
+`check-all` directly (`make -k -j4 <its other targets>` and `make test-integration`). If verification fails, fix the cause; do not edit the sensor to pass. If you cannot get
 green within this iteration:
 - revert your changes (`git checkout -- . && git clean -fd`; no stash, it outlives the iteration);
 - mark the item `- [!] Pn — <what failed, the command, the first error line>`;
@@ -111,7 +114,8 @@ green within this iteration:
 
 **7. Measure after and record.** Measure again as in step 4. Tick the item as
 `- [x] Pn — <short sha> — <before> → <after>`. Update the "Today" column of each NFR you measured and add a
-dated line to the plan's **Log**. Commit the slice and the plan update together:
+dated line to the plan's **Log**. Commit the slice first, then the plan update with the slice's sha in a
+`docs(harness): record Pn` commit (a commit cannot contain its own sha):
 - use a Conventional Commit with scope `harness` and type `perf`, `ci`, `test`, `refactor` or `build`, never
   `feat`;
 - put why in the body;
