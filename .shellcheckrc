@@ -1,0 +1,5 @@
+# shellcheck config for make lint-sh. Resolve `source` directives relative to the script.
+source-path=SCRIPTDIR
+external-sources=true
+# SC2016: single-quoted `$` here is always an awk/sed/jq program or a Go template, never a missed expansion.
+disable=SC2016

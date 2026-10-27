@@ -3,7 +3,7 @@
 # `-- atlas:txmode none` directive (needed for CREATE INDEX CONCURRENTLY), so those files are checked
 # with --no-assume-in-transaction and all others with .squawk.toml's assume_in_transaction = true.
 set -uo pipefail
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 1
 tx=() notx=()
 for f in apps/api/db/migrations/*.sql; do
   if grep -qx -- '-- atlas:txmode none' "$f"; then notx+=("$f"); else tx+=("$f"); fi

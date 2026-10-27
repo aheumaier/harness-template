@@ -52,7 +52,10 @@ commit() { # message: rehash migrations if touched, then commit (must change som
   if [[ -n "$(g status --porcelain -- apps/api/db/migrations)" ]]; then
     (cd "$work/apps/api" && atlas migrate hash --env local) || return 1
   fi
-  [[ -n "$(g status --porcelain)" ]] || { echo "fixture changed nothing" >&2; return 1; }
+  [[ -n "$(g status --porcelain)" ]] || {
+    echo "fixture changed nothing" >&2
+    return 1
+  }
   g add -A && g commit -qm "$1"
 }
 
@@ -61,17 +64,32 @@ docker_ok() { command -v docker >/dev/null && docker info >/dev/null 2>&1; }
 pass=0 fail=0 skip=0
 for name in "${names[@]}"; do
   dir="$FIXTURES/$name"
-  [[ -f "$dir/fixture.conf" ]] || { echo "✗ $name: no $dir/fixture.conf" >&2; fail=$((fail + 1)); continue; }
+  [[ -f "$dir/fixture.conf" ]] || {
+    echo "✗ $name: no $dir/fixture.conf" >&2
+    fail=$((fail + 1))
+    continue
+  }
   RULE='' TARGET='' EXPECT='' NEEDS_DOCKER=0
   # Parsed, not sourced: only these keys, values optionally single- or double-quoted.
   while IFS='=' read -r key val; do
-    val="${val#[\'\"]}"; val="${val%[\'\"]}"
+    val="${val#[\'\"]}"
+    val="${val%[\'\"]}"
     case "$key" in RULE) RULE="$val" ;; TARGET) TARGET="$val" ;; EXPECT) EXPECT="$val" ;; NEEDS_DOCKER) NEEDS_DOCKER="$val" ;; esac
   done < <(grep -E '^(RULE|TARGET|EXPECT|NEEDS_DOCKER)=' "$dir/fixture.conf")
-  [[ "$TARGET" =~ ^[a-z0-9-]+$ && -n "$RULE" && -n "$EXPECT" ]] || { echo "✗ $name: bad fixture.conf" >&2; fail=$((fail + 1)); continue; }
+  [[ "$TARGET" =~ ^[a-z0-9-]+$ && -n "$RULE" && -n "$EXPECT" ]] || {
+    echo "✗ $name: bad fixture.conf" >&2
+    fail=$((fail + 1))
+    continue
+  }
   if [[ "$NEEDS_DOCKER" == 1 ]] && ! docker_ok; then
-    if [[ "${SELFTEST_SKIP_DOCKER:-0}" == 1 ]]; then echo "- $name: skipped (no Docker)"; skip=$((skip + 1)); continue; fi
-    echo "✗ $name: needs Docker (or SELFTEST_SKIP_DOCKER=1)" >&2; fail=$((fail + 1)); continue
+    if [[ "${SELFTEST_SKIP_DOCKER:-0}" == 1 ]]; then
+      echo "- $name: skipped (no Docker)"
+      skip=$((skip + 1))
+      continue
+    fi
+    echo "✗ $name: needs Docker (or SELFTEST_SKIP_DOCKER=1)" >&2
+    fail=$((fail + 1))
+    continue
   fi
 
   g checkout -qf -B main "$base" && g clean -fdq
@@ -82,7 +100,12 @@ for name in "${names[@]}"; do
     overlay "$dir/base" && { [[ ! -d "$dir/base" ]] || commit "fixture base"; } &&
       g checkout -qb fixture && overlay "$dir/files" &&
       { [[ ! -x "$dir/apply.sh" ]] || (cd "$work" && "$dir/apply.sh"); } && commit "fixture $name"
-  } >"$out" 2>&1 || { echo "✗ $name: could not apply fixture" >&2; cat "$out" >&2; fail=$((fail + 1)); continue; }
+  } >"$out" 2>&1 || {
+    echo "✗ $name: could not apply fixture" >&2
+    cat "$out" >&2
+    fail=$((fail + 1))
+    continue
+  }
 
   status=0
   make -C "$work" --no-print-directory "$TARGET" BASE_REF=main >"$out" 2>&1 || status=$?

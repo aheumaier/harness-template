@@ -1,0 +1,7 @@
+# shfmt reads its style from here (make fmt / lint-sh); editors pick it up too.
+root = true
+
+[*.{sh,bash,bats}]
+indent_style = space
+indent_size = 2
+switch_case_indent = true

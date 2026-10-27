@@ -13,13 +13,18 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 RULES="$ROOT/docs/harness/rules.md"
 MAX_LINES="${HARNESS_MAX_LINES:-80}"
 
-sensor="$1"; rules="$2"; shift 2
+sensor="$1"
+rules="$2"
+shift 2
 dir="$ROOT"
-if [[ "${1:-}" == "--dir" ]]; then dir="$ROOT/$2"; shift 2; fi
+if [[ "${1:-}" == "--dir" ]]; then
+  dir="$ROOT/$2"
+  shift 2
+fi
 [[ "${1:-}" == "--" ]] && shift
 
 log="$(mktemp -t "harness-${sensor}.XXXXXX")"
-( cd "$dir" && "$@" ) >"$log" 2>&1
+(cd "$dir" && "$@") >"$log" 2>&1
 status=$?
 
 if [[ $status -eq 0 ]]; then
@@ -39,19 +44,21 @@ remediation() { # rule-id -> remediation line from rules.md
 }
 
 {
-  rel="${dir#"$ROOT"}"; rel="${rel#/}"
+  rel="${dir#"$ROOT"}"
+  rel="${rel#/}"
   echo "✗ sensor '${sensor}' failed (exit ${status}) — cwd: ${rel:-.}"
   echo "  command: $*"
   echo "────────────────────────────────────────────────────────────"
   lines=$(wc -l <"$log" | tr -d ' ')
   head -n "$MAX_LINES" "$log"
-  if (( lines > MAX_LINES )); then echo "… $((lines - MAX_LINES)) more lines in $log"; fi
+  if ((lines > MAX_LINES)); then echo "… $((lines - MAX_LINES)) more lines in $log"; fi
   echo "────────────────────────────────────────────────────────────"
   IFS=',' read -ra ids <<<"$rules"
   # Show the rules named in the output; if the tool names none of them, show them all.
-  any=0; for id in "${ids[@]}"; do grep -q -- "$id" "$log" && any=1; done
+  any=0
+  for id in "${ids[@]}"; do grep -q -- "$id" "$log" && any=1; done
   for id in "${ids[@]}"; do
-    if (( ! any )) || grep -q -- "$id" "$log"; then
+    if ((! any)) || grep -q -- "$id" "$log"; then
       echo "rule:        $id"
       echo "remediation: $(remediation "$id")"
       echo "docs:        docs/harness/rules.md#$id"

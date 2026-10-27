@@ -44,7 +44,7 @@ db-reset: ## Drop this worktree's database volume, recreate, migrate
 	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
 
 check: ## Fast sensors (<60s warm): format, lint, arch, unit tests, gen-check
-	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers schema-doc-fresh docs-links lint-web arch-web typecheck-web test-web
+	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers lint-sh fmt-check-sh test-sh schema-doc-fresh docs-links lint-web arch-web typecheck-web test-web
 	@$(MAKE) gen-check
 
 check-all: check ## Everything: check + integration, contract, migration, security, dead code
@@ -70,8 +70,9 @@ $(GCL): $(API)/.custom-gcl.yml $(ANALYZERS_SRC) scripts/tool-versions.env
 
 ##@ Go sensors
 .PHONY: fmt lint-go arch-go test-go test-analyzers vuln-go deadcode-go
-fmt: $(GCL) ## Auto-format Go code
+fmt: $(GCL) ## Auto-format Go and shell code
 	@cd $(API) && ../../$(GCL) fmt ./...
+	@shfmt -w $(SH_FILES)
 
 lint-go: $(GCL)
 	@$(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-domain-isolation,go-format --dir $(API) -- ../../$(GCL) run ./...
@@ -137,6 +138,20 @@ schema-doc-fresh:
 
 test-integration: ## Integration tests against the worktree's Postgres (.env.local)
 	@$(WITH_ENV) $(RUN) go-integration go-tests-pass --dir $(API) -- go test -race -count=1 -tags=integration ./...
+
+##@ Shell sensors (scripts/, .claude/hooks/)
+.PHONY: lint-sh fmt-check-sh test-sh
+# Every shell script and bats file, except fixture overlays (deliberate violations).
+SH_FILES = $(shell git ls-files -co --exclude-standard '*.sh' '*.bash' '*.bats' ':!:scripts/harness/fixtures/*/files/**')
+
+lint-sh: ## shellcheck (.shellcheckrc) on every shell script
+	@$(RUN) shellcheck sh-shellcheck -- shellcheck -f gcc $(SH_FILES)
+
+fmt-check-sh: ## shfmt (style from .editorconfig) on every shell script
+	@$(RUN) shfmt sh-format -- shfmt -d $(SH_FILES)
+
+test-sh: ## bats tests for scripts/ and .claude/hooks/ (scripts/test)
+	@$(RUN) bats sh-tests-pass -- bats scripts/test
 
 ##@ Docs
 .PHONY: docs-links

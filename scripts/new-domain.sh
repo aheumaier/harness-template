@@ -16,7 +16,10 @@ cd "$ROOT"
 source scripts/tool-versions.env
 export GOTOOLCHAIN="$GO_TOOLCHAIN" PATH="$ROOT/.bin:$ROOT/node_modules/.bin:$PATH"
 
-die() { echo "new-domain: $*" >&2; exit 1; }
+die() {
+  echo "new-domain: $*" >&2
+  exit 1
+}
 
 name="${1:-}"
 [[ "$name" =~ ^[a-z][a-z0-9_]*[a-z0-9]$ ]] || die "NAME must match ^[a-z][a-z0-9_]*[a-z0-9]\$ (got '${name}'), e.g. make new-domain NAME=billing"
@@ -37,9 +40,13 @@ for f in "$ROUTES" "$SPEC" "$QUALITY"; do grep -q 'harness:' "$f" || die "genera
 
 # insert <file> <marker-regex>: stdin goes on the lines before the first line matching the marker.
 insert() {
-  local tmp; tmp="$(mktemp)"
+  local tmp
+  tmp="$(mktemp)"
   BLOCK="$(cat)" awk -v marker="$2" '!done && $0 ~ marker { print ENVIRON["BLOCK"]; done = 1 } { print } END { exit !done }' "$1" >"$tmp" ||
-    { rm -f "$tmp"; die "marker /$2/ not found in $1"; }
+    {
+      rm -f "$tmp"
+      die "marker /$2/ not found in $1"
+    }
   mv "$tmp" "$1"
 }
 
@@ -192,7 +199,8 @@ insert "$SPEC" 'harness:domain-schemas' <<EOF
 EOF
 
 if grep -q '^sql: \[\]' "$SQLC"; then
-  tmp="$(mktemp)"; sed 's/^sql: \[\]$/sql:/' "$SQLC" >"$tmp" && mv "$tmp" "$SQLC"
+  tmp="$(mktemp)"
+  sed 's/^sql: \[\]$/sql:/' "$SQLC" >"$tmp" && mv "$tmp" "$SQLC"
 fi
 cat >>"$SQLC" <<EOF
   - engine: postgresql
@@ -211,7 +219,7 @@ EOF
 
 # --- migration ----------------------------------------------------------------------------------------
 (cd apps/api && atlas migrate new "$name" --env local)
-migration="$(ls apps/api/db/migrations/*_"$name".sql | tail -1)"
+migration="$(find apps/api/db/migrations -name "*_${name}.sql" | sort | tail -1)"
 cat >"$migration" <<EOF
 -- First migration of the $name domain: add its tables here (.claude/skills/add-migration).
 SET lock_timeout = '2s';

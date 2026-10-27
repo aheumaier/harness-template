@@ -217,6 +217,29 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Remediation:** Change the source (api/openapi.yaml, db/queries/*.sql, db/migrations) instead, run `make gen`, and commit the regenerated files.
 - **Fixture:** `fixtures/gen-hand-edit-api-client` · Status: seed
 
+## Shell (scripts/, .claude/hooks/)
+
+### sh-shellcheck
+- **Rule:** Every shell script and bats file passes shellcheck (`.shellcheckrc`); a `# shellcheck disable=` needs `# reason: … (rule: <id>)` on the same line.
+- **Why:** The harness itself is shell: an unquoted variable or a failed `cd` in a sensor or hook silently turns it green or deletes the wrong path.
+- **Sensor:** shellcheck (`make lint-sh`, part of `make check`; fast-check hook per file).
+- **Remediation:** Fix the line shellcheck names (the SCxxxx code links to https://www.shellcheck.net/wiki/SCxxxx); quote expansions, add `|| exit` after `cd`, and prefer an explicit `if` to `a && b || c`.
+- **Fixture:** `fixtures/sh-unquoted-variable` · Status: seed
+
+### sh-format
+- **Rule:** Shell scripts and bats files are `shfmt` formatted (style in `.editorconfig`: 2 spaces, indented `case`).
+- **Why:** Formatting noise hides real diffs from reviewers and agents.
+- **Sensor:** shfmt (`make fmt-check-sh`, part of `make check`; fast-check hook per file).
+- **Remediation:** Run `make fmt`.
+- **Fixture:** `fixtures/sh-unformatted` · Status: seed
+
+### sh-tests-pass
+- **Rule:** The bats tests in `scripts/test/` pass; a script under `scripts/` or `.claude/hooks/` with branching logic has a `scripts/test/<script>.bats`.
+- **Why:** Sensors and hooks are code that guards all other code: a hook that blocks too much stalls agents, one that blocks too little is a false sense of safety.
+- **Sensor:** bats-core (`make test-sh`, part of `make check`). Scripts that need the full toolchain (`selftest.sh`, `gen-check.sh`, `contract-check.sh`, `new-domain.sh` end to end) are exercised by `make harness-selftest` and the CI generator probe instead.
+- **Remediation:** Read the first `not ok` test and its `expected output to contain` lines, fix the script (not the test) unless the behaviour change is intended and stated in the PR.
+- **Fixture:** none (like go-tests-pass) · Status: seed
+
 ## Docs
 
 ### docs-links-resolve

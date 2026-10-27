@@ -5,7 +5,8 @@
 #   gen-schema-doc.sh --check  offline staleness check: the doc's stamp must equal atlas.sum's hash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-API="$ROOT/apps/api"; OUT="$ROOT/docs/generated/db-schema.md"
+API="$ROOT/apps/api"
+OUT="$ROOT/docs/generated/db-schema.md"
 sum="$(head -1 "$API/db/migrations/atlas.sum")"
 
 if [[ "${1:-}" == "--check" ]]; then
@@ -26,7 +27,10 @@ inspect() { atlas schema inspect --url file://db/migrations --dev-url "docker://
   echo "<!-- migrations: $sum -->"
   echo
   er="$(inspect '{{ mermaid . }}')"
-  if [[ "$(echo "$er" | wc -l)" -gt 1 ]]; then printf '```mermaid\n%s\n```\n\n' "$er"; else echo "_No tables yet._"; echo; fi
+  if [[ "$(echo "$er" | wc -l)" -gt 1 ]]; then printf '```mermaid\n%s\n```\n\n' "$er"; else
+    echo "_No tables yet._"
+    echo
+  fi
   echo '```sql'
   inspect '{{ sql . "  " }}'
   echo '```'

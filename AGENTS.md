@@ -39,7 +39,7 @@ The frontend mirrors this: `packages/domain` is pure TS (no React, no browser AP
 3. **Schema changes are new migrations.** Expand, migrate, contract; never edit an applied migration;
    never drop or rename in one step ([.claude/skills/add-migration](.claude/skills/add-migration/SKILL.md)).
 4. **Fix the code, not the sensor.** A red sensor prints the rule and its remediation; follow it. A
-   suppression (`//nolint`, `eslint-disable`, `@ts-expect-error`) needs `reason: … (rule: <id>)` on the same
+   suppression (`//nolint`, `eslint-disable`, `@ts-expect-error`, `# shellcheck disable`) needs `reason: … (rule: <id>)` on the same
    line, and `@ts-ignore` is never allowed.
 5. **Harness files are not yours to change.** Linter configs, `scripts/harness/**`, `.claude/**`,
    `.github/**` and this file are protected. If a rule is wrong, propose the change in the PR description.

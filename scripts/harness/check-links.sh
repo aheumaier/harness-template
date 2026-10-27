@@ -21,10 +21,17 @@ while IFS= read -r md; do
     file="$md"
     if [[ -n "$path" ]]; then
       file="$dir/$path"
-      [[ -e "$file" ]] || { echo "$md: broken link ($target): $file does not exist"; bad=1; continue; }
+      [[ -e "$file" ]] || {
+        echo "$md: broken link ($target): $file does not exist"
+        bad=1
+        continue
+      }
     fi
     if [[ -n "$anchor" && "$file" == *.md && -f "$file" ]]; then
-      slugs "$file" | grep -qxF -- "$anchor" || { echo "$md: broken anchor ($target): no heading #$anchor in $file"; bad=1; }
+      slugs "$file" | grep -qxF -- "$anchor" || {
+        echo "$md: broken anchor ($target): no heading #$anchor in $file"
+        bad=1
+      }
     fi
   done < <(awk '/^```/ { code = !code; next } !code' "$md" | sed -e 's/`[^`]*`//g' | grep -oE '\]\([^)]+\)' | sed -E 's/^\]\((.*)\)$/\1/' || true)
 done < <(git ls-files -co --exclude-standard '*.md' | grep -vE '(^|/)(node_modules|fixtures)/')

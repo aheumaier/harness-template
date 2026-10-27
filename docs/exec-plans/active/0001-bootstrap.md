@@ -20,7 +20,7 @@ the harness: guides (feedforward) + sensors (feedback). No business domains.
 | 6 | check / check-all / gen-check, fixtures, harness-selftest | selftest green | done |
 | 7 | new-domain generator + skill + CI probe | probe + `make check` green | done (CI probe: phase 10) |
 | 8 | AGENTS.md, nested guides, ARCHITECTURE.md, docs | links resolve, AGENTS ≤100 lines | done |
-| 9 | .claude settings, hooks, subagents, skills | hooks tested | todo |
+| 9 | .claude settings, hooks, subagents, skills | hooks tested | done (protection hook: last) |
 | 10 | GitHub workflows, CODEOWNERS, PR template, branch-protection script | YAML valid | todo |
 
 ## Tool and version choices (pinned, verified by running)
@@ -52,6 +52,8 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
 | eslint-plugin-react-hooks / @eslint/js | 7.1.1 / 10.0.1 | |
 | orval / zod | 8.45.0 / 4.6.7 | |
 | dependency-cruiser / knip | 18.7.0 / 6.43.0 | |
+| shellcheck / shfmt | v0.11.0 / v3.14.1 | shellcheck release tarball; shfmt via `go install` |
+| bats-core | 1.13.0 | npm `bats` (root devDependency) |
 
 ## Open assumptions
 
@@ -61,8 +63,8 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
 - A3: go-arch-lint glob components tolerate zero matches. **Confirmed** with `ignoreNotFoundComponents: true`.
 - A4: sqlc rejects zero packages and empty query files. **Resolved:** `make gen` skips sqlc without domains; generator emits one trivial query.
 - A5: Docker is available locally and in CI (Atlas dev DB, Postgres for integration tests).
-- A6: Agent-file `tools:` cannot restrict Bash to one command; restrict via a per-agent PreToolUse hook. Verify Phase 9.
-- A7: "rm -rf outside the repo" cannot be fully expressed as a deny pattern; covered by deny patterns + PreToolUse hook.
+- A6: Agent-file `tools:` cannot restrict Bash to one command; restrict via a per-agent PreToolUse hook. Confirmed: `only-make-check.sh` via agent frontmatter `hooks:`.
+- A7: "rm -rf outside the repo" cannot be fully expressed as a deny pattern; covered by deny patterns + PreToolUse hook. Resolved: `guard-bash.sh` (heredoc bodies ignored).
 
 ## Deviations from prompt
 
@@ -86,10 +88,18 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
   non-transactional (otherwise `CREATE INDEX CONCURRENTLY` could never pass). Verified with Atlas apply.
 - Added `make db-migrate`, `docs/SECURITY.md`, `docs/RELIABILITY.md` (referenced by guides).
 - The "empty" migration holds only the lock/statement timeout header squawk requires.
+- Shell is treated as code (owner request during phase 9): rules `sh-shellcheck`, `sh-format`, `sh-tests-pass`;
+  `.shellcheckrc` (SC2016 off: single-quoted awk/sed/Go templates), `.editorconfig` (shfmt style), bats tests in
+  `scripts/test/` for hooks, run.sh, check-links.sh, squawk.sh and new-domain name validation. Existing scripts
+  reformatted with shfmt; `# shellcheck disable` follows the suppression format of golden principle 4.
 - Generator inserts at `harness:*` marker comments in openapi.yaml, routes.go and QUALITY.md; refuses dirty files.
 
 ## Log
 
+- 2026-10-27: phase 9 done: settings (deny rules), fast-check PostToolUse hook (now also shell), guard-bash
+  PreToolUse hook (first version parsed a commit-message heredoc as commands and blocked its own commit; fixed,
+  regression test added), reviewer subagents. Added shellcheck/shfmt/bats: 22 tests, 2 fixtures; mutation of
+  run.sh made its test fail. `make check` 12.7 s warm.
 - 2026-10-27: phase 8 done: AGENTS.md 70 lines, 4 nested AGENTS.md, CLAUDE.md, ARCHITECTURE.md, core beliefs;
   add-endpoint/add-migration skills written early because guides link them.
 - 2026-10-27: phase 7 done: `make new-domain NAME=zzz_probe` → `make check` (~6 s) and `check-all` green, endpoint
