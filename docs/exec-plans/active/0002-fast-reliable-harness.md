@@ -58,8 +58,8 @@ reported: [ADR 0013](../../adr/0013-harness-nfr-budgets.md). Numbers land in `sc
 
 | Id | Requirement | Target | Today | Measured by | On violation |
 |----|-------------|--------|-------|-------------|--------------|
-| NFR-H1 | Each PreToolUse hook, per call | ≤ 50 ms | 37 ms, 32 ms | hook wrapper timing | warn; alert |
-| NFR-H2 | fast-check (PostToolUse), per edited file | ≤ 1 s | 0.07–0.34 s (`.ts`: whole-package tsc) | fast-check timing | warn; alert |
+| NFR-H1 | Each PreToolUse hook, per call | ≤ 50 ms | 43 ms (protect-harness), 43 ms (guard-bash), 42 ms (only-make-check), timing included | hook wrapper timing | warn; alert |
+| NFR-H2 | fast-check (PostToolUse), per edited file | ≤ 1 s | 0.04–0.34 s (`.md` 42 ms; `.ts`: whole-package tsc) | fast-check timing | warn; alert |
 | NFR-H3 | `make check`, change without shell or harness files | ≤ 10 s | 42 s | `run.sh` + make wall time | warn; alert |
 | NFR-H4 | `make check`, any change | ≤ 60 s | 42–60 s | same | warn; alert |
 | NFR-H5 | one sensor in `make check` | ≤ 5 s, or its row in `budgets.txt` | `bats` 52.8 s, `go-test` 6.1 s, `analyzer-tests` 6.0 s (under `-j4`); rest ≤ 5 s | `run.sh` | warn; alert |
@@ -92,7 +92,7 @@ One slice per commit, in this order (the [loop prompt](0002-loop-prompt.md) work
 
 - [x] P1 — 5a52a22 — `run.sh` overhead 16 → 27 ms per sensor; over-budget sensors now reported (`bats`
   52.8 s, `go-test` 6.1 s, `analyzer-tests` 6.0 s under `-j4`)
-- [ ] P2 (phase 0) hook timing helper; CI `::warning` + job summary; timings uploaded as artifact
+- [x] P2 — 2d8c53f — hooks 36/34/30 ms → 43/43/42 ms (timed now, budget 50 ms); CI annotations, summary, `harness-timings-check-all` artifact
 - [ ] P3 (phase 0) nightly `harness-nfr` workflow (p95 over 7 days, double run for NFR-R1, one issue);
   rule `harness-deterministic` with an alternating-verdict fixture
 - [ ] P4 (phase 1) `HARNESS_SCOPE` (`changed` in `check`, `full` in `check-all`/CI); `lint-sh`,
@@ -225,3 +225,9 @@ Per [ADR 0012](../../adr/0012-parsing-sensors-in-go.md): `guard-bash` and every 
   (2.9 s alone), so P6 matters beyond `bats`. `check-all` is red only on `harness-config-not-loosened` for the
   slice's own files (the human gate); its other targets and `test-integration` are green. One selftest run
   stalled 915 s on `db-edited-migration` (1 s when rerun alone): not reproducible, noted for NFR-R1.
+- 2026-10-27: P2 (2d8c53f). Timing moved to `scripts/harness/timing.sh`, sourced by `run.sh` and all four
+  hooks; it costs ~8 ms per hook call on macOS bash 3.2 (two perl clock reads), 0 on bash ≥ 5. Hook numbers
+  are A/B medians of 11 calls via a bench script whose own perl read adds ~4 ms to both sides; another
+  session's Go tests had the load average at 20–40 during this iteration, so absolute numbers vary. Headroom
+  under NFR-H1 is now 7 ms until P8 removes `node` (~20 ms). Bats tests set `HARNESS_BUDGETS=/dev/null`.
+  `check-all`: integrity gate as in P1; other targets green.
