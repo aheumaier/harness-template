@@ -1,21 +1,26 @@
-# Harness file (protected). The change must not weaken the harness: every added suppression carries
-# `reason: … (rule: <id>)`, @ts-ignore never appears, harness configs and sensor code are not changed.
-# rules.md#harness-suppression-reason, #harness-config-not-loosened
-#
-# The `harness-change-approved` label waives the config check only (never the suppression check). It is a
-# human decision after reading the rationale in the PR description; CODEOWNERS review still applies.
+# Harness file (protected). Two PR-level gates judged by the base branch's harness:
+#   harness-integrity: the change must not weaken the harness: every added suppression carries
+#     `reason: … (rule: <id>)`, the banned TypeScript directives never appear, harness configs and sensor
+#     code are not changed.
+#     rules.md#harness-suppression-reason, #harness-config-not-loosened
+#     The `harness-change-approved` label waives the config check only (never the suppression check). It is
+#     a human decision after reading the rationale in the PR description; CODEOWNERS review still applies.
+#   pr-conventions: commit subjects and the PR title follow Conventional Commits; specs/ are well formed and
+#     a feat touching apps/ or api/ comes with a spec (the `no-spec-needed` label waives that rule only).
+#     rules.md#git-conventional-commits, #specs-structure, #specs-required-for-features
 #
 # pull_request_target: this workflow file, the Makefile and the scripts all come from the base branch, so a
 # PR cannot weaken the gate that judges it (with `pull_request`, the PR's own copy of this file would run).
 # Safe only while all of these hold (docs/adr/0010-base-branch-gates.md):
 #   - nothing from the PR tree is executed: it is read with git, awk and grep only;
-#   - only head.sha is used, as the checkout ref (never head.ref, title or body in a `run:` block);
+#   - only head.sha is used, as the checkout ref (never head.ref, title or body in a `run:` block; the title
+#     reaches check-commits.sh as the PR_TITLE env var, never interpolated into a script);
 #   - permissions stay `contents: read` and no secret is referenced.
 name: harness-integrity
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -40,3 +45,24 @@ jobs:
         env:
           HARNESS_ROOT: ${{ github.workspace }}/pr-head
           HARNESS_CHANGE_APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'harness-change-approved') && '1' || '0' }}
+
+  pr-conventions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (base branch)
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out the PR head (read, never executed)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr-head
+          fetch-depth: 0
+          persist-credentials: false
+      - run: make -k commits specs BASE_REF="origin/$GITHUB_BASE_REF"
+        env:
+          HARNESS_ROOT: ${{ github.workspace }}/pr-head
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          NO_SPEC_NEEDED: ${{ contains(github.event.pull_request.labels.*.name, 'no-spec-needed') && '1' || '0' }}

@@ -42,11 +42,11 @@ RULES="$HERE/../../docs/harness/rules.md"
 fail=0
 
 # --- suppressions -------------------------------------------------------------------------------------
-# Hand-written source only: fixture overlays are deliberate violations, generated code is not ours, and
-# this script names the markers it looks for.
+# Hand-written source only: fixture overlays are deliberate violations, generated and vendored code
+# (.specify/, spec-kit: ADR 0011) is not ours, and this script names the markers it looks for.
 SOURCES=('*.go' '*.ts' '*.tsx' '*.mts' '*.cts' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.sh' '*.bash' '*.bats' '*.sql'
-  '.github/*.yml' '.github/*.yaml'
-  ':!:scripts/harness/fixtures/*/files/*' ':!:scripts/harness/integrity-check.sh'
+  '.github/*.yml' '.github/*.yaml' 'scripts/git-hooks/*'
+  ':!:scripts/harness/fixtures/*/files/*' ':!:scripts/harness/integrity-check.sh' ':!:.specify/*'
   ':!:*.gen.go' ':!:apps/api/internal/*/store/*' ':!:packages/api-client/src/gen/*')
 NEVER='(@ts-ignore|@ts-nocheck)'
 SUPPRESSION='(//[[:space:]]*(nolint|lint:(file-)?ignore)|eslint-disable|/\*[[:space:]]*eslint[[:space:]]|@ts-expect-error|#[[:space:]]*shellcheck[[:space:]]+disable|atlas:nolint|squawk-ignore)'

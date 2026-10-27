@@ -1,6 +1,7 @@
 ## What and why
 
-<!-- One paragraph. Link the exec plan (docs/exec-plans/active/…) for multi-step work. -->
+<!-- One paragraph. Link the spec (specs/NNN-…/) for a product feature, or the exec plan
+     (docs/exec-plans/active/…) for harness/infra work. The PR title is a Conventional Commit. -->
 
 ## Checklist
 
@@ -10,5 +11,6 @@
       If Y: new file only, expand/migrate/contract, `make gen` output committed (migration-gate).
 - [ ] **Harness change** (see `scripts/harness/protected-paths.txt`): Y / N
       If Y, rationale: <!-- which rule is wrong or missing, and why the change does not weaken it -->
+- [ ] **Spec** (`specs/NNN-…/`, spec-kit): <!-- link, or "not a feature" / no-spec-needed rationale -->
 - [ ] **ADR**: <!-- link to docs/adr/NNNN-….md, or "none needed" -->
 - [ ] `make check-all` is green locally.

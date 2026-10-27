@@ -47,10 +47,10 @@ check: ## Fast sensors (<60s warm): format, lint, arch, unit tests, gen-check
 	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers lint-sh fmt-check-sh test-sh lint-ci schema-doc-fresh docs-links lint-web arch-web typecheck-web test-web
 	@$(MAKE) gen-check
 
-# CI skips the sensors whose own workflow carries a human label waiver (contract-gate, harness-integrity).
+# CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
 CHECK_ALL_SKIP ?=
 check-all: check ## Everything: check + integration, contract, migration, security, dead code
-	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go lint-migrations squawk migrations-append-only lint-api contract-check knip harness-integrity)
+	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go lint-migrations squawk migrations-append-only lint-api contract-check knip harness-integrity commits specs)
 	@$(MAKE) test-integration
 
 harness-selftest: ## Every fixture in scripts/harness/fixtures must be rejected by its sensor (FIXTURE=name for one)
@@ -147,7 +147,8 @@ test-integration: ## Integration tests against the worktree's Postgres (.env.loc
 ##@ Shell sensors (scripts/, .claude/hooks/)
 .PHONY: lint-sh fmt-check-sh test-sh
 # Every shell script and bats file, except fixture overlays (deliberate violations).
-SH_FILES = $(shell git ls-files -co --exclude-standard '*.sh' '*.bash' '*.bats' ':!:scripts/harness/fixtures/*/files/**')
+# .specify/ is spec-kit's vendored code (ADR 0011): replaced on upgrade, not edited.
+SH_FILES = $(shell git ls-files -co --exclude-standard '*.sh' '*.bash' '*.bats' 'scripts/git-hooks/*' ':!:scripts/harness/fixtures/*/files/**' ':!:.specify/**')
 
 lint-sh: ## shellcheck (.shellcheckrc) on every shell script
 	@$(RUN) shellcheck sh-shellcheck -- shellcheck -f gcc $(SH_FILES)
@@ -159,12 +160,18 @@ test-sh: ## bats tests for scripts/ and .claude/hooks/ (scripts/test)
 	@$(RUN) bats sh-tests-pass -- bats scripts/test
 
 ##@ CI and harness integrity (.github/, protected harness files)
-.PHONY: lint-ci harness-integrity
+.PHONY: lint-ci harness-integrity commits specs
 lint-ci: ## actionlint (+ shellcheck on run: blocks) on .github/workflows
 	@$(RUN) actionlint ci-workflows-valid -- actionlint -no-color
 
 harness-integrity: ## Added suppressions carry a reason; harness configs are not loosened (vs BASE_REF)
 	@$(RUN) integrity harness-suppression-reason,harness-config-not-loosened -- env BASE_REF="$(BASE_REF)" scripts/harness/integrity-check.sh
+
+commits: ## Commit subjects (and PR_TITLE) since BASE_REF follow Conventional Commits
+	@$(RUN) commits git-conventional-commits -- env BASE_REF="$(BASE_REF)" scripts/harness/check-commits.sh
+
+specs: ## spec-kit specs/ are well formed; feat changes to apps/ or api/ come with a spec (vs BASE_REF)
+	@$(RUN) specs specs-structure,specs-required-for-features -- env BASE_REF="$(BASE_REF)" scripts/harness/check-specs.sh
 
 ##@ Docs
 .PHONY: docs-links

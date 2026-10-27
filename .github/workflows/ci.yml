@@ -29,8 +29,9 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - run: make setup
-      # contract-check and harness-integrity run in their own workflows, which honour the human label waivers.
-      - run: make check-all BASE_REF="$BASE_REF" CHECK_ALL_SKIP="contract-check harness-integrity"
+      # contract-check, harness-integrity, commits and specs run in their own base-branch workflows, which
+      # see the PR title and honour the human label waivers.
+      - run: make check-all BASE_REF="$BASE_REF" CHECK_ALL_SKIP="contract-check harness-integrity commits specs"
 
   harness-selftest:
     runs-on: ubuntu-24.04

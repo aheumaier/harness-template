@@ -220,7 +220,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ## Shell (scripts/, .claude/hooks/)
 
 ### sh-shellcheck
-- **Rule:** Every shell script and bats file passes shellcheck (`.shellcheckrc`); a `# shellcheck disable=` needs a reason ([harness-suppression-reason](#harness-suppression-reason)).
+- **Rule:** Every shell script, bats file and git hook (`scripts/git-hooks/`) passes shellcheck (`.shellcheckrc`); a `# shellcheck disable=` needs a reason ([harness-suppression-reason](#harness-suppression-reason)). Vendored `.specify/` (spec-kit, [ADR 0011](../adr/0011-conventional-commits-and-spec-kit.md)) is excluded here and in `sh-format`: it is replaced on upgrade, not edited.
 - **Why:** The harness itself is shell: an unquoted variable or a failed `cd` in a sensor or hook silently turns it green or deletes the wrong path.
 - **Sensor:** shellcheck (`make lint-sh`, part of `make check`; fast-check hook per file).
 - **Remediation:** Fix the line shellcheck names (the SCxxxx code links to https://www.shellcheck.net/wiki/SCxxxx); quote expansions, add `|| exit` after `cd`, and prefer an explicit `if` to `a && b || c`.
@@ -245,7 +245,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ### harness-suppression-reason
 - **Rule:** Every added suppression (`//nolint`, `//lint:ignore`, `//lint:file-ignore`, `eslint-disable`, `/* eslint … */`, `@ts-expect-error`, `# shellcheck disable`, `-- atlas:nolint`, `-- squawk-ignore`) has `reason: … (rule: <id>)` on the same line, where `<id>` is a `### <id>` heading in this file; `@ts-ignore` and `@ts-nocheck` are never allowed.
 - **Why:** A bare suppression silently turns a sensor off; the reason and rule id make each exception reviewable and greppable.
-- **Sensor:** `scripts/harness/integrity-check.sh` on lines added since the merge base with `BASE_REF` in Go, TS/JS, shell, SQL and workflow files (`make harness-integrity`, in `make check-all` and `harness-integrity.yml`, which runs the base branch's copy of the script; the PR's `.gitattributes` cannot hide a hunk).
+- **Sensor:** `scripts/harness/integrity-check.sh` on lines added since the merge base with `BASE_REF` in Go, TS/JS, shell, SQL, git hook and workflow files, not vendored `.specify/` (`make harness-integrity`, in `make check-all` and `harness-integrity.yml`, which runs the base branch's copy of the script; the PR's `.gitattributes` cannot hide a hunk).
 - **Remediation:** Fix the code instead; if the suppression is truly needed, append `reason: <why it is safe> (rule: <rule-id>)` on the same line with an id from this file as it is on the base branch, and replace `@ts-ignore`/`@ts-nocheck` with a fixed type or a reasoned `@ts-expect-error`.
 - **Fixture:** `fixtures/harness-suppression-no-reason` · Status: seed
 
@@ -269,6 +269,33 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Sensor:** actionlint (`make lint-ci`, part of `make check`).
 - **Remediation:** Fix the line actionlint names (unknown context/expression, bad `needs`/`if`, or the shellcheck code in a `run:` block); pin new actions to a full commit SHA with a `# vX.Y.Z` comment.
 - **Fixture:** `fixtures/ci-invalid-workflow` · Status: seed
+
+## Commits and specs (git history, specs/)
+
+Earned in PR #1: the team writes Conventional Commits and specifies product features with
+[spec-kit](https://github.com/github/spec-kit) ([ADR 0011](../adr/0011-conventional-commits-and-spec-kit.md)).
+In CI these run in the `pr-conventions` job of `harness-integrity.yml` (base branch's scripts, PR title as data).
+
+### git-conventional-commits
+- **Rule:** Every non-merge commit subject on a branch, and the PR title, is `<type>(<scope>)!: <description>` (scope and `!` optional) with type one of build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test, and at most 100 characters.
+- **Why:** The subject is the changelog and the release signal (`feat` = minor, `!` = major); with squash merges the PR title becomes the commit on `main`, so it is checked too.
+- **Sensor:** `scripts/harness/check-commits.sh` on `BASE_REF..HEAD` and `PR_TITLE` (`make commits`, in `make check-all` locally); the `commit-msg` git hook (`scripts/git-hooks/`, installed by `make setup`) rejects a bad message before the commit exists.
+- **Remediation:** Reword the subject as `<type>(<scope>): <imperative description>`, e.g. `feat(billing): add invoice export`: the last commit with `git commit --amend`, older ones with `git rebase -i` and `reword`, the PR title in the PR.
+- **Fixture:** `fixtures/git-commit-not-conventional` · Status: earned (PR #1)
+
+### specs-structure
+- **Rule:** Every `specs/<dir>/` is `NNN-kebab-slug` with a unique `NNN`, contains `spec.md`, contains `plan.md` once it has `tasks.md`, and no Markdown file in it still says `NEEDS CLARIFICATION`.
+- **Why:** spec-kit's commands find a feature by its numbered directory and build plan → tasks on spec; an open clarification merged into `main` is a decision nobody made.
+- **Sensor:** `scripts/harness/check-specs.sh` (`make specs`, in `make check-all`).
+- **Remediation:** Create spec directories with `/speckit-specify` (never by hand), run `/speckit-plan` before `/speckit-tasks`, and resolve every `NEEDS CLARIFICATION` with `/speckit-clarify` or by writing the decision into the spec.
+- **Fixture:** `fixtures/specs-open-clarification` · Status: earned (PR #1)
+
+### specs-required-for-features
+- **Rule:** A `feat` commit (or a `feat` PR title) that changes `apps/` or `api/` comes with an added or changed `specs/<NNN-slug>/` in the same change. Harness and infrastructure work is planned in `docs/exec-plans/` instead and is not a `feat` of the product.
+- **Why:** A product feature without a spec has requirements only in a chat log; the spec is what reviewers and the next agent check the code against.
+- **Sensor:** `scripts/harness/check-specs.sh` against the merge base with `BASE_REF` (`make specs`, `make check-all`). Waived only by `NO_SPEC_NEEDED=1`, set in CI by the `no-spec-needed` PR label (a human decision).
+- **Remediation:** Write the spec with `/speckit-specify` (then `/speckit-plan`, `/speckit-tasks`) and commit `specs/<NNN-slug>/` with the feature; if the change is not a product feature, use another commit type, or ask a reviewer for the `no-spec-needed` label.
+- **Fixture:** `fixtures/specs-feat-without-spec` · Status: earned (PR #1)
 
 ## Docs
 

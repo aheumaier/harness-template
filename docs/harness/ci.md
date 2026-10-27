@@ -7,11 +7,12 @@ same target is red on your machine (with `BASE_REF=origin/main` for diff-based s
 
 | Workflow | Trigger | Job (= status check) | Runs | Required |
 |----------|---------|----------------------|------|----------|
-| `ci.yml` | PR, push to main | `check-all` | `make setup && make check-all` minus `contract-check` and `harness-integrity` (own workflows, label waivers) | yes |
+| `ci.yml` | PR, push to main | `check-all` | `make setup && make check-all` minus `contract-check`, `harness-integrity`, `commits` and `specs` (own workflows, PR title, label waivers) | yes |
 | | | `harness-selftest` | every fixture rejected by its sensor ([rules.md](rules.md)) | yes |
 | | | `generator-probe` | `make new-domain NAME=zzz_probe && make check`, then discards the probe and asserts a clean tree | yes |
 | `contract-gate.yml` | PR via `pull_request_target` (incl. label changes) | `api-no-breaking-change` | the **base branch's** `make contract-check` against the PR's spec when `api/openapi.yaml` changed (oasdiff, red only on breaking changes) | yes |
-| `harness-integrity.yml` | PR via `pull_request_target` (incl. label changes) | `harness-integrity` | the **base branch's** `make harness-integrity` against the PR head (`HARNESS_ROOT`) | yes |
+| `harness-integrity.yml` | PR via `pull_request_target` (incl. label and title changes) | `harness-integrity` | the **base branch's** `make harness-integrity` against the PR head (`HARNESS_ROOT`) | yes |
+| | | `pr-conventions` | the **base branch's** `make commits specs` against the PR head and title (Conventional Commits, spec-kit specs) | yes |
 | `migration-gate.yml` | PR touching `apps/api/db/migrations/**` | `migrations` | append-only, Atlas lint, squawk | no (path-filtered; same sensors in `check-all`) |
 | `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, schema doc, doc links → one open `drift` issue | no |
 
@@ -21,13 +22,14 @@ of it as part of `make check`.
 
 ## Label waivers
 
-Two sensors can be waived per PR by a human, after reading the rationale in the PR description; the job
+Three sensors can be waived per PR by a human, after reading the rationale in the PR description; the job
 re-runs on the label event. Agents never add these labels.
 
 | Label | Waives | Never waives |
 |-------|--------|--------------|
 | `harness-change-approved` | [harness-config-not-loosened](rules.md#harness-config-not-loosened) (any change to a harness config) | the suppression-reason check |
 | `breaking-change-approved` | [api-no-breaking-change](rules.md#api-no-breaking-change) (the PR must describe the client migration) | anything else |
+| `no-spec-needed` | [specs-required-for-features](rules.md#specs-required-for-features) (a `feat` without a spec in `specs/`) | `specs-structure`, `git-conventional-commits` |
 
 GitHub lets anyone with triage or write access add a label, including the PR author; the label is a
 signal, not a control. The control is the required code-owner review: every harness path and
@@ -36,16 +38,16 @@ Diff-based sensors fail closed (exit 2) when `BASE_REF` is missing or shallow; C
 
 ## Base-branch gates
 
-`contract-gate` and `harness-integrity` use `pull_request_target`: the workflow, Makefile and scripts come
+`contract-gate` and `harness-integrity` (incl. `pr-conventions`) use `pull_request_target`: the workflow, Makefile and scripts come
 from the base branch, so a PR cannot rewrite the gate that judges it ([ADR 0010](../adr/0010-base-branch-gates.md)).
 That trigger is only safe while the PR tree is **read, never executed**, only `head.sha` is used (as the
-checkout ref), and the job has `contents: read` and no secrets. Keep those invariants in any edit.
+checkout ref; the PR title reaches `pr-conventions` only as the `PR_TITLE` env var), and the job has `contents: read` and no secrets. Keep those invariants in any edit.
 `ci.yml` has to run PR code, so it runs the PR's own workflow; a PR that weakens it changes a `config`
 path, and the base-branch `harness-integrity` gate stays red until a human adds the label.
 
 ## Branch protection
 
-`scripts/github-branch-protection.sh` configures `main` via `gh api`: the five required checks above,
+`scripts/github-branch-protection.sh` configures `main` via `gh api`: the six required checks above,
 strict (branch up to date), one approving review including a code owner (`.github/CODEOWNERS`), stale
 reviews dismissed, linear history, no force pushes or deletions. Admins are not included
 (`enforce_admins: false`): with a single code owner, GitHub forbids approving your own PR. It is not run by any

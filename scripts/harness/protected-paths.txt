@@ -29,11 +29,18 @@ scripts/github-branch-protection.sh config
 scripts/install-tools.sh config
 scripts/gen-schema-doc.sh config
 scripts/harness/* config
+scripts/git-hooks/* config
 scripts/test/*
 apps/api/tools/analyzers/* config
 .claude/hooks/* config
 .claude/*
 .github/*
 docs/harness/*
+.specify/scripts/*
+.specify/templates/*
+.specify/workflows/*
+.specify/integrations/*
+.specify/init-options.json
+.specify/integration.json
 AGENTS.md
 CLAUDE.md
