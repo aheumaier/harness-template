@@ -1,10 +1,12 @@
 # Harness file (protected). Red only when api/openapi.yaml breaks existing clients (oasdiff, ERR level).
-# Runs on every PR (not path-filtered) so it can be a required check; it exits 0 fast when the spec is
-# unchanged. rules.md#api-no-breaking-change
+# Runs on every PR (not path-filtered) so it can be a required check; it skips oasdiff when the spec is
+# unchanged. The `breaking-change-approved` label (a human decision after reading the PR's migration plan;
+# CODEOWNERS review of api/openapi.yaml still applies) turns a breaking change green. rules.md#api-no-breaking-change
 name: contract-gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -17,12 +19,23 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+          persist-credentials: false
+      - name: Did api/openapi.yaml change?
+        id: spec
+        run: |
+          base="$(git merge-base HEAD "origin/$GITHUB_BASE_REF")"
+          if git diff --quiet "$base" -- api/openapi.yaml; then echo changed=false; else echo changed=true; fi >>"$GITHUB_OUTPUT"
+      - if: steps.spec.outputs.changed == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: apps/api/go.mod
           cache: false
       - name: Install oasdiff (version from scripts/tool-versions.env)
+        if: steps.spec.outputs.changed == 'true'
         run: |
           source scripts/tool-versions.env
           GOBIN="$PWD/.bin" go install "github.com/oasdiff/oasdiff@$OASDIFF_VERSION"
-      - run: make contract-check BASE_REF="origin/$GITHUB_BASE_REF"
+      - if: steps.spec.outputs.changed == 'true'
+        run: make contract-check BASE_REF="origin/$GITHUB_BASE_REF"
+        env:
+          BREAKING_CHANGE_APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'breaking-change-approved') && '1' || '0' }}

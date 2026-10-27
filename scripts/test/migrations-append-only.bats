@@ -4,7 +4,7 @@ bats_require_minimum_version 1.5.0
 load helpers
 
 setup() {
-  sandbox scripts/harness/migrations-append-only.sh
+  sandbox scripts/harness/migrations-append-only.sh scripts/harness/merge-base.sh
   MIG="$SANDBOX/apps/api/db/migrations"
   mkdir -p "$MIG"
   printf '%s\n' 'CREATE TABLE t (x int);' >"$MIG/1_a.sql"
@@ -32,4 +32,9 @@ check() { BASE_REF=main run "$@" "$SANDBOX/scripts/harness/migrations-append-onl
   git -C "$SANDBOX" mv apps/api/db/migrations/1_a.sql apps/api/db/migrations/9_a.sql
   check -1
   has '1_a.sql: migration on main was deleted'
+}
+
+@test "fails closed when BASE_REF does not resolve" {
+  BASE_REF=nope run -2 "$SANDBOX/scripts/harness/migrations-append-only.sh"
+  has "is not a commit"
 }

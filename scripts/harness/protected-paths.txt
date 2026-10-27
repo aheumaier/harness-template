@@ -2,8 +2,9 @@
 # instead of making them. Read by scripts/harness/integrity-check.sh and the .claude/hooks protection
 # hook; .github/CODEOWNERS mirrors this list.
 #
-# One git pathspec glob per line (`*` also matches `/`). `config` marks a linter/sensor config that
-# harness-integrity guards against loosening (rule: harness-config-not-loosened).
+# One git pathspec glob per line (`*` also matches `/`). `config` marks a file that defines what the sensors
+# enforce: any non-comment change to it needs a human's harness-change-approved label
+# (rule: harness-config-not-loosened).
 *.golangci.yml config
 *.go-arch-lint.yml config
 *.custom-gcl.yml config
@@ -14,14 +15,22 @@
 *.squawk.toml config
 *.shellcheckrc config
 knip.json config
-tsconfig.base.json config
+*tsconfig*.json config
 .claude/settings.json config
 .editorconfig
+Makefile config
+.github/workflows/* config
+.github/actions/* config
+.github/CODEOWNERS config
+scripts/harness/protected-paths.txt config
+scripts/tool-versions.env config
+scripts/github-branch-protection.sh config
+scripts/install-tools.sh
 scripts/harness/*
+scripts/test/*
 apps/api/tools/analyzers/*
 .claude/*
 .github/*
 docs/harness/*
 AGENTS.md
 CLAUDE.md
-Makefile

@@ -7,11 +7,11 @@ same target is red on your machine (with `BASE_REF=origin/main` for diff-based s
 
 | Workflow | Trigger | Job (= status check) | Runs | Required |
 |----------|---------|----------------------|------|----------|
-| `ci.yml` | PR, push to main | `check-all` | `make setup && make check-all` | yes |
+| `ci.yml` | PR, push to main | `check-all` | `make setup && make check-all` minus `contract-check` and `harness-integrity` (own workflows, label waivers) | yes |
 | | | `harness-selftest` | every fixture rejected by its sensor ([rules.md](rules.md)) | yes |
-| | | `generator-probe` | `make new-domain NAME=zzz_probe && make check`, then discards the probe | yes |
-| `contract-gate.yml` | every PR | `api-no-breaking-change` | `make contract-check` (oasdiff, red only on breaking changes) | yes |
-| `harness-integrity.yml` | PR (incl. label changes) | `harness-integrity` | `make harness-integrity` | yes |
+| | | `generator-probe` | `make new-domain NAME=zzz_probe && make check`, then discards the probe and asserts a clean tree | yes |
+| `contract-gate.yml` | PR (incl. label changes) | `api-no-breaking-change` | `make contract-check` when `api/openapi.yaml` changed (oasdiff, red only on breaking changes) | yes |
+| `harness-integrity.yml` | PR (incl. label changes) | `harness-integrity` | the **base branch's** `make harness-integrity` against the PR checkout (`HARNESS_ROOT`) | yes |
 | `migration-gate.yml` | PR touching `apps/api/db/migrations/**` | `migrations` | append-only, Atlas lint, squawk | no (path-filtered; same sensors in `check-all`) |
 | `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, schema doc, doc links → one open `drift` issue | no |
 
@@ -19,18 +19,27 @@ same target is red on your machine (with `BASE_REF=origin/main` for diff-based s
 Go modules and the pnpm store. Actions are pinned to commit SHAs; `make lint-ci` (actionlint) validates all
 of it as part of `make check`.
 
-## Waiving the harness config check
+## Label waivers
 
-`harness-integrity` rejects loosened harness configs ([rules.md](rules.md#harness-config-not-loosened)).
-When a rule is genuinely wrong, the PR says so (template: *Harness change: Y + rationale*) and a code owner
-adds the label `harness-change-approved`; the job re-runs on the label event. The label never waives the
-suppression-reason check. Agents never add the label.
+Two sensors can be waived per PR by a human, after reading the rationale in the PR description; the job
+re-runs on the label event. Agents never add these labels.
+
+| Label | Waives | Never waives |
+|-------|--------|--------------|
+| `harness-change-approved` | [harness-config-not-loosened](rules.md#harness-config-not-loosened) (any change to a harness config) | the suppression-reason check |
+| `breaking-change-approved` | [api-no-breaking-change](rules.md#api-no-breaking-change) (the PR must describe the client migration) | anything else |
+
+GitHub lets anyone with triage or write access add a label, including the PR author; the label is a
+signal, not a control. The control is the required code-owner review: every harness path and
+`api/openapi.yaml` is in `.github/CODEOWNERS`, so a labelled PR still cannot merge without the owner.
+Diff-based sensors fail closed (exit 2) when `BASE_REF` is missing or shallow; CI checks out full history.
 
 ## Branch protection
 
 `scripts/github-branch-protection.sh` configures `main` via `gh api`: the five required checks above,
 strict (branch up to date), one approving review including a code owner (`.github/CODEOWNERS`), stale
-reviews dismissed, linear history, no force pushes or deletions, admins included. It is not run by any
+reviews dismissed, linear history, no force pushes or deletions. Admins are not included
+(`enforce_admins: false`): with a single code owner, GitHub forbids approving your own PR. It is not run by any
 workflow or by `make`. A repository admin runs it once, after the first push (checks must have reported
 once before GitHub accepts them as required):
 

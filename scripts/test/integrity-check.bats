@@ -5,13 +5,15 @@ bats_require_minimum_version 1.5.0
 load helpers
 
 setup() {
-  sandbox scripts/harness/integrity-check.sh scripts/harness/protected-paths.txt .squawk.toml
+  sandbox scripts/harness/integrity-check.sh scripts/harness/merge-base.sh scripts/harness/protected-paths.txt \
+    docs/harness/rules.md .squawk.toml
   printf '%s\n' 'package x' >"$SANDBOX/x.go"
   sandbox_base
-  NOLINT='//''nolint:errcheck'
+  NOLINT='//''nolint:noctxroot'
   ESLINT='// eslint''-disable-next-line no-console'
   SHELLCHECK='# shellcheck'' disable=SC2086'
   TSIGNORE='// @ts''-ignore'
+  TSNOCHECK='// @ts''-nocheck'
 }
 
 check() { BASE_REF=main run "$@" "$SANDBOX/scripts/harness/integrity-check.sh"; }
@@ -33,17 +35,53 @@ add() { printf '%s\n' "${@:2}" >>"$SANDBOX/$1"; }
 }
 
 @test "accepts suppressions with reason and rule id" {
-  add x.go "f() $NOLINT // reason: closing a read-only file (rule: go-lint)"
+  add x.go "f() $NOLINT // reason: closing a read-only file (rule: go-no-root-context)"
   add s.sh "$SHELLCHECK # reason: word splitting intended (rule: sh-shellcheck)"
   git -C "$SANDBOX" add -A
   check -0
 }
 
-@test "never accepts ts-ignore, even with a reason" {
+@test "never accepts ts-ignore or ts-nocheck, even with a reason" {
   add a.ts "$TSIGNORE reason: x (rule: web-typecheck)"
+  add b.mts "$TSNOCHECK reason: x (rule: web-typecheck)"
   git -C "$SANDBOX" add -A
   check -1
   has 'a.ts:1: @ts-''ignore is never allowed'
+  has 'b.mts:1: @ts-''nocheck is never allowed'
+}
+
+@test "flags SQL, staticcheck, inline eslint and workflow suppressions without a reason" {
+  add m.sql '-- atlas'':nolint DS103' '-- squawk''-ignore ban-drop-column'
+  add y.go '//lint'':ignore SA1019 old api'
+  add c.jsx '/* eslint'' no-console: off */'
+  mkdir -p "$SANDBOX/.github/workflows"
+  add .github/workflows/w.yml "      - run: echo \$x $SHELLCHECK"
+  check -1
+  has 'm.sql:1: suppression without'
+  has 'm.sql:2: suppression without'
+  has 'y.go:1: suppression without'
+  has 'c.jsx:1: suppression without'
+  has '.github/workflows/w.yml:1: suppression without'
+}
+
+@test "flags a reason that names no rule in rules.md" {
+  add x.go "f() $NOLINT // reason: trust me (rule: go-lint)"
+  check -1
+  has "x.go:2: suppression names 'go-lint', not a rule id in docs/harness/rules.md"
+}
+
+@test "reports paths with spaces" {
+  printf '%s\n' 'package y' >"$SANDBOX/a b.go"
+  git -C "$SANDBOX" add -A
+  git -C "$SANDBOX" -c user.name=t -c user.email=t@localhost -c commit.gpgsign=false commit -qm space
+  add 'a b.go' "f() $NOLINT"
+  check -1
+  has 'a b.go:2: suppression without'
+}
+
+@test "fails closed when BASE_REF does not resolve" {
+  BASE_REF=no-such-branch run -2 "$SANDBOX/scripts/harness/integrity-check.sh"
+  has "BASE_REF 'no-such-branch' is not a commit"
 }
 
 @test "ignores fixture overlays" {
@@ -58,14 +96,28 @@ add() { printf '%s\n' "${@:2}" >>"$SANDBOX/$1"; }
   add .squawk.toml 'excluded_rules = ["require-timeout-settings"]'
   check -1
   has '.squawk.toml:4: removed harness config line: assume_in_transaction = true'
-  has '.squawk.toml:4: harness config line looks like a loosening: excluded_rules'
+  has '.squawk.toml:4: added harness config line: excluded_rules'
   has '[harness-config-not-loosened]'
 }
 
-@test "allows comments and tightening lines in a harness config" {
+@test "allows comment-only changes to a harness config" {
   sed -i.bak 's/^# Atlas applies.*/# reworded comment/' "$SANDBOX/.squawk.toml"
-  add .squawk.toml 'pg_version_strict = true'
   check -0
+}
+
+@test "flags a tightening line too: any config change is a human decision" {
+  add .squawk.toml 'pg_version_strict = true'
+  check -1
+  has '.squawk.toml:5: added harness config line: pg_version_strict = true'
+}
+
+@test "judges HARNESS_ROOT with its own protected-paths.txt, so a change cannot unprotect itself" {
+  pr="$BATS_TEST_TMPDIR/pr"
+  git clone -q "$SANDBOX" "$pr"
+  sed -i.bak '/squawk.toml/d' "$pr/scripts/harness/protected-paths.txt"
+  printf '%s\n' 'excluded_rules = ["ban-drop-column"]' >>"$pr/.squawk.toml"
+  HARNESS_ROOT="$pr" BASE_REF=main run -1 "$SANDBOX/scripts/harness/integrity-check.sh"
+  has '.squawk.toml:5: added harness config line: excluded_rules'
 }
 
 @test "HARNESS_CHANGE_APPROVED waives the config check, not the suppression check" {

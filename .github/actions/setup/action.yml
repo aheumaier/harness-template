@@ -33,10 +33,12 @@ runs:
 
     - name: Install pinned tools
       shell: bash
+      env:
+        BIN_CACHE_HIT: ${{ steps.bin.outputs.cache-hit }}
       run: |
         # The key covers every input of the custom golangci-lint build; a fresh checkout's mtimes would
         # otherwise make `make` rebuild it.
-        if [[ "${{ steps.bin.outputs.cache-hit }}" == true ]]; then touch .bin/golangci-lint-custom; fi
+        if [[ "$BIN_CACHE_HIT" == true ]]; then touch .bin/golangci-lint-custom; fi
         make tools
         echo "PNPM_STORE=$(.bin/pnpm store path)" >>"$GITHUB_ENV"
 

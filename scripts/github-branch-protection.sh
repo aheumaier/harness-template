@@ -8,17 +8,21 @@
 # GH_REPO (owner/name) defaults to the current gh repository; BRANCH defaults to main. Required checks are
 # the job names in .github/workflows/{ci,contract-gate,harness-integrity}.yml; migration-gate is
 # path-filtered, so it is not required (its sensors also run in check-all). See docs/harness/ci.md.
+# enforce_admins is false on purpose: with a single code owner, GitHub forbids approving your own PR, so
+# the admin must be able to merge their own reviewed changes. Everyone else needs a code-owner approval.
 set -euo pipefail
 
 BRANCH="${BRANCH:-main}"
 REQUIRED_CHECKS=(check-all harness-selftest generator-probe api-no-breaking-change harness-integrity)
 
-contexts="$(printf '"%s",' "${REQUIRED_CHECKS[@]}")"
+# app_id 15368 = GitHub Actions: only a workflow job can satisfy a required check, not any app posting
+# a status with the same name.
+checks="$(printf '{ "context": "%s", "app_id": 15368 },' "${REQUIRED_CHECKS[@]}")"
 body="$(
   cat <<JSON
 {
-  "required_status_checks": { "strict": true, "contexts": [${contexts%,}] },
-  "enforce_admins": true,
+  "required_status_checks": { "strict": true, "checks": [${checks%,}] },
+  "enforce_admins": false,
   "required_pull_request_reviews": {
     "required_approving_review_count": 1,
     "require_code_owner_reviews": true,

@@ -101,8 +101,19 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
   either configures a sensor or is the sensor's entry point.
 - Added sensors `ci-workflows-valid` (actionlint, in `make check`), `harness-integrity` and
   `migrations-append-only` (in `make check-all`); the integrity and append-only checks are scripts so CI and
-  local runs are identical. Config-loosening detection is a keyword heuristic (TD-2).
-- `harness-change-approved` PR label waives only the config check (human decision, documented in ci.md).
+  local runs are identical. After review, any non-comment change to a harness config needs the label (the
+  first version was a keyword heuristic that let semantic loosening through).
+- Label waivers (human decisions, ci.md): `harness-change-approved` waives only the config check,
+  `breaking-change-approved` the contract gate. CI's `check-all` skips those two sensors (`CHECK_ALL_SKIP`) so
+  a waived PR can go green; their own workflows are required checks.
+- CI's harness-integrity runs the base branch's Makefile/script/path list against the PR (`HARNESS_ROOT`).
+- Diff-based sensors fail closed when `BASE_REF` is missing or shallow (`scripts/harness/merge-base.sh`).
+- Branch protection: `enforce_admins: false` (single code owner cannot approve own PR; owner decision),
+  required checks pinned to the GitHub Actions app.
+- Protected paths extended after review: Makefile, workflows, CODEOWNERS, tool versions, protected-path list
+  and branch-protection script are `config`; `scripts/test/`, `install-tools.sh` and all tsconfigs protected.
+- Not done from the phase-10 review: `make setup` (DB) kept in the selftest/probe jobs (fixtures need Docker,
+  probe needs `.bin`); `BASE_REF` passed as `origin/<base>`, not a SHA (full-history checkout makes it exact).
 - `drift.yml` agent-GC stub is gated by repository variable `AGENT_GC_ENABLED` (actionlint rejects `if: false`).
 - `.claude/settings.json` keeps the deny rule `Bash(rm -rf /*)` (reviewer suggested dropping it as redundant
   with guard-bash; the agent's own removal was refused by the session's permission classifier: left to a human).
@@ -112,6 +123,9 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
 
 ## Log
 
+- 2026-10-27: phase 10 review fixes: CHECK_ALL_SKIP + `breaking-change-approved` waiver, base-branch
+  integrity check, strict config rule, more suppression markers/sources + rule-id validation, fail-closed
+  merge base, CODEOWNERS mirror test, least-privilege workflow tokens. 64 bats tests.
 - 2026-10-27: phase 10 done: 5 workflows + composite setup action, CODEOWNERS, PR template,
   branch-protection script (dry run by default; not run). New sensors: actionlint, harness-integrity,
   migrations-append-only; 4 fixtures. Workflows validated with actionlint only; never executed on GitHub.

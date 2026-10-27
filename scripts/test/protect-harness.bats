@@ -26,6 +26,9 @@ setup() { unset HARNESS_EDIT; }
   has 'propose the change in the PR description'
   run -2 edit Write atlas.hcl
   run -2 edit MultiEdit .spectral.yaml
+  run -2 edit Edit scripts/test/protect-harness.bats
+  run -2 edit Edit scripts/tool-versions.env
+  run -2 edit Edit apps/web/tsconfig.json
 }
 
 @test "allows file tools on product code and docs outside the harness" {

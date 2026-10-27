@@ -23,10 +23,3 @@ env "local" {
   }
 }
 
-env "ci" {
-  url = var.url
-  dev = "docker://postgres/17/dev"
-  migration {
-    dir = "file://db/migrations"
-  }
-}

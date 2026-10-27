@@ -22,7 +22,7 @@ script() { run "$@" "$REPO/scripts/github-branch-protection.sh"; }
 @test "dry run prints the request and never calls gh" {
   script -0
   has 'Dry run'
-  has '"contexts": ["check-all","harness-selftest","generator-probe","api-no-breaking-change","harness-integrity"]'
+  has '{ "context": "check-all", "app_id": 15368 }'
   [[ ! -e "$BATS_TEST_TMPDIR/gh.args" ]]
 }
 
@@ -32,7 +32,7 @@ script() { run "$@" "$REPO/scripts/github-branch-protection.sh"; }
   output="$(cat "$BATS_TEST_TMPDIR/gh.args")"
   has 'api -X PUT repos/acme/widget/branches/main/protection'
   node -e 'const b = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-    if (!b.required_pull_request_reviews.require_code_owner_reviews || b.allow_force_pushes) process.exit(1)' \
+    if (!b.required_pull_request_reviews.require_code_owner_reviews || b.allow_force_pushes || b.enforce_admins) process.exit(1)' \
     "$BATS_TEST_TMPDIR/gh.body"
 }
 
@@ -40,4 +40,14 @@ script() { run "$@" "$REPO/scripts/github-branch-protection.sh"; }
   CONFIRM=1 GH_REPO=o/r BRANCH=release script -0
   output="$(cat "$BATS_TEST_TMPDIR/gh.args")"
   has 'api -X PUT repos/o/r/branches/release/protection'
+}
+
+@test "required checks are exactly the job ids of the required workflows" {
+  jobs="$(cd "$REPO/.github/workflows" && awk 'FNR == 1 { j = 0 } /^jobs:/ { j = 1; next }
+    j && /^  [a-z][a-z0-9-]*:$/ { sub(/:$/, ""); print $1 }' ci.yml contract-gate.yml harness-integrity.yml | sort)"
+  checks="$(sed -n 's/^REQUIRED_CHECKS=(\(.*\))$/\1/p' "$REPO/scripts/github-branch-protection.sh" | tr ' ' '\n' | sort)"
+  [[ "$jobs" == "$checks" ]] || {
+    printf 'workflow jobs:\n%s\nREQUIRED_CHECKS:\n%s\n' "$jobs" "$checks" >&2
+    return 1
+  }
 }

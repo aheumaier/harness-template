@@ -102,7 +102,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ### db-append-only-migrations
 - **Rule:** Never edit or delete a migration that exists on the base branch; add a new one.
 - **Why:** Applied migrations are history; editing them makes environments diverge silently.
-- **Sensor:** `scripts/harness/migrations-append-only.sh` (`make migrations-append-only`, in `make check-all` and `migration-gate.yml`; fast-check hook per migration, before `atlas.sum` is rehashed).
+- **Sensor:** `scripts/harness/migrations-append-only.sh` (`make migrations-append-only`, in `make check-all` and `migration-gate.yml`; fast-check hook per migration, before `atlas.sum` is rehashed). Like every diff-based sensor it fails closed (exit 2) when `BASE_REF` does not resolve or has no merge base with `HEAD` (`scripts/harness/merge-base.sh`; fetch full history).
 - **Remediation:** Revert your edit to the existing migration (`git checkout $BASE_REF -- <file>`) and put the change in a new one with `atlas migrate new <name> --env local` (see .claude/skills/add-migration).
 - **Fixture:** `fixtures/db-edited-migration` · Status: seed
 
@@ -151,10 +151,10 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Fixture:** `fixtures/api-error-not-problem-json` · Status: seed
 
 ### api-no-breaking-change
-- **Rule:** No breaking change to the contract compared to the merge base with `main` unless a CODEOWNER approves.
+- **Rule:** No breaking change to the contract compared to the merge base with `BASE_REF` unless a human approves it with the `breaking-change-approved` PR label.
 - **Why:** Deployed clients cannot be changed atomically with the server.
-- **Sensor:** oasdiff `breaking --fail-on ERR` (`scripts/harness/contract-check.sh`), `make contract-check`, required check `contract-gate` (`.github/workflows/contract-gate.yml`).
-- **Remediation:** Make the change additive (new optional field, new path, deprecate before removing); if the break is intended, explain it in the PR and get CODEOWNERS approval on contract-gate.
+- **Sensor:** oasdiff `breaking --fail-on ERR` (`scripts/harness/contract-check.sh`), `make contract-check`, required check `api-no-breaking-change` (`.github/workflows/contract-gate.yml`). Waived only by `BREAKING_CHANGE_APPROVED=1`, set in CI by the `breaking-change-approved` PR label.
+- **Remediation:** Make the change additive (new optional field, new path, deprecate before removing); if the break is intended, explain it and the client migration in the PR and ask a code owner to add the `breaking-change-approved` label. Agents never add the label.
 - **Fixture:** `fixtures/api-breaking-change` · Status: seed
 
 ## Web (apps/web, packages/*)
@@ -243,16 +243,16 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ## Harness integrity and CI (.github/)
 
 ### harness-suppression-reason
-- **Rule:** Every added `//nolint`, `eslint-disable`, `@ts-expect-error` or `# shellcheck disable` has `reason: … (rule: <id>)` on the same line; `@ts-ignore` is never allowed.
+- **Rule:** Every added suppression (`//nolint`, `//lint:ignore`, `eslint-disable`, `/* eslint … */`, `@ts-expect-error`, `# shellcheck disable`, `-- atlas:nolint`, `-- squawk-ignore`) has `reason: … (rule: <id>)` on the same line, where `<id>` is a `### <id>` heading in this file; `@ts-ignore` and `@ts-nocheck` are never allowed.
 - **Why:** A bare suppression silently turns a sensor off; the reason and rule id make each exception reviewable and greppable.
-- **Sensor:** `scripts/harness/integrity-check.sh` on lines added since the merge base with `BASE_REF` (`make harness-integrity`, in `make check-all` and `harness-integrity.yml`).
-- **Remediation:** Fix the code instead; if the suppression is truly needed, append `reason: <why it is safe> (rule: <rule-id>)` on the same line, and replace `@ts-ignore` with a fixed type or a reasoned `@ts-expect-error`.
+- **Sensor:** `scripts/harness/integrity-check.sh` on lines added since the merge base with `BASE_REF` in Go, TS/JS, shell, SQL and workflow files (`make harness-integrity`, in `make check-all` and `harness-integrity.yml`, which runs the base branch's copy of the script).
+- **Remediation:** Fix the code instead; if the suppression is truly needed, append `reason: <why it is safe> (rule: <rule-id>)` on the same line with an id from this file, and replace `@ts-ignore`/`@ts-nocheck` with a fixed type or a reasoned `@ts-expect-error`.
 - **Fixture:** `fixtures/harness-suppression-no-reason` · Status: seed
 
 ### harness-config-not-loosened
-- **Rule:** Lines in harness configs (`config` entries in `scripts/harness/protected-paths.txt`) are not removed, and added lines do not disable, exclude, ignore, skip or downgrade (`off`/`warn`) checks, unless a human approves.
+- **Rule:** No non-comment line of a harness config (`config` entries in `scripts/harness/protected-paths.txt`: linter configs, Makefile, workflows, CODEOWNERS, tool versions, the protected-path list itself) is added or removed unless a human approves. Tightening counts too: telling it from loosening takes judgment.
 - **Why:** The cheapest way to make a red sensor green is to weaken its config; that must be a visible human decision, not an agent's shortcut.
-- **Sensor:** `scripts/harness/integrity-check.sh` (keyword heuristic on the diff; `make harness-integrity`, `harness-integrity.yml`). Waived only by `HARNESS_CHANGE_APPROVED=1`, set in CI by the `harness-change-approved` PR label.
+- **Sensor:** `scripts/harness/integrity-check.sh` on the diff since the merge base with `BASE_REF` (`make harness-integrity`, `harness-integrity.yml`; CI uses the base branch's script and path list, so a PR cannot unprotect itself). Waived only by `HARNESS_CHANGE_APPROVED=1`, set in CI by the `harness-change-approved` PR label.
 - **Remediation:** Revert the config change and fix the code; if the rule itself is wrong, explain why in the PR description (Harness change: Y + rationale) and ask a code owner to add the `harness-change-approved` label.
 - **Fixture:** `fixtures/harness-config-loosened` · Status: seed
 

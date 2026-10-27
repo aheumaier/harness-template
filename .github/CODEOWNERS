@@ -14,15 +14,22 @@ atlas.hcl                   @aheumaier
 .shellcheckrc               @aheumaier
 .editorconfig               @aheumaier
 knip.json                   @aheumaier
-tsconfig.base.json          @aheumaier
-Makefile                    @aheumaier
+tsconfig*.json              @aheumaier
+/Makefile                   @aheumaier
 /scripts/harness/           @aheumaier
+/scripts/test/              @aheumaier
+/scripts/tool-versions.env  @aheumaier
+/scripts/install-tools.sh   @aheumaier
+/scripts/github-branch-protection.sh  @aheumaier
 /apps/api/tools/analyzers/  @aheumaier
 /.claude/                   @aheumaier
 /.github/                   @aheumaier
 /docs/harness/              @aheumaier
 /AGENTS.md                  @aheumaier
 /CLAUDE.md                  @aheumaier
+
+# Architecture map: not a harness file (agents keep it current), but layer changes need the owner's eye.
+# Area AGENTS.md files (apps/*, api/, apps/api/*) stay editable for the same reason.
 /ARCHITECTURE.md            @aheumaier
 
 # Contract and schema: changes here reach clients and production data

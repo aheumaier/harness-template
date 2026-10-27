@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # Sensors that diff against a base (contract, migrations, harness integrity) compare with the PR target.
@@ -26,15 +26,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/setup
       - run: make setup
-      - run: make check-all BASE_REF="$BASE_REF"
+      # contract-check and harness-integrity run in their own workflows, which honour the human label waivers.
+      - run: make check-all BASE_REF="$BASE_REF" CHECK_ALL_SKIP="contract-check harness-integrity"
 
   harness-selftest:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup
       - run: make setup
       - run: make harness-selftest
@@ -45,13 +49,14 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup
       - run: make setup
       - run: make new-domain NAME=zzz_probe
       - run: make check
-      - name: Discard the probe
-        if: always()
+      - name: The probe stays inside the generator's paths
         run: |
           git checkout -- .
           git clean -fdq -- apps/api api docs packages/api-client
-          git status --porcelain
+          test -z "$(git status --porcelain)" || { git status --porcelain; exit 1; }

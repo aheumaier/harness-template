@@ -10,14 +10,18 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   drift:
+    permissions:
+      contents: read
+      issues: write
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup
       - run: make setup
       - name: Sweep
@@ -31,9 +35,17 @@ jobs:
               printf '### make %s\n\n%s\n%s\n%s\n\n' "$target" "$fence" "$out" "$fence" >>"$report"
             fi
           done
-          make gen-schema-doc
-          if ! out="$(git diff --exit-code -- docs/generated)"; then
+          if ! out="$(make gen-schema-doc 2>&1)"; then
+            printf '### make gen-schema-doc failed\n\n%s\n%s\n%s\n\n' "$fence" "$out" "$fence" >>"$report"
+          elif ! out="$(git diff --exit-code -- docs/generated)"; then
             printf '### docs/generated is stale (run make gen-schema-doc)\n\n%sdiff\n%s\n%s\n\n' "$fence" "$out" "$fence" >>"$report"
+          fi
+          cat "$report"
+          # GitHub caps an issue body or comment at 65536 characters; the full report is in this log.
+          if (($(wc -c <"$report") > 60000)); then
+            head -c 60000 "$report" >"$report.cut"
+            printf '\n\n(truncated; full report in the workflow run log)\n' >>"$report.cut"
+            mv "$report.cut" "$report"
           fi
           echo "report=$report" >>"$GITHUB_OUTPUT"
           [[ -s "$report" ]] && echo "found=true" >>"$GITHUB_OUTPUT" || echo "found=false" >>"$GITHUB_OUTPUT"

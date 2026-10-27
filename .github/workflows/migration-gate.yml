@@ -21,6 +21,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/setup
       # -k: report every gate, not just the first red one. Atlas starts its own Docker dev database.
       - run: make -k migrations-append-only lint-migrations squawk BASE_REF="origin/$GITHUB_BASE_REF"

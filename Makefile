@@ -47,8 +47,10 @@ check: ## Fast sensors (<60s warm): format, lint, arch, unit tests, gen-check
 	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers lint-sh fmt-check-sh test-sh lint-ci schema-doc-fresh docs-links lint-web arch-web typecheck-web test-web
 	@$(MAKE) gen-check
 
+# CI skips the sensors whose own workflow carries a human label waiver (contract-gate, harness-integrity).
+CHECK_ALL_SKIP ?=
 check-all: check ## Everything: check + integration, contract, migration, security, dead code
-	@$(MAKE) -k -j4 vuln-go lint-migrations squawk migrations-append-only lint-api contract-check knip harness-integrity
+	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go lint-migrations squawk migrations-append-only lint-api contract-check knip harness-integrity)
 	@$(MAKE) test-integration
 
 harness-selftest: ## Every fixture in scripts/harness/fixtures must be rejected by its sensor (FIXTURE=name for one)
@@ -117,12 +119,12 @@ lint-api: ## Spectral style + error-contract rules on the OpenAPI spec
 	@$(RUN) spectral $(API_RULES) -- spectral lint api/openapi.yaml --ruleset .spectral.yaml --fail-severity=warn --quiet
 
 contract-check: ## oasdiff breaking-change check vs merge base with BASE_REF (contract-gate)
-	@$(RUN) oasdiff api-no-breaking-change -- env BASE_REF=$(BASE_REF) scripts/harness/contract-check.sh
+	@$(RUN) oasdiff api-no-breaking-change -- env BASE_REF="$(BASE_REF)" scripts/harness/contract-check.sh
 
 ##@ Database
 .PHONY: lint-migrations squawk migrations-append-only gen-schema-doc schema-doc-fresh test-integration
-BASE_REF ?= $(shell git rev-parse -q --verify origin/main >/dev/null && echo origin/main || echo main)
-ATLAS_LINT_SCOPE ?= --git-base $(BASE_REF)
+BASE_REF ?= $(shell scripts/harness/merge-base.sh --ref)
+ATLAS_LINT_SCOPE ?= --git-base "$(BASE_REF)"
 
 lint-migrations: ## Atlas migrate lint (destructive + incompatible), needs Docker
 	@$(RUN) atlas-lint db-no-destructive-migration,db-backward-compatible-migration --dir $(API) -- atlas migrate lint --env local $(ATLAS_LINT_SCOPE)
@@ -131,7 +133,7 @@ squawk: ## Postgres locking checks on migrations
 	@$(RUN) squawk db-safe-locking -- scripts/harness/squawk.sh
 
 migrations-append-only: ## Migrations on BASE_REF are never edited or deleted (migration-gate)
-	@$(RUN) migrations db-append-only-migrations -- env BASE_REF=$(BASE_REF) scripts/harness/migrations-append-only.sh
+	@$(RUN) migrations db-append-only-migrations -- env BASE_REF="$(BASE_REF)" scripts/harness/migrations-append-only.sh
 
 gen-schema-doc: ## Regenerate docs/generated/db-schema.md (needs Docker)
 	@scripts/gen-schema-doc.sh
@@ -162,7 +164,7 @@ lint-ci: ## actionlint (+ shellcheck on run: blocks) on .github/workflows
 	@$(RUN) actionlint ci-workflows-valid -- actionlint -no-color
 
 harness-integrity: ## Added suppressions carry a reason; harness configs are not loosened (vs BASE_REF)
-	@$(RUN) integrity harness-suppression-reason,harness-config-not-loosened -- env BASE_REF=$(BASE_REF) scripts/harness/integrity-check.sh
+	@$(RUN) integrity harness-suppression-reason,harness-config-not-loosened -- env BASE_REF="$(BASE_REF)" scripts/harness/integrity-check.sh
 
 ##@ Docs
 .PHONY: docs-links
