@@ -10,6 +10,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
+# shellcheck source=../../scripts/harness/timing.sh
+source "$ROOT/scripts/harness/timing.sh" 2>/dev/null && harness_time_exit hook protect-harness
 [[ "${HARNESS_EDIT:-}" == 1 ]] && exit 0
 
 block() {

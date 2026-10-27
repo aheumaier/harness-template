@@ -9,10 +9,13 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../scripts/harness/timing.sh
+source "$ROOT/scripts/harness/timing.sh" 2>/dev/null && harness_time_exit hook fast-check
 cd "$ROOT" || exit 0
 # shellcheck source=../../scripts/tool-versions.env
 source scripts/tool-versions.env
 export GOTOOLCHAIN="$GO_TOOLCHAIN" PATH="$ROOT/.bin:$ROOT/node_modules/.bin:$PATH"
+export HARNESS_SCOPE=fast-check # tags the timings of the sensors below
 RUN=scripts/harness/run.sh
 
 file="${1:-}"

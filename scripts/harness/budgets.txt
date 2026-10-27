@@ -1,7 +1,12 @@
-# Latency budgets (ADR 0013, exec plan 0002 NFRs), read by scripts/harness/run.sh after every sensor run.
-# A sensor over budget prints one warning line and keeps its exit status (rules.md#harness-latency-budget).
+# Latency budgets (ADR 0013, exec plan 0002 NFRs), read by scripts/harness/timing.sh after every sensor run
+# (scripts/harness/run.sh) and every hook call (.claude/hooks/*.sh). A run over budget prints one warning
+# line and keeps its exit status (rules.md#harness-latency-budget).
 #
-# One row per line: <sensor-id> <budget-ms> <nfr-id>. The sensor id is run.sh's first argument; `default`
-# applies to every sensor without a row. Raising a budget is a loosening and needs a human
+# One row per line: <name> <budget-ms> <nfr-id>. The name is a sensor id (run.sh's first argument) or a hook
+# name; `default` applies to every name without a row. Raising a budget is a loosening and needs a human
 # (rule: harness-config-not-loosened).
 default 5000 NFR-H5
+protect-harness 50 NFR-H1
+guard-bash 50 NFR-H1
+only-make-check 50 NFR-H1
+fast-check 1000 NFR-H2

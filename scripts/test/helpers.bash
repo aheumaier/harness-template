@@ -3,6 +3,9 @@
 
 REPO="$(cd "$BATS_TEST_DIRNAME/../.." && pwd -P)"
 export PATH="$REPO/.bin:$REPO/node_modules/.bin:$PATH"
+# No latency budgets (scripts/harness/timing.sh): a loaded machine must not add warnings to tested output.
+# Tests of the budgets themselves unset this or point it at their own file.
+export HARNESS_BUDGETS=/dev/null
 
 # has <text>: $output (from bats `run`) contains text. A function, not a bare [[ ]]: bash 3.2 (macOS) does
 # not fail a test on a false [[ ]] that is not the last command.

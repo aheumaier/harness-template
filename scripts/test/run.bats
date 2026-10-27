@@ -4,7 +4,8 @@ bats_require_minimum_version 1.5.0
 load helpers
 
 setup() {
-  sandbox scripts/harness/run.sh
+  unset HARNESS_BUDGETS GITHUB_ACTIONS GITHUB_STEP_SUMMARY # budgets from the sandbox, no CI annotations
+  sandbox scripts/harness/run.sh scripts/harness/timing.sh
   mkdir -p "$SANDBOX/docs/harness" "$SANDBOX/sub"
   printf '%s\n' '### rule-a' '- **Remediation:** Fix A.' '' '### rule-b' '- **Remediation:** Fix B.' \
     >"$SANDBOX/docs/harness/rules.md"
@@ -71,4 +72,12 @@ setup() {
   printf 'not a dir' >"$SANDBOX/.cache"
   run -0 "$RUN" sensor rule-a -- true
   [ -z "$output" ]
+}
+
+@test "runs the sensor untimed when the timing helper is missing" {
+  rm "$SANDBOX/scripts/harness/timing.sh"
+  run -3 "$RUN" sensor rule-a -- bash -c 'exit 3'
+  has 'remediation: Fix A.'
+  run ! has 'timing.sh'
+  [ ! -e "$SANDBOX/.cache/harness/timings.jsonl" ]
 }
