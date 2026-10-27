@@ -1,6 +1,6 @@
 # 0001 — Bootstrap the agent harness
 
-Status: active · Owner: @aheumaier · Started: 2026-10-27
+Status: completed · Owner: @aheumaier · Started: 2026-10-27 · Completed: 2026-10-27
 
 ## Goal
 
@@ -126,6 +126,10 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
 
 ## Log
 
+- 2026-10-27: DoD on a fresh clone of fb69391: `setup`, `check`, `harness-selftest` (26/26), `new-domain
+  NAME=probe && make check` green; `check-all` red only on knip (`bats` unused devDependency) until the
+  pending `knip.json` change (`ignoreDependencies` += `bats`) is approved and committed by a human.
+  Hostile-PR simulation: both base-branch gates red, green only with the label. Plan moved to completed/.
 - 2026-10-27: second phase-10 review: base-branch gates via `pull_request_target` (ADR 0010), sensor code
   and `.gitattributes` as `config`, `.gitattributes`-proof diff, `lint:file-ignore` marker, mktemp leak.
 - 2026-10-27: third review: PR head via second checkout (private repos), only `#` lines are config comments,
