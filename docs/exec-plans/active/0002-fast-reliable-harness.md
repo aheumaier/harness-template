@@ -65,7 +65,7 @@ reported: [ADR 0013](../../adr/0013-harness-nfr-budgets.md). Numbers land in `sc
 | NFR-H5 | one sensor in `make check` | ≤ 5 s, or its row in `budgets.txt` | `bats` 52.8 s, `go-test` 6.1 s, `analyzer-tests` 6.0 s (under `-j4`); rest ≤ 5 s | `run.sh` | warn; alert |
 | NFR-H6 | `make check` rerun, nothing changed | ≤ 3 s | ≈ first run (no skip, `-count=1`) | two runs back to back | warn; alert |
 | NFR-H7 | `make check-all` in CI | ≤ 10 min | not measured | job duration | alert |
-| NFR-R1 | Deterministic: same tree, same verdict and same findings | 0 differences | not measured | nightly double run | **fail** (nightly) + alert |
+| NFR-R1 | Deterministic: same tree, same verdict and same findings | 0 differences | 0 (`make check` ×2, local, 2026-10-28) | nightly double run | **fail** (nightly) + alert |
 | NFR-R2 | Fail closed: a sensor that cannot run (missing tool, base ref, parse error) exits non-zero | 0 silent passes | partly (merge-base, guard-bash) | fixtures with a broken environment | **fail** |
 | NFR-R3 | Detection: every rule with a fixture rejects it ([ADR 0009](../../adr/0009-harness-selftest.md)) | 100 % | 100 % | `make harness-selftest` | **fail** |
 | NFR-R4 | Actionable: every sensor failure through `run.sh` names its rule id and remediation; every hook block names its reason | 100 % | 100 % | `run.bats`, selftest, hook bats tests | **fail** |
@@ -93,8 +93,8 @@ One slice per commit, in this order (the [loop prompt](0002-loop-prompt.md) work
 - [x] P1 — 5a52a22 — `run.sh` overhead 16 → 27 ms per sensor; over-budget sensors now reported (`bats`
   52.8 s, `go-test` 6.1 s, `analyzer-tests` 6.0 s under `-j4`)
 - [x] P2 — 2d8c53f — hooks 36/34/30 ms → 43/43/42 ms (timed now, budget 50 ms); CI annotations, summary, `harness-timings-check-all` artifact
-- [ ] P3 (phase 0) nightly `harness-nfr` workflow (p95 over 7 days, double run for NFR-R1, one issue);
-  rule `harness-deterministic` with an alternating-verdict fixture
+- [x] P3 — f52c9be — NFR-R1 not measured → 0 differences (`make harness-determinism`, 112 s local); nightly
+  `harness-nfr.yml`, rule `harness-deterministic`, fixture `harness-nondeterministic`
 - [ ] P4 (phase 1) `HARNESS_SCOPE` (`changed` in `check`, `full` in `check-all`/CI); `lint-sh`,
   `fmt-check-sh`, `test-sh` skipped in `changed` scope when no trigger path changed
 - [ ] P5 (phase 1) bats sandbox: hardlink executables, copy before write, teardown checksum of the real
@@ -231,3 +231,9 @@ Per [ADR 0012](../../adr/0012-parsing-sensors-in-go.md): `guard-bash` and every 
   session's Go tests had the load average at 20–40 during this iteration, so absolute numbers vary. Headroom
   under NFR-H1 is now 7 ms until P8 removes `node` (~20 ms). Bats tests set `HARNESS_BUDGETS=/dev/null`.
   `check-all`: integrity gate as in P1; other targets green.
+- 2026-10-28: P3 (f52c9be). `make harness-determinism` (two `make check` runs, 112 s; budget row 120 s) found
+  one real difference on its first run: `run.bats` asserted timing scope `changed` and failed under
+  `HARNESS_SCOPE=full`, which the nightly sets; `helpers.bash` now unsets it. Findings are compared as
+  sorted lines with durations, timing rows and temp paths masked, since `-j4` reorders output. p95 report
+  reads untrusted PR-run artifacts, so only plain sensor ids are kept. Selftest 30 fixtures, 29 s (load
+  ~3). The workflow is untested on GitHub until merged (scheduled workflows run from `main`); actionlint green.
