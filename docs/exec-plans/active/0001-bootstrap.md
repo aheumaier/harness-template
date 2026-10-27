@@ -19,7 +19,7 @@ the harness: guides (feedforward) + sensors (feedback). No business domains.
 | 5 | setup-worktree.sh, dev/db-up/db-reset, per-worktree ports | two worktrees up simultaneously | done |
 | 6 | check / check-all / gen-check, fixtures, harness-selftest | selftest green | done |
 | 7 | new-domain generator + skill + CI probe | probe + `make check` green | done (CI probe: phase 10) |
-| 8 | AGENTS.md, nested guides, ARCHITECTURE.md, docs | links resolve, AGENTS ≤100 lines | todo |
+| 8 | AGENTS.md, nested guides, ARCHITECTURE.md, docs | links resolve, AGENTS ≤100 lines | done |
 | 9 | .claude settings, hooks, subagents, skills | hooks tested | todo |
 | 10 | GitHub workflows, CODEOWNERS, PR template, branch-protection script | YAML valid | todo |
 
@@ -80,11 +80,18 @@ Single source: `scripts/tool-versions.env` (Go/binary tools) and `package.json` 
 - harness-selftest links node_modules/.bin into the temp copy instead of copying them (305 MB + 381 MB).
 - Generator stub goes beyond "stubs": one `GET /<kebab>/status` operation + `Ping` query wire every layer, so
   oapi-codegen, sqlc and the route are exercised (empty tags/query files are rejected by the tools, A4).
+- Added sensor `docs-links` (`check-links.sh`, in `make check`) so "all docs links resolve" is enforced, not
+  checked once; anchors use GitHub heading slugs.
+- `squawk` runs via `scripts/harness/squawk.sh`: files with `-- atlas:txmode none` are checked as
+  non-transactional (otherwise `CREATE INDEX CONCURRENTLY` could never pass). Verified with Atlas apply.
+- Added `make db-migrate`, `docs/SECURITY.md`, `docs/RELIABILITY.md` (referenced by guides).
 - The "empty" migration holds only the lock/statement timeout header squawk requires.
 - Generator inserts at `harness:*` marker comments in openapi.yaml, routes.go and QUALITY.md; refuses dirty files.
 
 ## Log
 
+- 2026-10-27: phase 8 done: AGENTS.md 70 lines, 4 nested AGENTS.md, CLAUDE.md, ARCHITECTURE.md, core beliefs;
+  add-endpoint/add-migration skills written early because guides link them.
 - 2026-10-27: phase 7 done: `make new-domain NAME=zzz_probe` → `make check` (~6 s) and `check-all` green, endpoint
   served 200; two domains in one tree (FORCE=1) green; invalid/reserved/duplicate names rejected.
 - 2026-10-27: phase 6 done: 18 fixtures, `make harness-selftest` green (~20 s). First run passed the Atlas

@@ -17,7 +17,7 @@ GCL  := .bin/golangci-lint-custom
 ANALYZERS_SRC := $(shell find $(API)/tools/analyzers -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
 
 ##@ Workflow
-.PHONY: help setup check check-all harness-selftest new-domain dev db-up db-reset
+.PHONY: help setup check check-all harness-selftest new-domain dev db-up db-migrate db-reset
 
 help: ## Show targets
 	@awk 'BEGIN{FS=":.*##"} /^##@/{printf "\n%s\n",substr($$0,5)} /^[a-z0-9-]+:.*##/{printf "  %-18s %s\n",$$1,$$2}' $(MAKEFILE_LIST)
@@ -36,12 +36,15 @@ dev: db-up ## Run API + web for this worktree (Ctrl-C stops both)
 db-up: ## Start this worktree's Postgres
 	@$(WITH_ENV) docker compose --progress quiet up -d --wait db
 
+db-migrate: db-up ## Apply pending migrations to this worktree's Postgres
+	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
+
 db-reset: ## Drop this worktree's database volume, recreate, migrate
 	@$(WITH_ENV) docker compose --progress quiet down -v; docker compose --progress quiet up -d --wait db
 	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
 
 check: ## Fast sensors (<60s warm): format, lint, arch, unit tests, gen-check
-	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers schema-doc-fresh lint-web arch-web typecheck-web test-web
+	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers schema-doc-fresh docs-links lint-web arch-web typecheck-web test-web
 	@$(MAKE) gen-check
 
 check-all: check ## Everything: check + integration, contract, migration, security, dead code
@@ -124,7 +127,7 @@ lint-migrations: ## Atlas migrate lint (destructive + incompatible), needs Docke
 	@$(RUN) atlas-lint db-no-destructive-migration,db-backward-compatible-migration --dir $(API) -- atlas migrate lint --env local $(ATLAS_LINT_SCOPE)
 
 squawk: ## Postgres locking checks on migrations
-	@$(RUN) squawk db-safe-locking -- squawk --config .squawk.toml $(API)/db/migrations/*.sql
+	@$(RUN) squawk db-safe-locking -- scripts/harness/squawk.sh
 
 gen-schema-doc: ## Regenerate docs/generated/db-schema.md (needs Docker)
 	@scripts/gen-schema-doc.sh
@@ -134,6 +137,11 @@ schema-doc-fresh:
 
 test-integration: ## Integration tests against the worktree's Postgres (.env.local)
 	@$(WITH_ENV) $(RUN) go-integration go-tests-pass --dir $(API) -- go test -race -count=1 -tags=integration ./...
+
+##@ Docs
+.PHONY: docs-links
+docs-links: ## Relative links and anchors in Markdown resolve
+	@$(RUN) check-links docs-links-resolve -- scripts/harness/check-links.sh
 
 ##@ Generation
 .PHONY: gen gen-check gen-sqlc gen-atlas-sum gen-oapi gen-api-client

@@ -216,3 +216,12 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Sensor:** `scripts/harness/gen-check.sh` (`make gen-check`, part of `make check`).
 - **Remediation:** Change the source (api/openapi.yaml, db/queries/*.sql, db/migrations) instead, run `make gen`, and commit the regenerated files.
 - **Fixture:** `fixtures/gen-hand-edit-api-client` · Status: seed
+
+## Docs
+
+### docs-links-resolve
+- **Rule:** Every relative link and `#anchor` in tracked Markdown files resolves.
+- **Why:** Guides are the agent's map; a dead link silently sends it searching (or guessing) instead of reading.
+- **Sensor:** `scripts/harness/check-links.sh` (`make docs-links`, part of `make check`).
+- **Remediation:** Point the link at the file's current path (or heading slug), or remove it if the target is gone; when you move a doc, update every link to it in the same change.
+- **Fixture:** `fixtures/docs-broken-link` · Status: seed
