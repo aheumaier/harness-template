@@ -12,7 +12,7 @@ same target is red on your machine (with `BASE_REF=origin/main` for diff-based s
 | | | `generator-probe` | `make new-domain NAME=zzz_probe && make check`, then discards the probe and asserts a clean tree | yes |
 | `contract-gate.yml` | PR via `pull_request_target` (incl. label changes) | `api-no-breaking-change` | the **base branch's** `make contract-check` against the PR's spec when `api/openapi.yaml` changed (oasdiff, red only on breaking changes) | yes |
 | `harness-integrity.yml` | PR via `pull_request_target` (incl. label and title changes) | `harness-integrity` | the **base branch's** `make harness-integrity` against the PR head (`HARNESS_ROOT`) | yes |
-| | | `pr-conventions` | the **base branch's** `make commits specs` against the PR head and title (Conventional Commits, spec-kit specs) | yes |
+| | | `pr-conventions` | the **base branch's** `make commits specs` against the PR head and title (Conventional Commits, PR title ≤ 90 characters, spec-kit specs) | yes |
 | `migration-gate.yml` | PR touching `apps/api/db/migrations/**` | `migrations` | append-only, Atlas lint, squawk | no (path-filtered; same sensors in `check-all`) |
 | `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, schema doc, doc links → one open `drift` issue | no |
 
