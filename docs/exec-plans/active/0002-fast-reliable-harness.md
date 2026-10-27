@@ -61,8 +61,8 @@ reported: [ADR 0013](../../adr/0013-harness-nfr-budgets.md). Numbers land in `sc
 | NFR-H1 | Each PreToolUse hook, per call | ≤ 50 ms | 43 ms (protect-harness), 43 ms (guard-bash), 42 ms (only-make-check), timing included | hook wrapper timing | warn; alert |
 | NFR-H2 | fast-check (PostToolUse), per edited file | ≤ 1 s | 0.04–0.34 s (`.md` 42 ms; `.ts`: whole-package tsc) | fast-check timing | warn; alert |
 | NFR-H3 | `make check`, change without shell or harness files | ≤ 10 s | 4 s (2026-10-28, warm, Go/web caches hit) | `run.sh` + make wall time | warn; alert |
-| NFR-H4 | `make check`, any change | ≤ 60 s | 42–60 s | same | warn; alert |
-| NFR-H5 | one sensor in `make check` | ≤ 5 s, or its row in `budgets.txt` | `bats` 52.8 s, `go-test` 6.1 s, `analyzer-tests` 6.0 s (under `-j4`); rest ≤ 5 s | `run.sh` | warn; alert |
+| NFR-H4 | `make check`, any change | ≤ 60 s | 36 s (2026-10-28, shell change, `bats`-bound) | same | warn; alert |
+| NFR-H5 | one sensor in `make check` | ≤ 5 s, or its row in `budgets.txt` | `bats` 27.9 s (2026-10-28), `go-test` 6.1 s, `analyzer-tests` 6.0 s (under `-j4`); rest ≤ 5 s | `run.sh` | warn; alert |
 | NFR-H6 | `make check` rerun, nothing changed | ≤ 3 s | ≈ first run (no skip, `-count=1`) | two runs back to back | warn; alert |
 | NFR-H7 | `make check-all` in CI | ≤ 10 min | not measured | job duration | alert |
 | NFR-R1 | Deterministic: same tree, same verdict and same findings | 0 differences | 0 (`make check` ×2, local, 2026-10-28) | nightly double run | **fail** (nightly) + alert |
@@ -97,8 +97,8 @@ One slice per commit, in this order (the [loop prompt](0002-loop-prompt.md) work
   `harness-nfr.yml`, rule `harness-deterministic`, fixture `harness-nondeterministic`
 - [x] P4 — d1d7443 — `make check` without shell or harness changes 67 → 4 s warm (`bats` 64 s skipped);
   `HARNESS_SCOPE` (`changed` in `check`, `full` in `check-all`/CI), `scripts/harness/unchanged.sh`, rule `harness-scope`
-- [ ] P5 (phase 1) bats sandbox: hardlink executables, copy before write, teardown checksum of the real
-  harness files
+- [x] P5 — 715693e — `make test-sh` 65.8 → 27.9 s warm (126 tests); executables hardlinked, `own` before
+  a write, teardown checksum of the real `scripts/` and `.claude/hooks/`
 - [ ] P6 (phase 1) no `-count=1` in `changed` scope; depcruise cache; `gen-check` stamp over inputs and
   outputs
 - [ ] P7 (phase 1/4) fast-check: no whole-package `tsc` per edit
@@ -244,3 +244,11 @@ Per [ADR 0012](../../adr/0012-parsing-sensors-in-go.md): `guard-bash` and every 
   `*.bats`, `scripts/**` and every protected path; bats inputs outside those (node, `package.json`) are left to
   `check-all`. The new bats test leaked `BASE_REF=HEAD` from the calling `make` and now pins `BASE_REF=main`.
   Selftest 30/30, 22 s. `check-all`: integrity gate as in P1; other targets and `test-integration` green.
+- 2026-10-28: P5 (715693e). `HARNESS_SCOPE=full make test-sh` 63.0/65.8 s before, 28.1/27.9 s after (load ~4);
+  `make check` with a shell change 31/36 s, still `bats`-bound. Three hardlinks from the P0 measurement were
+  still in this session's scratchpad (link count 4 on `merge-base.sh`, `check-specs.sh`,
+  `protected-paths.txt`) and were removed; nothing had written through them. The guard was proven before the
+  fix: with plain links, `integrity-check.bats` failed in `teardown_file` naming `merge-base.sh`, and the file
+  was restored from git. `integrity-check.bats` `add()` now calls `own` on existing files. A1 holds: links
+  remove the first-exec cost. The link test skips when the temp dir is on another volume (copy fallback).
+  Selftest 30/30. Integrity green (only `scripts/test/`, not config).
