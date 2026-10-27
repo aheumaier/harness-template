@@ -60,7 +60,7 @@ reported: [ADR 0013](../../adr/0013-harness-nfr-budgets.md). Numbers land in `sc
 |----|-------------|--------|-------|-------------|--------------|
 | NFR-H1 | Each PreToolUse hook, per call | ≤ 50 ms | 43 ms (protect-harness), 43 ms (guard-bash), 42 ms (only-make-check), timing included | hook wrapper timing | warn; alert |
 | NFR-H2 | fast-check (PostToolUse), per edited file | ≤ 1 s | 0.04–0.34 s (`.md` 42 ms; `.ts`: whole-package tsc) | fast-check timing | warn; alert |
-| NFR-H3 | `make check`, change without shell or harness files | ≤ 10 s | 42 s | `run.sh` + make wall time | warn; alert |
+| NFR-H3 | `make check`, change without shell or harness files | ≤ 10 s | 4 s (2026-10-28, warm, Go/web caches hit) | `run.sh` + make wall time | warn; alert |
 | NFR-H4 | `make check`, any change | ≤ 60 s | 42–60 s | same | warn; alert |
 | NFR-H5 | one sensor in `make check` | ≤ 5 s, or its row in `budgets.txt` | `bats` 52.8 s, `go-test` 6.1 s, `analyzer-tests` 6.0 s (under `-j4`); rest ≤ 5 s | `run.sh` | warn; alert |
 | NFR-H6 | `make check` rerun, nothing changed | ≤ 3 s | ≈ first run (no skip, `-count=1`) | two runs back to back | warn; alert |
@@ -95,8 +95,8 @@ One slice per commit, in this order (the [loop prompt](0002-loop-prompt.md) work
 - [x] P2 — 2d8c53f — hooks 36/34/30 ms → 43/43/42 ms (timed now, budget 50 ms); CI annotations, summary, `harness-timings-check-all` artifact
 - [x] P3 — f52c9be — NFR-R1 not measured → 0 differences (`make harness-determinism`, 112 s local); nightly
   `harness-nfr.yml`, rule `harness-deterministic`, fixture `harness-nondeterministic`
-- [ ] P4 (phase 1) `HARNESS_SCOPE` (`changed` in `check`, `full` in `check-all`/CI); `lint-sh`,
-  `fmt-check-sh`, `test-sh` skipped in `changed` scope when no trigger path changed
+- [x] P4 — d1d7443 — `make check` without shell or harness changes 67 → 4 s warm (`bats` 64 s skipped);
+  `HARNESS_SCOPE` (`changed` in `check`, `full` in `check-all`/CI), `scripts/harness/unchanged.sh`, rule `harness-scope`
 - [ ] P5 (phase 1) bats sandbox: hardlink executables, copy before write, teardown checksum of the real
   harness files
 - [ ] P6 (phase 1) no `-count=1` in `changed` scope; depcruise cache; `gen-check` stamp over inputs and
@@ -237,3 +237,10 @@ Per [ADR 0012](../../adr/0012-parsing-sensors-in-go.md): `guard-bash` and every 
   sorted lines with durations, timing rows and temp paths masked, since `-j4` reorders output. p95 report
   reads untrusted PR-run artifacts, so only plain sensor ids are kept. Selftest 30 fixtures, 29 s (load
   ~3). The workflow is untested on GitHub until merged (scheduled workflows run from `main`); actionlint green.
+- 2026-10-28: P4 (d1d7443). Baseline `make check BASE_REF=HEAD` 131 s cold, 67 s warm, with `bats` 64 s of it;
+  after, on a tree without shell or harness changes, 4.3 s and 3.8 s, and the three shell targets print
+  `skipped`. A change that touches a shell or harness file still pays the full ~55–65 s (NFR-H4), and so does
+  this branch against `main`, since every slice of it is a harness change. Triggers are `*.sh`, `*.bash`,
+  `*.bats`, `scripts/**` and every protected path; bats inputs outside those (node, `package.json`) are left to
+  `check-all`. The new bats test leaked `BASE_REF=HEAD` from the calling `make` and now pins `BASE_REF=main`.
+  Selftest 30/30, 22 s. `check-all`: integrity gate as in P1; other targets and `test-integration` green.
