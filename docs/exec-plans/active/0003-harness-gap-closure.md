@@ -96,7 +96,8 @@ PR; **–** needs none.
   fixed; NFR tables → [docs/harness/nfr.md](../../harness/nfr.md)
 - [x] Q6 — e919bed — no SAST → `go-sec` (`gosec` at its defaults, tests included) in `lint-go`, 0 findings in
   the API module; golangci-lint 498 → 539 ms warm (full scope); selftest 41 → 42 fixtures
-- [ ] P1.1 — – — ADR: per-worktree observability stack
+- [x] P1.1 — 55a6915 — no stack chosen → [ADR 0017](../../adr/0017-per-worktree-observability-stack.md)
+  proposed: one `grafana/otel-lgtm:0.36.0@sha256:57c04cbd…` per worktree, 0.53 GiB idle, 3.7 s to ready
 - [ ] P1.2 — – — contract + platform middleware: request ID, access log, `otelhttp` server spans, pgx tracer
 - [ ] P1.3 — – — OTLP exporter wired to config; metrics (RED per route)
 - [ ] P1.4 — H — `compose.yaml` profile `obs` on the worktree's port block; `make obs-up`, `make logs`,
@@ -375,7 +376,7 @@ the feedback.
   module, Trivy for breadth.
 - **A5 — observability image.** `grafana/otel-lgtm` is assumed small enough for one container per worktree
   (~500 MB of RAM). Measure it on the reference machine in P1.1. If it is too heavy, use the JSON-file
-  collector.
+  collector. **Held (P1.1):** 0.53 GiB idle, 3.7 s to ready on an M4 Pro / Docker VM 7.65 GiB; ADR 0017.
 - **A6 — CI agent token.** P3.2 needs an API key as a repo secret and a hard per-PR cost cap. If unavailable,
   the reviewer runs locally from the PR template checklist only.
 - **A7 — mutation tools.** `gremlins` (Go) and Stryker (TS) are maintained and pinnable in `.bin/`. Verify
@@ -464,6 +465,12 @@ the feedback.
     Candidate for the tech-debt tracker.
   - **Proposed, not made:** add `go-sec` (and Q4's `go-structured-logging`) to the rule-id list in
     `.claude/hooks/fast-check.sh`, so an edit-time gosec finding prints this rule's remediation.
+- **A14 — observability stack choices (P1.1).**
+  - Image pinned as `name:tag@digest` (multi-arch index digest), newest tag ≥ 14 days old; the pin moves to
+    `scripts/tool-versions.env` in P1.4. `POSTGRES_IMAGE` there is still tag-only (candidate TD row).
+  - Ports +3..+7 of the worktree block, `127.0.0.1` only. P1.4 must widen `scripts/setup-worktree.sh` (the
+    free-block probe beyond `base+2`, `reserved_ports` beyond `DB|API|WEB`), or two worktrees can collide.
+  - Pyroscope ships in the image and runs unused; part of the measured 0.53 GiB.
 
 ## Log
 
@@ -540,3 +547,7 @@ the feedback.
     and a failed copy or missing Trivy exits 1, not 2 (with TD-6); agents can no longer edit
     `pnpm-workspace.yaml`, so pnpm's `minimumReleaseAgeExclude` entries need the human label (accepted: the
     file is install policy).
+- 2026-10-28: P1.1 done (55a6915). ADR 0017 picks `grafana/otel-lgtm:0.36.0`: 0.53 GiB idle, 3.7 s to ready,
+  under A5's 1.5 GB / 90 s, so the bare collector + `jq` fallback is rejected (PromQL gives NFR-O1's p95).
+  Verified: only the ADR and its index row changed; `make check`, `make docs-links` green; selftest 44/44;
+  no slice containers left. NFR-O1 unchanged (fail) until P1.4/P1.5.
