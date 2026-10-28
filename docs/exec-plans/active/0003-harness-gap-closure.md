@@ -116,7 +116,10 @@ PR; **–** needs none.
 - [ ] P2.4 — H — approved-fixture snapshots of API responses (contract-shaped golden files)
 - [ ] P2.5 — H — coverage report per package (Go + Vitest) into the CI summary; trend in the drift issue
 - [ ] P2.6 — H — weekly mutation testing on files changed that week (Go: `gremlins`; TS: Stryker)
-- [ ] P3.1 — – — ADR: inferential sensors are advisory only
+- [x] P3.1 — eb61f5e — inferential sensors had no stated status →
+  [ADR 0019](../../adr/0019-inferential-sensors-are-advisory.md) proposed: one top-level PR comment, never a
+  review thread; skip with a notice; outside the harness NFRs; hard cost cap in a protected file; a finding
+  class accepted twice becomes an earned rule
 - [ ] P3.2 — H — `code-reviewer` on every PR in CI, posting one comment; never a required check
 - [ ] P3.3 — H — scheduled security, data-handling and modularity reviews → drift issue
 - [ ] P3.4 — H — enable `agent-gc`: doc-gardening PRs for drift the computational checks found
@@ -624,3 +627,14 @@ code: `deadcode` and knip do that without false positives from entry points they
   contract-test cut, `http.StatusText`. Deferred: `telemetry.Setup` span processors, a problem helper
   (P2.1), `/healthz` noise in logs and traces (P1.3 decides). Fold 1ec83b1 (protected harness Go, no
   reviewer run) into the Phase 1 gate review.
+- 2026-10-28: P3.1 integrated (eb61f5e). `code-reviewer` found 3 blocking gaps, fixed in one retry: the ADR
+  now amends "every new sensor ships complete" for inferential sensors, places them outside the harness NFRs
+  instead of narrowing NFR-R2, and limits output to one issue comment because branch protection sets
+  `required_conversation_resolution`. Decisions: no rules.md entry, fixture or budgets row (ci.md lists CI
+  ones, `.claude/agents/` local ones); skip with a notice when the agent cannot run; "accepted" means the
+  change links the finding, the first acceptance is a tech-debt row, the second a harness PR with
+  `Status: earned (<f1>, <f2>)`; a per-run cost cap in a protected file instead of an NFR; `pull_request`
+  only (ADR 0010 invariant 3), forks skipped, posting in a separate step; local reviewer calls are workflow
+  steps, not gates. If ADR 0019 is rejected, drop P3.1 and revisit P3.2, P3.3, P3.4 and P3.8. Noticed
+  (protected): nfr.md:17 and ADR 0015:39 should link ADR 0019 (P3.2 can add it with the ci.md "Required:
+  no" row); the first earned rule adds `earned` to the rules.md status legend.
