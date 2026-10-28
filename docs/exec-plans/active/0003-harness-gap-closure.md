@@ -63,7 +63,7 @@ ADR.
 
 | Id | Requirement | Target | Today | Measured by | On violation |
 |----|-------------|--------|-------|-------------|--------------|
-| NFR-H8 | `pre-commit` git hook, typical commit (≤ 20 staged files) | ≤ 2 s | no hook | `timing.sh` row `pre-commit`, local only (the hook never runs in CI) | warn |
+| NFR-H8 | `pre-commit` git hook, typical commit (≤ 20 staged files) | ≤ 2 s | 0.57 s warm, 10 staged files (Q2) | `timing.sh` row `pre-commit`, local only (the hook never runs in CI) | warn |
 | NFR-H9 | `repo-no-secrets` in `make check` | ≤ 5 s | 0.43 s warm, full tree (Q1) | `run.sh`, budgets row `repo-no-secrets 5000 NFR-H9` | warn; alert. If it stays over budget, the full scan moves to `check-all` and `check` scans changed files only |
 | NFR-B1 | Every domain created by `make new-domain` has a passing service test, handler test and integration test before its first edit | 100 % | 0 domains, scaffold has no tests | CI generator probe (rules.md:240) runs the generated tests | **fail** |
 | NFR-B2 | The app's critical path is covered by an e2e test that runs against this worktree's `make dev` | ≥ 1 journey (`/healthz` + web shell renders) | none | `make e2e` in `check-all` and CI | **fail** |
@@ -93,7 +93,8 @@ PR; **–** needs none.
 - [x] Q1 — d5cbcdd — `repo-no-secrets` not run → 0.43 s warm, full tree, in `make check`; no JS/nested-`go.mod`
   vuln scan → `deps-no-known-vulns` (4 manifests, 0.55 s warm) in `check-all`, CI, drift; Trivy v0.76.0, atlas,
   shellcheck sha256-pinned
-- [ ] Q2 — H — `pre-commit` git hook: secret scan + cheap per-file sensors on staged files (NFR-H8)
+- [x] Q2 — 817b08c — no hook → `pre-commit` git hook on the index (secret scan, golangci fmt, shellcheck,
+  shfmt, check-links): 568 ms warm / 660 ms on a real 10-file commit (budget 2 s, NFR-H8)
 - [ ] Q3 — H — doc-truth sensor `rules-fixture-claims`; then fix every claim it flags
 - [ ] Q4 — H — `go-structured-logging`: `forbidigo` (`fmt.Print*`, `log.*` outside `platform`) + `sloglint`
 - [ ] Q5 — H — doc drift: `minimumReleaseAge`, web test stack, "<60 s", plan 0002 states, loop prompt, NFRs into
@@ -403,6 +404,19 @@ the feedback.
       exposure).
     - `trivy-vuln` has no budgets row: no NFR covers `check-all` sensors.
     - `actions/cache` saves only on job success, so a red run re-downloads the DB (~1.6 GB).
+- **A9 — pre-commit choices (Q2).**
+  - **Index only.** Staged files are listed with `git diff -z --cached` and copied with `git checkout-index`
+    to a temp tree outside the repo; the per-file sensors run on a copy of the whole index, so `source`,
+    `go.mod`, configs and link targets resolve as committed. A relative `GIT_INDEX_FILE` (`git commit
+    <path>`, `-a`) is made absolute.
+  - **Go format** uses `golangci-lint-custom fmt --diff` with `apps/api/.golangci.yml` (gofmt + goimports, as
+    `make fmt`) rather than bare `gofmt`.
+  - **Shared table.** `scripts/harness/file-sensors.sh` classifies files. Wiring `.claude/hooks/fast-check.sh`
+    to source it, and naming the pre-commit hook in AGENTS.md "Working agreements", are protected changes
+    proposed for the PR description, not made.
+  - **Open, for a human:** bats takes ~44–48 s in `make check` (NFR-H5, 5 s; ~34 s before Q2, ~5.5 s of the
+    rise is `pre-commit.bats`, which runs real Trivy and golangci). Warn-only; no budget raised. Belongs in
+    the tech-debt tracker or a split.
 
 ## Log
 
@@ -427,3 +441,8 @@ the feedback.
   - a planted untracked key failed with rule id and remediation, offline;
   - in `make -k check-all`, only `harness-config-not-loosened` fails, on this slice's protected files (the
     human gate).
+- 2026-10-28: Q2 done (817b08c). Rechecked by the orchestrator:
+  - `make check` green (bats 48 s, over NFR-H5, warn); `make harness-selftest` 33/33;
+  - a staged fake AWS key blocked a real `git commit` with rule id `repo-no-secrets` and remediation; no
+    commit was made, the probe file was removed;
+  - in `make -k check-all`, only `harness-config-not-loosened` fails (the human gate).
