@@ -30,31 +30,26 @@ var (
 )
 
 type renamer struct {
-	r        *strings.Replacer
+	*strings.Replacer
 	keptMod  bool     // the module path stays, so the name inside it is no leftover
 	leftover []string // template tokens that should be gone after the rename
 }
 
 // newRenamer replaces in one pass, so a module path that contains the old name is not renamed twice in a
-// run (checkRenameArgs keeps a second run a no-op). The module path comes first: at the same position the Replacer tries the pairs in argument order.
+// run (checkRenameArgs keeps a second run a no-op). The module path comes first: at the same position the
+// Replacer tries the pairs in argument order.
 func newRenamer(name, module, owner string) renamer {
 	r := renamer{
-		r:       strings.NewReplacer(templateModule, module, templateName, name, templateOwner, owner),
-		keptMod: module == templateModule,
+		Replacer: strings.NewReplacer(templateModule, module, templateName, name, templateOwner, owner),
+		keptMod:  module == templateModule,
 	}
 	if name != templateName {
 		r.leftover = append(r.leftover, templateName)
 	}
-	if module != templateModule && owner != templateOwner {
+	if !r.keptMod && owner != templateOwner {
 		r.leftover = append(r.leftover, strings.TrimPrefix(templateOwner, "@")) // e.g. git@github.com:aheumaier/…
 	}
 	return r
-}
-
-// replace returns s renamed and whether anything changed.
-func (r renamer) replace(s string) (string, bool) {
-	out := r.r.Replace(s)
-	return out, out != s
 }
 
 // leftovers lists the lines of s that still hold a template token: a form the three tokens don't cover.
@@ -87,16 +82,16 @@ func checkRenameArgs(name, module, owner string) error {
 	case name == templateName && module == templateModule && owner == templateOwner:
 		return errors.New("name, module and owner are the template's own; nothing to rename")
 	}
-	pairs := [][2]string{{templateModule, module}, {templateName, name}, {templateOwner, owner}}
-	for _, v := range []struct{ what, val, own string }{
+	ids := []struct{ what, val, own string }{
 		{"name", name, templateName}, {"module", module, templateModule}, {"owner", owner, templateOwner},
-	} {
+	}
+	for _, v := range ids {
 		if v.val == v.own {
 			continue
 		}
-		for _, p := range pairs {
-			if p[0] != p[1] && strings.Contains(v.val, p[0]) {
-				return fmt.Errorf("%s %q contains the template's %q, so a second run would rename it again; pick a value without it", v.what, v.val, p[0])
+		for _, p := range ids {
+			if p.val != p.own && strings.Contains(v.val, p.own) {
+				return fmt.Errorf("%s %q contains the template's %q, so a second run would rename it again; pick a value without it", v.what, v.val, p.own)
 			}
 		}
 	}
@@ -106,16 +101,12 @@ func checkRenameArgs(name, module, owner string) error {
 // renameRepo renames the template identity in every tracked text file under root. Without write it only
 // lists the files that would change. The output names each file and its number of changed lines, then every
 // path and line that still holds a template token, for a hand fix.
-func renameRepo(root string, args []string, write bool, stdout io.Writer) error {
-	if len(args) != 3 {
-		return errors.New("want <name> <module> <owner>")
-	}
-	name, module, owner := args[0], args[1], args[2]
+func renameRepo(root, name, module, owner string, write bool, stdout io.Writer) error {
 	if err := checkRenameArgs(name, module, owner); err != nil {
 		return err
 	}
 	// Tracked files only: untracked work in progress is not ours to rewrite.
-	files, err := lsFiles(root, []string{"-c"})
+	files, err := lsFiles(root, "-c")
 	if err != nil {
 		return err
 	}
@@ -144,11 +135,11 @@ func renameRepo(root string, args []string, write bool, stdout io.Writer) error 
 		if bytes.IndexByte(b, 0) >= 0 {
 			continue // binary
 		}
-		out, ok := r.replace(string(b))
+		out := r.Replace(string(b))
 		for _, n := range r.leftovers(out) {
 			left = append(left, fmt.Sprintf("%s:%d", f, n))
 		}
-		if !ok {
+		if out == string(b) {
 			continue
 		}
 		changed++

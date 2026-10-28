@@ -110,10 +110,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		if write {
 			args = args[1:]
 		}
-		if len(args) < 2 {
+		if len(args) != 5 {
 			break
 		}
-		if err := renameRepo(args[1], args[2:], write, stdout); err != nil {
+		if err := renameRepo(args[1], args[2], args[3], args[4], write, stdout); err != nil {
 			fmt.Fprintf(stderr, "harness rename: %v\n", err)
 			return 2
 		}

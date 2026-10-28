@@ -3,11 +3,18 @@ package main
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// renameRun runs harness rename with args and returns the exit code and the combined output.
+func renameRun(t *testing.T, args ...string) (int, string) {
+	t.Helper()
+	var out bytes.Buffer
+	code := run(append([]string{"rename"}, args...), nil, &out, &out)
+	return code, out.String()
+}
 
 func TestRenamer(t *testing.T) {
 	r := newRenamer("acme-shop", "github.com/acme/shop", "@acme/platform")
@@ -19,13 +26,13 @@ func TestRenamer(t *testing.T) {
 		{"/api/openapi.yaml   @aheumaier", "/api/openapi.yaml   @acme/platform"},
 		{"nothing to see", "nothing to see"},
 	} {
-		if got, _ := r.replace(tc.in); got != tc.want {
+		if got := r.Replace(tc.in); got != tc.want {
 			t.Errorf("replace(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 	// A new module path that contains the old name is not renamed a second time.
 	r = newRenamer("shop", "github.com/acme/harness-template", "@acme")
-	if got, _ := r.replace("module github.com/aheumaier/harness-template/apps/api"); got != "module github.com/acme/harness-template/apps/api" {
+	if got := r.Replace("module github.com/aheumaier/harness-template/apps/api"); got != "module github.com/acme/harness-template/apps/api" {
 		t.Errorf("single pass: got %q", got)
 	}
 }
@@ -48,13 +55,8 @@ func TestRenameRepo(t *testing.T) {
 	if err := os.Symlink("package.json", filepath.Join(root, "link.json")); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := exec.Command("git", "-C", root, "add", "-A").CombinedOutput(); err != nil {
-		t.Fatalf("git add: %v: %s", err, out)
-	}
-	// Untracked after the add: work in progress the rename must not touch.
-	if err := os.WriteFile(filepath.Join(root, "wip.md"), []byte("harness-template\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	gitT(t, root, "add", "-A")
+	writeLines(t, root, "wip.md", "harness-template") // untracked after the add: work in progress the rename must not touch
 	read := func(p string) string {
 		b, err := os.ReadFile(filepath.Join(root, p))
 		if err != nil {
@@ -64,20 +66,19 @@ func TestRenameRepo(t *testing.T) {
 	}
 	args := []string{root, "acme-shop", "github.com/acme/shop", "@acme"}
 
-	var out bytes.Buffer
-	if code := run(append([]string{"rename"}, args...), nil, &out, &out); code != 0 {
-		t.Fatalf("dry run exit %d: %s", code, out.String())
+	code, out := renameRun(t, args...)
+	if code != 0 {
+		t.Fatalf("dry run exit %d: %s", code, out)
 	}
-	if !strings.Contains(out.String(), "package.json: 1") || !strings.Contains(out.String(), "dry run") {
-		t.Errorf("dry run output: %s", out.String())
+	if !strings.Contains(out, "package.json: 1") || !strings.Contains(out, "dry run") {
+		t.Errorf("dry run output: %s", out)
 	}
 	if got := read("package.json"); !strings.Contains(got, "harness-template") {
 		t.Errorf("dry run wrote package.json: %s", got)
 	}
 
-	out.Reset()
-	if code := run(append([]string{"rename", "-write"}, args...), nil, &out, &out); code != 0 {
-		t.Fatalf("write exit %d: %s", code, out.String())
+	if code, out := renameRun(t, append([]string{"-write"}, args...)...); code != 0 {
+		t.Fatalf("write exit %d: %s", code, out)
 	}
 	for p, want := range map[string]string{
 		"apps/api/go.mod":                    "module github.com/acme/shop/apps/api\n",
@@ -102,9 +103,8 @@ func TestRenameRepo(t *testing.T) {
 		t.Errorf("link.json: %q %v, want a symlink to package.json", target, err)
 	}
 
-	out.Reset()
-	if code := run(append([]string{"rename", "-write"}, args...), nil, &out, &out); code != 0 || !strings.Contains(out.String(), "0 files") {
-		t.Errorf("second run not a no-op: exit %d: %s", code, out.String())
+	if code, out := renameRun(t, append([]string{"-write"}, args...)...); code != 0 || !strings.Contains(out, "0 files") {
+		t.Errorf("second run not a no-op: exit %d: %s", code, out)
 	}
 }
 
@@ -114,29 +114,27 @@ func TestRenameLeftovers(t *testing.T) {
 		"docs/remote.md":       {"git clone git@github.com:aheumaier/harness-template.git", "fine"},
 		"harness-template.txt": {"nothing"},
 	})
-	if out, err := exec.Command("git", "-C", root, "add", "-A").CombinedOutput(); err != nil {
-		t.Fatalf("git add: %v: %s", err, out)
-	}
-	var out bytes.Buffer
-	if code := run([]string{"rename", root, "acme-shop", "github.com/acme/shop", "@acme"}, nil, &out, &out); code != 0 {
-		t.Fatalf("exit %d: %s", code, out.String())
+	gitT(t, root, "add", "-A")
+	code, out := renameRun(t, root, "acme-shop", "github.com/acme/shop", "@acme")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
 	}
 	for _, want := range []string{"rename: 2 places still hold", "  docs/remote.md:1\n", "  harness-template.txt: path\n"} {
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("output lacks %q: %s", want, out.String())
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q: %s", want, out)
 		}
 	}
-	if strings.Contains(out.String(), "  apps/api/go.mod:1") {
-		t.Errorf("renamed module reported as leftover: %s", out.String())
+	if strings.Contains(out, "  apps/api/go.mod:1") {
+		t.Errorf("renamed module reported as leftover: %s", out)
 	}
 
 	// A kept module path holds the old name on purpose; only the renamed parts are checked.
-	out.Reset()
-	if code := run([]string{"rename", root, "acme-shop", templateModule, "@acme"}, nil, &out, &out); code != 0 {
-		t.Fatalf("exit %d: %s", code, out.String())
+	code, out = renameRun(t, root, "acme-shop", templateModule, "@acme")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
 	}
-	if strings.Contains(out.String(), "  apps/api/go.mod:1") || !strings.Contains(out.String(), "  harness-template.txt: path") {
-		t.Errorf("kept module reported as leftover: %s", out.String())
+	if strings.Contains(out, "  apps/api/go.mod:1") || !strings.Contains(out, "  harness-template.txt: path") {
+		t.Errorf("kept module reported as leftover: %s", out)
 	}
 }
 
@@ -159,9 +157,8 @@ func TestRenameArgs(t *testing.T) {
 		{root, "shop", "github.com/acme/harness-template", "@acme"},
 		{root, "acme-shop", "github.com/aheumaier/harness-template/v2", "@acme"},
 	} {
-		var out bytes.Buffer
-		if code := run(append([]string{"rename"}, args...), nil, &out, &out); code != 2 {
-			t.Errorf("rename %v: exit %d, want 2: %s", args, code, out.String())
+		if code, out := renameRun(t, args...); code != 2 {
+			t.Errorf("rename %v: exit %d, want 2: %s", args, code, out)
 		}
 	}
 }
