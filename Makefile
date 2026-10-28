@@ -190,8 +190,8 @@ test-sh: $(HARNESS) ## bats tests for scripts/ and .claude/hooks/ (scripts/test)
 lint-ci: ## actionlint (+ shellcheck on run: blocks) on .github/workflows
 	@$(RUN) actionlint ci-workflows-valid -- actionlint -no-color
 
-harness-integrity: ## Added suppressions carry a reason; harness configs are not loosened (vs BASE_REF)
-	@$(RUN) integrity harness-suppression-reason,harness-config-not-loosened -- env BASE_REF="$(BASE_REF)" scripts/harness/integrity-check.sh
+harness-integrity: $(HARNESS) ## Added suppressions carry a reason; harness configs are not loosened (vs BASE_REF)
+	@$(RUN) integrity harness-suppression-reason,harness-config-not-loosened -- env BASE_REF="$(BASE_REF)" $(HARNESS) integrity-check .
 
 # PR_TITLE reaches these from the pull_request_target job as an env var (ADR 0011): never write $(PR_TITLE)
 # in a recipe, make would expand a title like `$(shell …)` in a job that holds the base branch's checkout.

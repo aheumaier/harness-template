@@ -4,6 +4,8 @@
 //	harness hook-input <field>...  Claude Code hook JSON on stdin → the fields, one per line
 //	harness guard-bash <root>      PreToolUse guard for Bash commands (.claude/hooks/guard-bash.sh)
 //	harness check-links <root>     docs-links-resolve, docs-claude-imports-agents (make docs-links)
+//	harness integrity-check <root> harness-suppression-reason, harness-config-not-loosened (make
+//	                               harness-integrity; env BASE_REF, HARNESS_ROOT, HARNESS_CHANGE_APPROVED)
 //
 // Exit 2 is a block (or unusable input) for Claude Code; the hooks pass it on. Sensors exit 1 on findings
 // and 2 when they cannot run.
@@ -20,7 +22,7 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness check-links <root>"
+const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness check-links <root> | harness integrity-check <root>"
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
@@ -64,6 +66,23 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		switch {
 		case err != nil:
 			fmt.Fprintf(stderr, "harness check-links: %v\n", err)
+			return 2
+		case bad:
+			return 1
+		}
+		return 0
+	case "integrity-check":
+		if len(args) != 2 {
+			break
+		}
+		root := os.Getenv("HARNESS_ROOT")
+		if root == "" {
+			root = args[1]
+		}
+		bad, err := integrityCheck(args[1], root, os.Getenv("BASE_REF"), os.Getenv("HARNESS_CHANGE_APPROVED") == "1", stdout)
+		switch {
+		case err != nil:
+			fmt.Fprintf(stderr, "harness integrity-check: %v\n", err)
 			return 2
 		case bad:
 			return 1

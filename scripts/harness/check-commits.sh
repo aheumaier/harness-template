@@ -8,8 +8,8 @@
 #                                                 lets git's own Merge/Revert/fixup!/squash!/amend! through,
 #                                                 which the range check catches if they reach a PR
 #
-# The commits are read from HARNESS_ROOT (default: this repo), like integrity-check.sh, so CI runs the base
-# branch's copy against the PR head. Fails closed (exit 2) when the range cannot be read.
+# The commits are read from HARNESS_ROOT (default: this repo), like `harness integrity-check`, so CI runs
+# the base branch's copy against the PR head. Fails closed (exit 2) when the range cannot be read.
 # rules.md#git-conventional-commits
 set -euo pipefail
 
