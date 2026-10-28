@@ -131,17 +131,30 @@ hand, in one reviewed harness PR:
    - `docs/harness/`, `docs/adr/` (format and the ADRs you keep), `docs/exec-plans/`;
    - `scripts/harness/`, `scripts/git-hooks/`, `scripts/install-tools.sh`, `scripts/tool-versions.env`,
      `scripts/setup-worktree.sh`;
+   - `apps/api/tools/harness/`. It builds `.bin/harness`, and the hooks fail closed without that binary;
    - `.claude/`, `.github/`, `trivy.yaml`.
 
    Merge `Makefile`, `.github/workflows/` and `.gitignore` into the existing ones; don't overwrite them. Keep
    the `make` target names, because hooks, CI and guides call them.
-3. **Describe what exists.**
+3. **Rename the copied identity (human).** The copied files still carry `harness-template`,
+   `github.com/aheumaier/harness-template` and `@aheumaier`. Rename them to your product's:
+   ```sh
+   make rename NAME=<your-product> MODULE=<your-module-root> OWNER=<@you-or-@org/team>
+   make rename NAME=<your-product> MODULE=<your-module-root> OWNER=<@you-or-@org/team> WRITE=1
+   ```
+   - `MODULE` replaces the template's module root. Copied code then imports `<MODULE>/apps/api/...`. Pick the
+     value that makes this match your Go module. If your layout has no `apps/api`, fix the remaining import
+     paths in step 5, when you port the fixtures.
+   - The rename scans your existing files too. Read the dry-run list before you add `WRITE=1`.
+   - It skips `docs/adr/`, `docs/exec-plans/` and `README.md`, so copied ADRs keep their history and your own
+     README is left alone.
+4. **Describe what exists.**
    - Rewrite [ARCHITECTURE.md](ARCHITECTURE.md) for the real codemap and layers.
    - Rewrite the "Layer rule" and "Commands" sections of `AGENTS.md`.
    - Add an `AGENTS.md` (plus a `CLAUDE.md` containing `@AGENTS.md`) per area that has its own rules.
    - Point the layer sensors at the real layout: `.go-arch-lint.yml`, `.dependency-cruiser.cjs`, or your
      stack's equivalent. Record the layering decision in an ADR.
-4. **Keep, adapt or drop each rule in [rules.md](docs/harness/rules.md).**
+5. **Keep, adapt or drop each rule in [rules.md](docs/harness/rules.md).**
    - A rule that doesn't fit the stack is removed together with its fixture and its id in the Makefile rule
      lists, plus one ADR line saying why.
    - A rule you keep must still reject its fixture. Port fixtures to your layout until these are green:
@@ -149,7 +162,7 @@ hand, in one reviewed harness PR:
      make harness-selftest
      make fixture-claims
      ```
-5. **Run `make setup && make check`, and expect red.** Don't loosen a sensor to get green
+6. **Run `make setup && make check`, and expect red.** Don't loosen a sensor to get green
    ([golden principle 4](AGENTS.md#golden-principles)):
    - Fix what is cheap.
    - Give an unavoidable exception an inline suppression with `reason: … (rule: <id>)`.
@@ -158,11 +171,10 @@ hand, in one reviewed harness PR:
    `make check` scopes most sensors to changed files (`HARNESS_SCOPE=changed`). That keeps day-to-day work
    green while the full-scope debt in `make check-all` is paid down. There is no baseline file. Each
    remaining violation is either fixed, suppressed with a reason, or tracked.
-6. **Apply the human steps from (a).**
-   - Steps 4–5: CODEOWNERS, labels, branch protection, constitution.
-   - The rename in step 3, for whatever identity you copied.
+7. **Apply the human steps from (a).**
+   - Steps 4–5: labels, branch protection, constitution. The rename already set the CODEOWNERS owner.
    - Set the [NFR](docs/harness/nfr.md) "Today" cells from your first measurements.
-7. **New work follows (a)** steps 6–7. If the stack matches, start with `make new-domain`; otherwise use your
+8. **New work follows (a)** steps 6–7. If the stack matches, start with `make new-domain`; otherwise use your
    own scaffold that passes the same sensors.
 
 ## Keeping up with the template
