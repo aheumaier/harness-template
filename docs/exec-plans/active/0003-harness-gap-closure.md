@@ -68,7 +68,7 @@ They comment, never fail (Phase 3, ADR).
 
 | # | Phase | Exit criterion | State |
 |---|-------|----------------|-------|
-| 0 | Quick wins: Trivy, pre-commit, structured-logging lints, doc truth | secrets and JS/nested-Go vulns are detected; `rules-fixture-claims` is green; every drift item above is fixed | proposed |
+| 0 | Quick wins: Trivy, pre-commit, structured-logging lints, doc truth | secrets and JS/nested-Go vulns are detected; `rules-fixture-claims` is green; every drift item above is fixed | implemented |
 | 1 | Runtime legibility (G1) | NFR-O1 met: logs by request ID and a p95 latency, per worktree, via `make` | proposed |
 | 2 | Behaviour harness (G2) | NFR-B1 and NFR-B2 met; coverage reported per package; weekly mutation score in the drift issue | proposed |
 | 3 | Inferential sensors and garbage collection (G3, G4, G8) | reviewer comments on every PR (advisory); scheduled reviews and `agent-gc` open issues/PRs; QUALITY.md has a staleness check | proposed |
@@ -156,7 +156,9 @@ Determinism splits the scanners:
   - How to pass a file list to Trivy (per file, or a hardlinked temp tree) is settled in Q1.
 - **Fixtures dir.** A Trivy config (`trivy.yaml`, kind `config`, protected) skips `scripts/harness/fixtures/`.
   Otherwise the planted secret turns the template's own tree red. selftest applies the overlay outside that
-  directory, so the fixture still fires.
+  directory, so the fixture still fires. *Superseded at the Phase 0 gate:* skipping the directory let a real
+  secret hide there, so only the vuln scan skips it; the `repo-secret-*` fixtures assemble their key in
+  `apply.sh` and hold no literal.
 - **No misconfig rule.** The repo has no Dockerfile, Kubernetes or Terraform for `trivy config` to scan. Add
   `iac-no-misconfig` with the first Dockerfile.
 
@@ -515,3 +517,26 @@ the feedback.
     `go-sec` and remediation; removed, green again. A planted `exec.Command(name)` was not flagged (A13);
   - in `make -k check-all`, only `harness-config-not-loosened` fails (the human gate); `make
     test-integration` run on its own: green.
+- 2026-10-28: Phase 0 gate. `make -k check-all` failed only on `harness-config-not-loosened` (the human
+  gate); `make test-integration` green; `make harness-selftest` 42/42. code-reviewer: changes requested, 12
+  findings; architecture-reviewer: 5 major, 8 minor. Fixed in 77b9c51 (secret scan sees fixtures, Trivy exit
+  codes 3→1 / other→2, fixtures `repo-secret-in-markdown` and `repo-secret-in-go-test`, fail-closed only for
+  real manifests, duplicate rule ids, partial downloads, `pnpm-workspace.yaml` protected, doc fixes, ADR 0016,
+  TD-6..TD-15). Rechecked by the orchestrator: `make check` green (bats 54 s, warn); selftest 44/44; a key
+  planted in `scripts/harness/fixtures/plant.md` failed `make secrets` with `repo-no-secrets` and remediation,
+  green after removal. Exit criterion, with evidence:
+  - secrets: `repo-secret-planted`, `-in-markdown`, `-in-go-test` fixtures and the plant above;
+  - JS and nested-Go vulns: an untracked `go.mod` (old `x/crypto`) and `pnpm-lock.yaml` (lodash 4.17.15)
+    failed `HARNESS_SCOPE=full make vuln-deps` with `deps-no-known-vulns`; removed;
+  - `make fixture-claims` green; every drift item verified fixed (apps/web/AGENTS.md, `minimumReleaseAge`,
+    "<60 s" wording, plan 0002).
+  Not fixed here, with why:
+  - ADR 0015's "team-convention" framing and status: a human call, ADRs stay `proposed`.
+  - Sensor candidates (rule lists in sync, file-kind parity, tool downloads pinned): deferred; the rule-list
+    one needs a `.claude/` change (TD rows).
+  - DB-fetch split, CI cache save on failure, `TRIVY_` env prefix: tech-debt rows, not gate blockers.
+  - The `fast-check.sh` rule-list change stays proposed for the PR description (A11, A13).
+  - Raised by the fix subagent: `run.sh` still prints the secret remediation after "trivy failed to run",
+    and a failed copy or missing Trivy exits 1, not 2 (with TD-6); agents can no longer edit
+    `pnpm-workspace.yaml`, so pnpm's `minimumReleaseAgeExclude` entries need the human label (accepted: the
+    file is install policy).
