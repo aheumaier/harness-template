@@ -58,7 +58,7 @@ reported: [ADR 0013](../../adr/0013-harness-nfr-budgets.md). Numbers land in `sc
 
 | Id | Requirement | Target | Today | Measured by | On violation |
 |----|-------------|--------|-------|-------------|--------------|
-| NFR-H1 | Each PreToolUse hook, per call | ≤ 50 ms | 43 ms (protect-harness), 43 ms (guard-bash), 42 ms (only-make-check), timing included | hook wrapper timing | warn; alert |
+| NFR-H1 | Each PreToolUse hook, per call | ≤ 50 ms | 30 ms (protect-harness), 21 ms (guard-bash), 24 ms (only-make-check), timing included (2026-10-28) | hook wrapper timing | warn; alert |
 | NFR-H2 | fast-check (PostToolUse), per edited file | ≤ 1 s | 0.04–0.5 s; `.tsx` in apps/web 1.05 s, over budget (type-aware eslint 0.97 s alone; 2026-10-28) | fast-check timing | warn; alert |
 | NFR-H3 | `make check`, change without shell or harness files | ≤ 10 s | 2.9 s (2026-10-28, warm; Go test cache, gen-check stamp) | `run.sh` + make wall time | warn; alert |
 | NFR-H4 | `make check`, any change | ≤ 60 s | 36 s (2026-10-28, shell change, `bats`-bound) | same | warn; alert |
@@ -103,8 +103,8 @@ One slice per commit, in this order (the [loop prompt](0002-loop-prompt.md) work
   `gen-check` 0.67 s → skipped (stamp), `depcruise` 0.43 → 0.45 s (cache gains nothing at this size)
 - [x] P7 — e6e282c — fast-check `apps/web/src/App.tsx` 1.5 → 1.05 s, `packages/domain/src/index.ts` 0.59 → 0.50 s;
   eslint on the file only, tsc stays in `make check`
-- [ ] P8 (phase 3) Go module `apps/api/tools/harness` (protected, CODEOWNERS) + Make target; hook wrappers;
-  port `guard-bash` and the JSON input of all four hooks
+- [x] P8 — 3b35ea1 — PreToolUse hooks protect-harness 50 → 30 ms (Edit), 45 → 25 ms (Bash), guard-bash 45 → 21 ms,
+  only-make-check 43 → 24 ms, fast-check stdin 40 → 22 ms; `.bin/harness` parses hook input and guard-bash commands
 - [ ] P9 (phase 3) port `check-links`
 - [ ] P10 (phase 3) port `integrity-check`; workflow builds the binary from the base branch
 - [ ] P11 (phase 2) `affected.sh`; scoped Go and web targets; full run on config changes
@@ -271,3 +271,17 @@ Per [ADR 0012](../../adr/0012-parsing-sensors-in-go.md): `guard-bash` and every 
   `typecheck` (tsc 0.06 s warm) and a tsbuildinfo would also apply in scope `full`. New sandboxed tests in
   `fast-check.bats` put fake eslint and tsc on PATH; the "file only" test fails against the old hook.
   Selftest 30/30. Integrity names only `.claude/hooks/fast-check.sh`; rest of check-all and integration green.
+- 2026-10-28: P8 (3b35ea1). Every hook started `node` to read its JSON input (~20 ms of each call); guard-bash
+  tokenized commands with regexes. `.bin/harness` (module `apps/api/tools/harness`, built by `make check`,
+  `make setup` and `make test-sh`) now does `hook-input` for all four hooks and guard-bash on a bash AST
+  (`mvdan.cc/sh/v3`). Deviations from ADR 0012: the wrappers call the binary without `exec`, so the bash
+  timing EXIT trap still records the hook; and there is no zsh fallback: a command that does not parse as
+  bash is blocked (fail closed; the message asks for simpler commands). Not looser than the old tokenizer:
+  a static string is still read as commands after `;&|`, a newline, a backquote or `$(`; tighter: `bash -c`,
+  `sh -c`, `zsh -c` and `eval` strings are parsed recursively (depth 4), an rm -r on a dynamic path blocks.
+  Without the binary every hook blocks except `make setup` / `make .bin/harness`
+  (`scripts/harness/hook-bootstrap.sh`, 4 tests in `hook-bootstrap.bats`). The 63 guard-bash bats cases
+  moved 1:1 into Go table tests (with a count check) plus new cases; `guard-bash.bats` keeps 3 wrapper tests.
+  The module is protected and code-owned; its tests run as `make test-harness` (sensor `harness-tests`).
+  Gap: `vuln-go` and `lint-go` cover only `apps/api`, not the nested `tools/` modules (TD-3). Selftest
+  30/30. Integrity names only this slice's files; rest of check-all and integration green.
