@@ -97,7 +97,8 @@ PR; **–** needs none.
   shfmt, check-links): 568 ms warm / 660 ms on a real 10-file commit (budget 2 s, NFR-H8)
 - [x] Q3 — d560f7f — 7 wrong fixture claims → 0 (`harness fixture-claims`, ~77 ms, in `make check` when
   rules.md or a fixture changes); selftest 33 → 39 fixtures
-- [ ] Q4 — H — `go-structured-logging`: `forbidigo` (`fmt.Print*`, `log.*` outside `platform`) + `sloglint`
+- [x] Q4 — cd8afac — `fmt.Print*`, std `log` and mixed slog args unchecked → `go-structured-logging`
+  (`forbidigo` by package path + `sloglint` `no-mixed-args`) in `lint-go`; selftest 39 → 41 fixtures
 - [ ] Q5 — H — doc drift: `minimumReleaseAge`, web test stack, "<60 s", plan 0002 states, loop prompt, NFRs into
   `docs/harness/nfr.md` (ADR 0013)
 - [ ] Q6 — H — `go-sec`: `gosec` in golangci-lint (SAST for Go)
@@ -426,6 +427,21 @@ the feedback.
   - **Open, from review:** a `none (…)` that names a bats file is not checked; fenced code blocks in rules.md
     are ignored; the Makefile repeats the `unchanged.sh` gate pattern per target (a `gated` macro would
     remove it).
+- **A11 — structured-logging choices (Q4).**
+  - `forbidigo` runs with `analyze-types: true` and `pkg:` regexes, so a renamed `log` import is caught and a
+    `*slog.Logger` variable named `log` is not. The pattern is `^fmt\.Print(f|ln)?$`: `fmt.Fprint*` to an
+    explicit writer stays allowed (`cmd/api/main.go` writes to stderr).
+  - "No std `log` outside platform" is an `exclusions.rules` entry on `internal/platform/` that matches the std
+    log message only, so `fmt.Print*` stays forbidden in platform too.
+  - sloglint's message carries no rule id, so a sloglint-only failure prints every `lint-go` remediation; the
+    fixture's EXPECT is sloglint's own text.
+  - **Proposed protected change, not made:** add `go-structured-logging` to the rule list in
+    `.claude/hooks/fast-check.sh` (the slice subagent edited it; reverted, since §5c allows `.claude/` only
+    for slices that name a skill or agent). Until then the per-edit hook flags violations but prints no
+    remediation for them.
+  - **Open, from the slice:** `fmt.Println` is forbidden in `_test.go` too, so the first testable `Example`
+    needs a reasoned `//nolint`; builtin `print`/`println` are not forbidden (out of the decided scope);
+    run.sh routes remediation by rule id only (a linter → rule map would fix sloglint and gofmt output).
 
 ## Log
 
@@ -460,4 +476,10 @@ the feedback.
     fixtures;
   - a planted wrong claim in the real rules.md (`web-no-dead-code` naming `fixtures/web-type-error`) failed
     with rule id `rules-fixture-claims` and remediation; restored;
+  - in `make -k check-all`, only `harness-config-not-loosened` fails (the human gate).
+- 2026-10-28: Q4 done (cd8afac). The subagent's edit to `.claude/hooks/fast-check.sh` was reverted (A11).
+  Rechecked by the orchestrator:
+  - `make check` green (bats ~46 s, over NFR-H5, warn); `make harness-selftest` 41/41, both new fixtures;
+  - a planted `fmt.Println` in `internal/platform/health` failed `make lint-go` with rule id
+    `go-structured-logging` and remediation; removed, green again;
   - in `make -k check-all`, only `harness-config-not-loosened` fails (the human gate).
