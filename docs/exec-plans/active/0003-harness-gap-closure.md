@@ -95,7 +95,8 @@ PR; **–** needs none.
   shellcheck sha256-pinned
 - [x] Q2 — 817b08c — no hook → `pre-commit` git hook on the index (secret scan, golangci fmt, shellcheck,
   shfmt, check-links): 568 ms warm / 660 ms on a real 10-file commit (budget 2 s, NFR-H8)
-- [ ] Q3 — H — doc-truth sensor `rules-fixture-claims`; then fix every claim it flags
+- [x] Q3 — d560f7f — 7 wrong fixture claims → 0 (`harness fixture-claims`, ~77 ms, in `make check` when
+  rules.md or a fixture changes); selftest 33 → 39 fixtures
 - [ ] Q4 — H — `go-structured-logging`: `forbidigo` (`fmt.Print*`, `log.*` outside `platform`) + `sloglint`
 - [ ] Q5 — H — doc drift: `minimumReleaseAge`, web test stack, "<60 s", plan 0002 states, loop prompt, NFRs into
   `docs/harness/nfr.md` (ADR 0013)
@@ -417,6 +418,14 @@ the feedback.
   - **Open, for a human:** bats takes ~44–48 s in `make check` (NFR-H5, 5 s; ~34 s before Q2, ~5.5 s of the
     rise is `pre-commit.bats`, which runs real Trivy and golangci). Warn-only; no budget raised. Belongs in
     the tech-debt tracker or a split.
+- **A10 — fixture-claims grammar (Q3).**
+  - A claim is a backticked `fixtures/<dir>` on a rule's `**Fixture:**` line; each must exist and have
+    `RULE=` that rule. Otherwise the line says `none (<reason>)`. A bare `none` fails.
+  - The gate reuses `scripts/harness/unchanged.sh` on `docs/harness/rules.md` and `scripts/harness/fixtures/*`,
+    so `make check` skips it when neither changed.
+  - **Open, from review:** a `none (…)` that names a bats file is not checked; fenced code blocks in rules.md
+    are ignored; the Makefile repeats the `unchanged.sh` gate pattern per target (a `gated` macro would
+    remove it).
 
 ## Log
 
@@ -445,4 +454,10 @@ the feedback.
   - `make check` green (bats 48 s, over NFR-H5, warn); `make harness-selftest` 33/33;
   - a staged fake AWS key blocked a real `git commit` with rule id `repo-no-secrets` and remediation; no
     commit was made, the probe file was removed;
+  - in `make -k check-all`, only `harness-config-not-loosened` fails (the human gate).
+- 2026-10-28: Q3 done (d560f7f). Rechecked by the orchestrator:
+  - `make check` green (bats ~46 s, over NFR-H5, warn); `make harness-selftest` 39/39, including the six new
+    fixtures;
+  - a planted wrong claim in the real rules.md (`web-no-dead-code` naming `fixtures/web-type-error`) failed
+    with rule id `rules-fixture-claims` and remediation; restored;
   - in `make -k check-all`, only `harness-config-not-loosened` fails (the human gate).
