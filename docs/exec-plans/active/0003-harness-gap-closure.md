@@ -94,7 +94,8 @@ PR; **–** needs none.
 - [x] Q5 — d565e94 — 5 drifted guides → 0: `minimumReleaseAge` implicit → `1440` (pnpm default) + strict
   `false` explicit; web guide names the real stack; "<60 s" → NFR-H3/H4; plan 0002 phases and `exec` claim
   fixed; NFR tables → [docs/harness/nfr.md](../../harness/nfr.md)
-- [ ] Q6 — H — `go-sec`: `gosec` in golangci-lint (SAST for Go)
+- [x] Q6 — e919bed — no SAST → `go-sec` (`gosec` at its defaults, tests included) in `lint-go`, 0 findings in
+  the API module; golangci-lint 498 → 539 ms warm (full scope); selftest 41 → 42 fixtures
 - [ ] P1.1 — – — ADR: per-worktree observability stack
 - [ ] P1.2 — – — contract + platform middleware: request ID, access log, `otelhttp` server spans, pgx tracer
 - [ ] P1.3 — – — OTLP exporter wired to config; metrics (RED per route)
@@ -450,6 +451,17 @@ the feedback.
   - **Proposed, not made:** protect `pnpm-workspace.yaml` (it now holds the release-age policy SECURITY.md
     cites) in `protected-paths.txt` and CODEOWNERS; move plan 0002 to `completed/`. ADR 0013's and ADR 0015's
     "until the tables move" conditions are now met; their status lines are a human call.
+- **A13 — gosec choices (Q6).**
+  - Every gosec check at its defaults, no `settings.gosec`, none disabled; tests in scope (as Q4), generated
+    code excluded. The API module had 0 findings, so no code changes or `//nolint` were needed.
+  - **Coverage gap found by the orchestrator:** a planted `exec.Command(name)` with `name` a function
+    parameter was not flagged (G204 in the pinned gosec does not fire on it); a planted `crypto/md5` was
+    (G401/G501). So G204 is weaker than its name suggests; review still owns subprocess calls.
+  - `apps/api/tools/harness` and `tools/analyzers` are separate modules that `lint-go` never reaches, so no
+    golangci rule (gosec included) covers them; `tools/harness` reads variable paths (likely G304).
+    Candidate for the tech-debt tracker.
+  - **Proposed, not made:** add `go-sec` (and Q4's `go-structured-logging`) to the rule-id list in
+    `.claude/hooks/fast-check.sh`, so an edit-time gosec finding prints this rule's remediation.
 
 ## Log
 
@@ -496,3 +508,10 @@ the feedback.
     `fixture-claims` green;
   - in `make -k check-all`, only `harness-config-not-loosened` fails (the human gate); check-all stops there,
     so `make test-integration` was run on its own: green.
+- 2026-10-28: Q6 done (e919bed). Rechecked by the orchestrator:
+  - `make check` green (bats 58 s, over NFR-H5, warn); `make harness-selftest` 42/42, including
+    `go-sec-file-inclusion`;
+  - a planted `crypto/md5` hash in `internal/platform/config` failed `make lint-go` (G501, G401) with rule id
+    `go-sec` and remediation; removed, green again. A planted `exec.Command(name)` was not flagged (A13);
+  - in `make -k check-all`, only `harness-config-not-loosened` fails (the human gate); `make
+    test-integration` run on its own: green.

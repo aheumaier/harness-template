@@ -30,7 +30,7 @@ you re-measure.
 | NFR-H2 | fast-check (PostToolUse), per edited file | ≤ 1 s | `.md` 0.08 s, `.sh` 0.14 s, `.go` 0.33 s, `.tsx` in apps/web 0.90 s (was 1.05 s, over budget; 2026-10-28, step 8, load avg 11–17) | fast-check timing | warn; alert |
 | NFR-H3 | `make check`, change without shell or harness files | ≤ 10 s | tsx edit 2.1 s; Go edit 11.2 s, **over budget**: `arch-go` is not scoped (plan 0002, A4) and go-arch-lint took 9.4 s (load avg 11–17; 2.2 s at P11) (2026-10-28, step 8) | `run.sh` + make wall time | warn; alert |
 | NFR-H4 | `make check`, any change | ≤ 60 s | 52 s (shell change, `bats` 49 s; load avg 11–17; 36 s at P11) (2026-10-28, step 8) | same | warn; alert |
-| NFR-H5 | one sensor in `make check` | ≤ 5 s, or its row in `budgets.txt` | `bats` 36–49 s (120 tests), `go-arch-lint` 7–9 s (load avg 11–17; 2.2 s at P11); rest ≤ 5 s (2026-10-28, step 8) | `run.sh` | warn; alert |
+| NFR-H5 | one sensor in `make check` | ≤ 5 s, or its row in `budgets.txt` | `bats` 36–58 s (120 tests), `go-arch-lint` 7–9 s (load avg 11–17; 2.2 s at P11); rest ≤ 5 s (2026-10-28, step 8) | `run.sh` | warn; alert |
 | NFR-H6 | `make check` rerun, nothing changed | ≤ 3 s | 1.8 s (2026-10-28, step 8, load avg 11–17; was 3.7 s) | two runs back to back | warn; alert |
 | NFR-H7 | `make check-all` in CI | ≤ 10 min | not measured | job duration | alert |
 | NFR-R1 | Deterministic: same tree, same verdict and same findings | 0 differences | 0 (`make harness-determinism`, scope full; since step 8 tsc and vitest run uncached, `turbo --force`; 342 s, load avg 11–17, 2026-10-28) | nightly double run | **fail** (nightly) + alert |
