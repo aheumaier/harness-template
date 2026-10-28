@@ -88,8 +88,8 @@ One slice per PR, in this order (the [loop prompt](0003-loop-prompt.md) works th
 **H** marks a slice that touches `scripts/harness/protected-paths.txt` and so needs a human-approved harness
 PR; **–** needs none.
 
-- [ ] Q0 — – — ADR: adopt the Phase 0 rules as `team-convention` (core belief 3 path for anticipated rules)
-  and add NFR classes B and O (amends ADR 0013)
+- [x] Q0 — 3b112a9 — no ADR → [ADR 0015](../../adr/0015-anticipated-rules-and-nfr-classes-b-o.md) proposed:
+  Phase 0 rules adopted as `team-convention`, NFR classes B and O (fail) amend ADR 0013
 - [ ] Q1 — H — Trivy: pinned, sha256-verified binary; `repo-no-secrets` in `check`; `deps-no-known-vulns` (JS
   + every `go.mod`) in `check-all`, CI and weekly drift
 - [ ] Q2 — H — `pre-commit` git hook: secret scan + cheap per-file sensors on staged files (NFR-H8)
@@ -394,3 +394,6 @@ the feedback.
   - the Q3 grammar against the real rules.md; `apply.sh` fixture
   - contract and boundary steps for the request ID; P3.2 trigger and token scope
   - per-slice harness marker; claim fixes
+- 2026-10-28: Q0 done (3b112a9). ADR 0015 proposed; ADR 0013 left unchanged (ADRs are never rewritten).
+  `make check` and `make harness-selftest` (32/32) green. `make check` ran bats (34 s, over its 5 s NFR-H5
+  budget, warn only) because the branch's harness commits differ from `main` (ADR 0014 fail-closed).
