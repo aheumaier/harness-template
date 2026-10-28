@@ -91,8 +91,9 @@ PR; **–** needs none.
   rules.md or a fixture changes); selftest 33 → 39 fixtures
 - [x] Q4 — cd8afac — `fmt.Print*`, std `log` and mixed slog args unchecked → `go-structured-logging`
   (`forbidigo` by package path + `sloglint` `no-mixed-args`) in `lint-go`; selftest 39 → 41 fixtures
-- [ ] Q5 — H — doc drift: `minimumReleaseAge`, web test stack, "<60 s", plan 0002 states, loop prompt, NFRs into
-  `docs/harness/nfr.md` (ADR 0013)
+- [x] Q5 — d565e94 — 5 drifted guides → 0: `minimumReleaseAge` implicit → `1440` (pnpm default) + strict
+  `false` explicit; web guide names the real stack; "<60 s" → NFR-H3/H4; plan 0002 phases and `exec` claim
+  fixed; NFR tables → [docs/harness/nfr.md](../../harness/nfr.md)
 - [ ] Q6 — H — `go-sec`: `gosec` in golangci-lint (SAST for Go)
 - [ ] P1.1 — – — ADR: per-worktree observability stack
 - [ ] P1.2 — – — contract + platform middleware: request ID, access log, `otelhttp` server spans, pgx tracer
@@ -434,6 +435,21 @@ the feedback.
   - **Open, from the slice:** `fmt.Println` is forbidden in `_test.go` too, so the first testable `Example`
     needs a reasoned `//nolint`; builtin `print`/`println` are not forbidden (out of the decided scope);
     run.sh routes remediation by rule id only (a linter → rule map would fix sloglint and gofmt output).
+- **A12 — doc-drift choices (Q5).**
+  - **pnpm.** pnpm 12.15.0's default `minimumReleaseAge` is 1440 minutes
+    ([pnpm.io](https://pnpm.io/settings/dependency-resolution#minimumreleaseage); the pinned pnpm's
+    `CHANGELOG.md`, 12.3.0). Setting it explicitly turns `minimumReleaseAgeStrict` on, so strict is pinned to
+    `false` and behaviour is unchanged (`.bin/pnpm config get minimumReleaseAge`: `undefined` → `1440`;
+    `pnpm install --frozen-lockfile` passes). **Open, for a human:** turn strict on (fail on versions younger
+    than 24 h instead of recording them in `minimumReleaseAgeExclude`).
+  - The NFR tables moved now, not "once this plan is accepted": ADR 0013 already asks for the move. NFR
+    "Today" cells are now updated in `docs/harness/nfr.md`. Each plan keeps its `## NFRs` heading as a
+    pointer, since ADR 0013 names it.
+  - Plan 0002's phases read "done" (plan 0001's convention), with phases 1–2 "exit criterion not met"
+    (NFR-H3 over budget for a Go edit; the 10× repo never measured).
+  - **Proposed, not made:** protect `pnpm-workspace.yaml` (it now holds the release-age policy SECURITY.md
+    cites) in `protected-paths.txt` and CODEOWNERS; move plan 0002 to `completed/`. ADR 0013's and ADR 0015's
+    "until the tables move" conditions are now met; their status lines are a human call.
 
 ## Log
 
@@ -475,3 +491,8 @@ the feedback.
   - a planted `fmt.Println` in `internal/platform/health` failed `make lint-go` with rule id
     `go-structured-logging` and remediation; removed, green again;
   - in `make -k check-all`, only `harness-config-not-loosened` fails (the human gate).
+- 2026-10-28: Q5 done (d565e94). Rechecked by the orchestrator:
+  - `make check` green (bats 49 s, over NFR-H5, warn); `make harness-selftest` 41/41; `docs-links` and
+    `fixture-claims` green;
+  - in `make -k check-all`, only `harness-config-not-loosened` fails (the human gate); check-all stops there,
+    so `make test-integration` was run on its own: green.
