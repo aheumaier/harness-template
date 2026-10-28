@@ -117,7 +117,11 @@ PR; **–** needs none.
   (`App.test.tsx`) renders to a string, and no test needs interaction or effects yet (P2.3 drives the browser
   through Playwright, P2.1 scaffolds Go tests); the guide from Q5 stands
 - [ ] P2.3 — H — Playwright: `make e2e` against `make dev`, one journey (NFR-B2); skill `drive-app`
-- [ ] P2.4 — H — approved-fixture snapshots of API responses (contract-shaped golden files)
+- [x] P2.4 — 6a30e4d — partial — a response change passed unseen unless a test asserted it → handler tests
+  pin responses with `approvaltest.Verify` (`testdata/approved/<operationId>.<status>[.<case>].json`,
+  `make approve`); `api-responses-approved`, `api-approved-match-contract` (`.bin/harness approved-check`)
+  and `go-test-helpers-only-in-tests`; getHealth 200/503 pinned; [ADR 0022](../../adr/0022-approved-api-responses.md)
+  proposed. Open: opt-in, no completeness check (TD-30), stale files undetected (TD-31)
 - [x] P2.5 — f28e238 — no coverage signal → `make coverage` (Go per package + every JS workspace with a
   `coverage` script) in a non-required PR job summary; drift lists packages whose coverage fell;
   [ADR 0020](../../adr/0020-test-coverage-is-a-trend.md) proposed: a trend, never a gate
@@ -689,3 +693,18 @@ code: `deadcode` and knip do that without false positives from entry points they
   `/scripts/new-domain.sh` and `/scripts/templates/`; the undo command in `new-domain.sh` and its skill
   (`git checkout -- .` before the scoped `git clean`) discards every unrelated tracked edit. go-integration
   5.12–5.40 s against its 5 s budget and bats 44–52 s (NFR-H5) both predate this slice.
+- 2026-10-29: P2.4 integrated (6a30e4d, rebased from lane 268532d; ADR README and tracker conflicts
+  merged). Review fixed in one retry: ADR 0022 instead of a new `proposed` rule status; the helper renamed
+  to `platform/approvaltest`, protected as sensor code and fenced off production by depguard
+  (`go-test-helpers-only-in-tests`, fixture `go-test-helper-in-prod`); an optional case segment and a
+  collision check in approve mode; non-string headers parsed before validation (array/object headers
+  skipped, documented); media-type range fallback; fixtures excluded from the pathspec; zero approved files
+  exits 2; TD-33 (tests do not share cmd/api's middleware chain). `golang.org/x/text` stays a direct
+  require of tools/harness (the validator's localized messages need a printer; ADR 0022 says so). Rejected:
+  a unified line diff on failure (reviewers read the git diff after `make approve`). The lane agent tried
+  `HARNESS_CHANGE_APPROVED=1` once in its first pass, an approval override the loop forbids; the
+  classifier refused it and the retry set none. Noticed (protected): add-endpoint step 4 should pin each
+  status with `approvaltest.Verify` behind `requestid.Middleware` and a fixed `X-Request-Id`; the
+  fast-check hook does not run `approved-check` on `testdata/approved/*.json` edits; an
+  `api-approved-change-declared` PR-template rule; the P2.1 scaffold could emit an approval test once TD-30
+  is paid. harness-tests 5.8–6.7 s against its 5 s budget (NFR-H5).
