@@ -20,6 +20,7 @@
 harness_file_kind() {
   case "$1" in
     scripts/harness/fixtures/*/files/* | .specify/scripts/* | .specify/templates/*) echo skip ;;
+    .specify/*.sh | .specify/*.bash | .specify/*.bats) echo skip ;; # the Makefile's SH_FILES excludes .specify/
     *.gen.go | apps/api/internal/*/store/*.go | packages/api-client/src/gen/* | docs/generated/*) echo generated ;;
     apps/api/tools/analyzers/*.go) echo go-analyzers ;;
     apps/api/tools/harness/*.go) echo go-harness ;;

@@ -12,7 +12,8 @@
 # not ignored): never .env.local, .cache/ or node_modules. `secret` in HARNESS_SCOPE=changed copies only the
 # files changed since the merge base, and everything when a harness file changed (it can change the verdict on
 # unchanged files) or the change set cannot be computed; in any other scope everything. `--staged` ignores the
-# scope and copies the index version of each staged file. Prints
+# scope and copies the index version of each staged file; trivy.yaml and trivy-secret.yaml are still read from
+# the working tree, as in `make check`. Prints
 # `file:line: … [rule-id]` per finding, sorted; silent and exit 0 when clean.
 set -uo pipefail
 

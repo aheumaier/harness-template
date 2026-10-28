@@ -123,7 +123,26 @@ plant_secret() { printf '[default]\naws_access_key_id = %s%s\n' AKIA QYLPMN5HHHF
   stage scripts/lib/ok.sh
   run -1 commit
   has "pre-commit: .bin/shfmt is missing: run make setup"
-  [[ "$(commits)" == 1 ]] || return 1
+  [[ "$(commits)" == 1 && "$output" != *"commit blocked"* ]] || return 1
+
+  rm "$SANDBOX/.bin/trivy"
+  echo 'harmless' >"$SANDBOX/notes.txt"
+  git -C "$SANDBOX" reset -q
+  stage notes.txt
+  run -1 commit
+  has "pre-commit: .bin/trivy $(sed -n 's/^TRIVY_VERSION=//p' "$REPO/scripts/tool-versions.env") is missing: run make setup"
+  [[ "$output" != *"rule:        repo-no-secrets"* && "$output" != *"commit blocked"* ]] || return 1
+}
+
+@test "a sensor that cannot run (exit above 1) blocks without asking to fix the files" {
+  rm "$SANDBOX/.bin/shfmt"
+  printf '#!/usr/bin/env bash\necho "shfmt: broken" >&2\nexit 3\n' >"$SANDBOX/.bin/shfmt"
+  chmod +x "$SANDBOX/.bin/shfmt"
+  echo 'echo more' >>"$SANDBOX/scripts/lib/ok.sh"
+  stage scripts/lib/ok.sh
+  run -1 commit
+  has "shfmt: broken"
+  [[ "$output" != *"commit blocked"* && "$(commits)" == 1 ]] || return 1
 }
 
 @test "nothing staged: passes without running a sensor" {

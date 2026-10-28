@@ -17,20 +17,20 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=timing.sh
 source "$ROOT/scripts/harness/timing.sh" 2>/dev/null && harness_time_exit hook pre-commit
 cd "$ROOT" || exit 1
+fail() { # the hook cannot check: exit 2, blocking the commit (fail closed)
+  echo "pre-commit: $*" >&2
+  exit 2
+}
 # shellcheck source=../tool-versions.env
-source scripts/tool-versions.env
+source scripts/tool-versions.env || fail "scripts/tool-versions.env is missing: run make setup"
 # shellcheck source=file-sensors.sh
-source scripts/harness/file-sensors.sh
+source scripts/harness/file-sensors.sh || fail "scripts/harness/file-sensors.sh is missing"
 export GOTOOLCHAIN="$GO_TOOLCHAIN" PATH="$ROOT/.bin:$PATH"
 export HARNESS_SCOPE=pre-commit # tags the timings of the sensors below
 RUN="$ROOT/scripts/harness/run.sh"
 # `git commit <paths>` and `-a` hand the hook a temporary index; keep using it after a cd.
 if [[ -n "${GIT_INDEX_FILE:-}" && "$GIT_INDEX_FILE" != /* ]]; then export GIT_INDEX_FILE="$ROOT/$GIT_INDEX_FILE"; fi
 
-fail() { # the hook cannot check: exit 2, blocking the commit (fail closed)
-  echo "pre-commit: $*" >&2
-  exit 2
-}
 need() { # fail closed on a missing tool
   local t
   for t in "$@"; do [[ -x ".bin/$t" ]] || fail ".bin/$t is missing: run make setup"; done
@@ -57,17 +57,21 @@ check_staged() ( # a subshell: its EXIT trap removes the staged tree, the parent
   ((${#go[@]})) && need golangci-lint-custom
   ((${#sh[@]})) && need shellcheck shfmt
   ((md)) && need harness
+  [[ -x .bin/trivy && "$(cat .bin/.trivy.version 2>/dev/null)" == "$TRIVY_VERSION" ]] ||
+    fail ".bin/trivy $TRIVY_VERSION is missing: run make setup"
 
-  "$RUN" secrets-staged repo-no-secrets -- scripts/harness/trivy.sh secret --staged || status=1
+  # Exit 1 is a finding; above 1 the sensor could not run (bad config, tool crash): kept, so the hook fails closed.
+  worst() { if (($1 > status)); then status=$1; fi; }
+  "$RUN" secrets-staged repo-no-secrets -- scripts/harness/trivy.sh secret --staged || worst $?
   ((${#go[@]} + ${#sh[@]} + md)) || exit "$status"
 
   # The whole index, so that `source` (shellcheck), go.mod (goimports), configs and link targets resolve as
   # they will be committed.
-  git checkout-index -a --prefix="$tree/" || fail "git could not write the staged files to $tree"
+  git checkout-index -a --ignore-skip-worktree-bits --prefix="$tree/" || fail "git could not write the staged files to $tree"
   in_tree() { # <sensor-id> <rule-ids> <command...>: run.sh with the staged tree as working directory
     local id="$1" rules="$2"
     shift 2
-    "$RUN" "$id" "$rules" -- bash -c 'cd "$1" || exit 2; shift; exec "$@"' in-tree "$tree" "$@" || status=1
+    "$RUN" "$id" "$rules" -- bash -c 'cd "$1" || exit 2; shift; exec "$@"' in-tree "$tree" "$@" || worst $?
   }
   if ((${#go[@]})); then
     in_tree golangci-fmt go-format golangci-lint-custom fmt --diff --config apps/api/.golangci.yml "${go[@]}"
@@ -85,7 +89,7 @@ check_staged() ( # a subshell: its EXIT trap removes the staged tree, the parent
 
 check_staged
 status=$?
-if ((status == 1)); then
+if ((status == 1)); then # findings only; above 1 a sensor or the hook could not check and said why
   echo "pre-commit: commit blocked. The hook checks the index, not the working tree: fix the files above, \`git add\` them and commit again." >&2
 fi
 exit "$status"
