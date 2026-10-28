@@ -103,7 +103,10 @@ PR; **–** needs none.
   200 only, TD-16), one access line and one `otelhttp` server span per request, every query a child span,
   all carrying the request and trace ID; NFR-O1 itself is measured once `make logs` exists (P1.4);
   [ADR 0018](../../adr/0018-http-and-db-instrumentation.md) proposed
-- [ ] P1.3 — – — OTLP exporter wired to config; metrics (RED per route)
+- [x] P1.3 — b43eeaf — telemetry stayed in the process → per-signal exporter (`none`, `stdout`, `otlp`)
+  from `OTEL_{TRACES,METRICS,LOGS}_EXPORTER` and `OTEL_EXPORTER_OTLP_ENDPOINT`, validated in config; RED
+  metrics per route via otelhttp; logs through an otelslog bridge;
+  [ADR 0021](../../adr/0021-telemetry-export-over-otlp-http.md) proposed; defaults stay `none` until P1.4
 - [ ] P1.4 — H — `compose.yaml` profile `obs` on the worktree's port block; `make obs-up`, `make logs`,
   `make metrics`
 - [ ] P1.5 — H — `make dev` writes structured logs to `.tmp/dev/*.log`; skill `query-runtime`
@@ -522,6 +525,19 @@ code: `deadcode` and knip do that without false positives from entry points they
   - **Proposed, not made** (protected or out of slice): a depguard rule keeping otelhttp, otelpgx and
     httpsnoop inside `internal/platform`; a Spectral rule that every 2xx declares `X-Request-Id` (after
     TD-16); the `add-endpoint` skill naming the header; the `new-domain.sh` 503 setting `instance`.
+- **A16 — telemetry export choices (P1.3).**
+  - OTLP over HTTP only, one exporter per signal; `console` (the spec's name) is rejected, `stdout` is ours.
+    Config owns the four variables above; the code endpoint wins over the per-signal `*_ENDPOINT`
+    variables and `OTEL_EXPORTER_OTLP_PROTOCOL` has no effect. The SDK still reads headers, timeout,
+    compression, certificates, the metric interval, BSP/BLRP and the sampler itself.
+  - `service.name` is always `api`: `OTEL_SERVICE_NAME` is ignored, other `OTEL_RESOURCE_ATTRIBUTES` keys
+    are merged (`TestSetup_ServiceNameIsFixed`).
+  - otelslog v0.21 and otlploghttp v0.23 are pre-1.0; grpc, genproto and protobuf still arrive through
+    `go.opentelemetry.io/proto/otlp`. ADR 0021 amends ADR 0018's dependency list and ADR 0002's logging
+    bullet. x/net v0.62.0 clears the advisory the exporters pulled in.
+  - **Proposed, not made** (protected): depguard rule `go-otel-sdk-only-in-telemetry` (otel SDK, exporters
+    and bridges only in `internal/platform/telemetry`, otelpgx only in `internal/platform/db`, tests exempt),
+    with a fixture and a rules.md entry.
 
 ## Log
 
@@ -650,3 +666,12 @@ code: `deadcode` and knip do that without false positives from entry points they
   drop the drift step and keep `make coverage` as a local report. Noticed (protected): a
   `web-coverage-no-thresholds` rule would keep Vitest thresholds out; AGENTS.md's command table could list
   `make coverage`; the coverage workflow costs one extra Go + web test run per PR.
+- 2026-10-28: P1.3 integrated (b43eeaf, rebased from lane 09af076). Review fixed in one retry: x/net
+  bumped to v0.62.0 instead of a tech-debt row (no age rule covers Go modules); the new dependencies and
+  the `OTEL_*` ownership got ADR 0021 (proposed); `otelhttp.WithServerName` so a client's Host can't set
+  `server.address`; tests for the export-error path, for a failed Setup leaving the global providers
+  unchanged, and with a timeout on every Shutdown; providers shut down concurrently; one `Exporter` type,
+  validated once in config. Decisions in A16; TD-17 and TD-19 updated. If ADR 0021 is rejected, revert
+  b43eeaf and revisit P1.4 and P1.5. Noticed: P1.4 sets the `OTEL_*` variables in `.env.local` once the
+  collector port exists; Loki may need a label or structured-metadata config to index `request_id` from
+  otelslog attributes (check in P1.4); bats ~46 s against its 5 s budget (NFR-H5, predates this slice).
