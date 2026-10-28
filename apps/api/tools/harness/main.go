@@ -1,5 +1,6 @@
-// Command harness holds the parts of the harness hooks and sensors that parse input (ADR 0012). The shell
-// scripts stay the entry points and call it; it is built into .bin/harness by make (setup, check).
+// Command harness holds the parts of the harness hooks and sensors that parse input (ADR 0012), plus the
+// one-shot template rename, which needs the same portable file handling. The shell scripts and make stay
+// the entry points and call it; it is built into .bin/harness by make (setup, check).
 //
 //	harness hook-input <field>...  Claude Code hook JSON on stdin → the fields, one per line
 //	harness guard-bash <root>      PreToolUse guard for Bash commands (.claude/hooks/guard-bash.sh)

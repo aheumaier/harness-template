@@ -80,7 +80,13 @@ func gitFiles(root string, pathspecs ...string) ([]string, error) {
 // deleted from the working tree (`rm docs/x.md` leaves them in ls-files -c): their links are gone, and links
 // to them are reported where they are.
 func gitKnown(root string, pathspecs ...string) ([]string, error) {
-	cmd := exec.Command("git", append([]string{"-C", root, "ls-files", "-z", "-co", "--exclude-standard", "--"}, pathspecs...)...)
+	return lsFiles(root, []string{"-co", "--exclude-standard"}, pathspecs...)
+}
+
+// lsFiles runs git ls-files with flags and keeps the files that still exist in the working tree.
+func lsFiles(root string, flags []string, pathspecs ...string) ([]string, error) {
+	args := append(append([]string{"-C", root, "ls-files", "-z"}, flags...), "--")
+	cmd := exec.Command("git", append(args, pathspecs...)...)
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
 	if err != nil {

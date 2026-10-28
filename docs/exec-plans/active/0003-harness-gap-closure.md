@@ -551,3 +551,9 @@ the feedback.
   under A5's 1.5 GB / 90 s, so the bare collector + `jq` fallback is rejected (PromQL gives NFR-O1's p95).
   Verified: only the ADR and its index row changed; `make check`, `make docs-links` green; selftest 44/44;
   no slice containers left. NFR-O1 unchanged (fail) until P1.4/P1.5.
+- 2026-10-28: `make rename` (8424375, a user request outside the slices) reviewed by code-reviewer; fixed in
+  the follow-up commit: values holding a template token are refused (re-runs stay no-ops), tracked files
+  only, leftover forms listed, stricter module/owner syntax, `WRITE=1` only, README order. Scope note: the
+  rename lives in `.bin/harness` although it is no sensor or hook, widening ADR 0012's scope for its
+  portable file handling; the PR description proposes this. Not fixed: anchors into skipped files
+  (`make check-all` docs-links catches them).

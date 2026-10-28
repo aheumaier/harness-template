@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -41,6 +42,19 @@ func TestRenameRepo(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "logo.png"), []byte("harness-template\x00"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(root, "run.sh"), []byte("# harness-template\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("package.json", filepath.Join(root, "link.json")); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "-C", root, "add", "-A").CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v: %s", err, out)
+	}
+	// Untracked after the add: work in progress the rename must not touch.
+	if err := os.WriteFile(filepath.Join(root, "wip.md"), []byte("harness-template\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	read := func(p string) string {
 		b, err := os.ReadFile(filepath.Join(root, p))
 		if err != nil {
@@ -73,15 +87,56 @@ func TestRenameRepo(t *testing.T) {
 		"docs/exec-plans/completed/0001.md":  "Owner: @aheumaier\n",                                     // history
 		"README.md":                          "# harness-template\n",                                    // describes the template
 		"logo.png":                           "harness-template\x00",                                    // binary
+		"run.sh":                             "# acme-shop\n",
+		"wip.md":                             "harness-template\n", // untracked
 	} {
 		if got := read(p); got != want {
 			t.Errorf("%s = %q, want %q", p, got, want)
 		}
 	}
 
+	if info, err := os.Stat(filepath.Join(root, "run.sh")); err != nil || info.Mode().Perm() != 0o755 {
+		t.Errorf("run.sh mode: %v %v, want 0755", info.Mode(), err)
+	}
+	if target, err := os.Readlink(filepath.Join(root, "link.json")); err != nil || target != "package.json" {
+		t.Errorf("link.json: %q %v, want a symlink to package.json", target, err)
+	}
+
 	out.Reset()
 	if code := run(append([]string{"rename", "-write"}, args...), nil, &out, &out); code != 0 || !strings.Contains(out.String(), "0 files") {
 		t.Errorf("second run not a no-op: exit %d: %s", code, out.String())
+	}
+}
+
+func TestRenameLeftovers(t *testing.T) {
+	root := linkRepo(t, map[string][]string{
+		"apps/api/go.mod":      {"module github.com/aheumaier/harness-template/apps/api"},
+		"docs/remote.md":       {"git clone git@github.com:aheumaier/harness-template.git", "fine"},
+		"harness-template.txt": {"nothing"},
+	})
+	if out, err := exec.Command("git", "-C", root, "add", "-A").CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v: %s", err, out)
+	}
+	var out bytes.Buffer
+	if code := run([]string{"rename", root, "acme-shop", "github.com/acme/shop", "@acme"}, nil, &out, &out); code != 0 {
+		t.Fatalf("exit %d: %s", code, out.String())
+	}
+	for _, want := range []string{"rename: 2 places still hold", "  docs/remote.md:1\n", "  harness-template.txt: path\n"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q: %s", want, out.String())
+		}
+	}
+	if strings.Contains(out.String(), "  apps/api/go.mod:1") {
+		t.Errorf("renamed module reported as leftover: %s", out.String())
+	}
+
+	// A kept module path holds the old name on purpose; only the renamed parts are checked.
+	out.Reset()
+	if code := run([]string{"rename", root, "acme-shop", templateModule, "@acme"}, nil, &out, &out); code != 0 {
+		t.Fatalf("exit %d: %s", code, out.String())
+	}
+	if strings.Contains(out.String(), "  apps/api/go.mod:1") || !strings.Contains(out.String(), "  harness-template.txt: path") {
+		t.Errorf("kept module reported as leftover: %s", out.String())
 	}
 }
 
@@ -94,6 +149,15 @@ func TestRenameArgs(t *testing.T) {
 		{root, "acme-shop", "github.com/acme/shop", "acme"},                               // owner without @
 		{root, "acme-shop", "github.com/acme/shop"},                                       // owner missing
 		{root, "harness-template", "github.com/aheumaier/harness-template", "@aheumaier"}, // nothing changes
+		{root, "acme-shop", "acme/shop", "@acme"},                                         // no dot in the host
+		{root, "acme-shop", "github.com/-acme/shop", "@acme"},                             // element starts with -
+		{root, "acme-shop", "github.com/acme/shop", "@-acme"},                             // login starts with -
+		{root, "acme-shop", "github.com/acme/shop", "@" + strings.Repeat("a", 40)},        // login over 39
+		// A value holding a template token would be renamed again on a second run.
+		{root, "acme-shop", "github.com/acme/shop", "@aheumaier/platform"},
+		{root, "harness-template-x", "github.com/acme/shop", "@acme"},
+		{root, "shop", "github.com/acme/harness-template", "@acme"},
+		{root, "acme-shop", "github.com/aheumaier/harness-template/v2", "@acme"},
 	} {
 		var out bytes.Buffer
 		if code := run(append([]string{"rename"}, args...), nil, &out, &out); code != 2 {

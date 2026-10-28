@@ -70,15 +70,22 @@ Claude Code hooks fail closed.
    make rename NAME=acme-shop MODULE=github.com/acme/shop OWNER=@acme WRITE=1
    make gen check-all harness-selftest
    ```
-   - **What it covers:** every git-known text file. That includes go.mod files and imports, linter configs,
-     `api/openapi.yaml`, package.json files, `pnpm-lock.yaml`, the generated client and the fixture overlays.
+   - **What it covers:** every tracked text file; untracked files are left alone. That includes go.mod
+     files and imports, linter configs, `api/openapi.yaml`, package.json files, `pnpm-lock.yaml`, the
+     generated client, the fixture overlays and the vendored `.specify/` (the constitution title).
    - **What it skips:** history (`docs/adr/`, `docs/exec-plans/`) and this README. Rewrite the README for your
-     product.
-   - **Running it again:** a second run changes nothing.
+     product, and by hand the template's own description in `AGENTS.md` (line 3) and
+     [ARCHITECTURE.md](ARCHITECTURE.md); both are protected, so a human does it.
+   - **MODULE is the repository path.** It also becomes the OpenAPI `url: https://<MODULE>` and every
+     `https://github.com/aheumaier/harness-template/...` link, so use `host.tld/owner/repo`.
+   - **Leftovers:** the tool lists every path and line that still holds `harness-template` or `aheumaier`
+     in a form it doesn't rename (an SSH remote, a file name). Fix those by hand.
+   - **Running it again:** a second run changes nothing. A value that contains a template token
+     (`OWNER=@aheumaier/platform`) is refused, since a second run would rename it again.
    - **Protected files:** many of the changed files are protected, so the rename PR needs the
-     `harness-change-approved` label.
+     `harness-change-approved` label (created in step 4; merge the rename after it).
 4. **Ownership (human).**
-   - Replace `@aheumaier` in [.github/CODEOWNERS](.github/CODEOWNERS).
+   - Review the owners in [.github/CODEOWNERS](.github/CODEOWNERS); the rename set them to `OWNER`.
    - Create the labels `harness-change-approved`, `breaking-change-approved` and `no-spec-needed`
      ([ci.md](docs/harness/ci.md)).
    - Dry-run [scripts/github-branch-protection.sh](scripts/github-branch-protection.sh), then apply it with
@@ -145,7 +152,8 @@ hand, in one reviewed harness PR:
    - `MODULE` replaces the template's module root. Copied code then imports `<MODULE>/apps/api/...`. Pick the
      value that makes this match your Go module. If your layout has no `apps/api`, fix the remaining import
      paths in step 5, when you port the fixtures.
-   - The rename scans your existing files too. Read the dry-run list before you add `WRITE=1`.
+   - The rename scans your existing tracked files too. Read the dry-run list, and its leftovers, before you
+     add `WRITE=1`. `git add` the copied files first, since untracked files are not renamed.
    - It skips `docs/adr/`, `docs/exec-plans/` and `README.md`, so copied ADRs keep their history and your own
      README is left alone.
 4. **Describe what exists.**
