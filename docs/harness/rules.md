@@ -50,6 +50,13 @@ whose `fixture.conf` tests that rule, or says `none (<reason>)` ([rules-fixture-
 - **Remediation:** Accept `ctx context.Context` as the first parameter and pass it down; in HTTP handlers use `r.Context()`; for work that must outlive the request use `context.WithoutCancel(ctx)`.
 - **Fixture:** `fixtures/go-no-root-context` · Status: seed
 
+### go-structured-logging
+- **Rule:** No `fmt.Print`/`Printf`/`Println` anywhere in the API module, tests included (the invariant `internal/platform/logging/logging.go` states; `fmt.Fprint*` to an explicit writer stays allowed), no std `log` package outside `internal/platform`, and no `slog` call that mixes key-value pairs and `slog.Attr` values (plan 0003 Q4). Suppress with `//nolint:forbidigo // reason: … (rule: go-structured-logging)` (or `nolint:sloglint`).
+- **Why:** Agents read the running app through its JSON logs; unstructured lines on stdout cannot be filtered by request ID or level, and mixed slog args are easy to misalign.
+- **Sensor:** golangci-lint `forbidigo` (by package path, `analyze-types`) and `sloglint` (`no-mixed-args`, no key-case check yet: plan 0003 P4.1), `make lint-go` (the per-edit hook runs the same linters, but does not list this rule id yet, so it prints no remediation for it). sloglint's message cannot carry the rule id, so a sloglint-only failure prints every `lint-go` remediation, and one next to another rule's finding prints only that rule's.
+- **Remediation:** Log through the injected `*slog.Logger` (built by `logging.New` in platform) with either key-value pairs or `slog.Attr` values in one call, not both, or return the error to the caller instead of printing it.
+- **Fixture:** `fixtures/go-structured-logging-fmt-print`, `fixtures/go-structured-logging-slog-mixed-args` · Status: team-convention ([ADR 0015](../adr/0015-anticipated-rules-and-nfr-classes-b-o.md))
+
 ### go-format
 - **Rule:** Go code is `gofmt`/`goimports` formatted (local prefix `github.com/aheumaier/harness-template`).
 - **Why:** Formatting noise hides real diffs from reviewers and agents.
