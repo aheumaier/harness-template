@@ -10,7 +10,8 @@ incident/PR that motivated them) and need a fixture in `scripts/harness/fixtures
 
 Format per rule: rule · why · sensor · remediation · fixture. `make harness-selftest` applies every fixture to
 a temp copy of the repo and asserts its sensor fails with the expected message and this remediation
-(`scripts/harness/selftest.sh`; fixture layout documented in its header).
+(`scripts/harness/selftest.sh`; fixture layout documented in its header). The fixture line names only fixtures
+whose `fixture.conf` tests that rule, or says `none (<reason>)` ([rules-fixture-claims](#rules-fixture-claims)).
 
 ## Go (apps/api)
 
@@ -61,7 +62,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Why:** Tests are the cheapest behavioural sensor; the race detector catches concurrency bugs agents rarely reason about.
 - **Sensor:** `make test-go`, `make test-analyzers`, `make test-harness` (Go test cache in `make check`, `-count=1` in `make check-all` and CI: [harness-scope](#harness-scope)).
 - **Remediation:** Read the first failing test above, fix the code (not the test) unless the behaviour change is intended and documented in the PR.
-- **Fixture:** `go-tests-dependent-package` · Status: seed
+- **Fixture:** `fixtures/go-tests-dependent-package` · Status: seed
 
 ### go-no-known-vulns
 - **Rule:** No reachable known vulnerabilities in Go dependencies or the standard library.
@@ -112,7 +113,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Why:** Agents read the schema doc instead of replaying migrations in their head.
 - **Sensor:** `scripts/gen-schema-doc.sh --check` (offline) in `make check`; full regeneration in CI.
 - **Remediation:** Run `make gen-schema-doc` (needs Docker) and commit the result.
-- **Fixture:** covered by `fixtures/db-destructive-migration` side effects · Status: seed
+- **Fixture:** `fixtures/db-schema-doc-stale` · Status: seed
 
 ## Contract (api/openapi.yaml)
 
@@ -142,7 +143,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Why:** Clients (and the generated zod parsers) must know the error shape for every call.
 - **Sensor:** Spectral `api-documented-4xx`, `api-documented-5xx`, `make lint-api`.
 - **Remediation:** Add `'4XX': {$ref: '#/components/responses/ClientError'}` and `'5XX': {$ref: '#/components/responses/ServerError'}` to the operation's responses.
-- **Fixture:** covered by `fixtures/api-error-not-problem-json` · Status: seed
+- **Fixture:** `fixtures/api-missing-4xx` · Status: seed
 
 ### api-errors-problem-json
 - **Rule:** Every 4xx/5xx response has only `application/problem+json` content (RFC 9457 `Problem` schema).
@@ -186,28 +187,28 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Why:** Type-aware lint catches unsafe `any` flows and hook-order bugs that tsc accepts.
 - **Sensor:** ESLint, `make lint-web`; fast-check hook per edited file.
 - **Remediation:** Fix the reported line; do not add `eslint-disable` (harness-integrity rejects disables without a reason and rule reference).
-- **Fixture:** `web-lint-dependent-workspace` · Status: seed
+- **Fixture:** `fixtures/web-lint-dependent-workspace` · Status: seed
 
 ### web-typecheck
 - **Rule:** All workspace packages type-check under `tsconfig.base.json` (`strict`, `noUncheckedIndexedAccess`).
 - **Why:** The type system carries the contract from the OpenAPI spec into components.
 - **Sensor:** `tsc --noEmit` per package via Turborepo, `make typecheck-web` (part of `make check`). Not in the fast-check hook: tsc checks a whole package, too slow per edit (NFR-H2).
 - **Remediation:** Fix the type error at its source; never widen to `any` or add `@ts-ignore`/`@ts-expect-error`.
-- **Fixture:** none · Status: seed
+- **Fixture:** `fixtures/web-type-error` · Status: seed
 
 ### web-tests-pass
 - **Rule:** Vitest suites pass.
 - **Why:** Cheapest behavioural sensor for the frontend.
 - **Sensor:** `vitest run` per package via Turborepo, `make test-web`.
 - **Remediation:** Read the first failing test above and fix the code (not the test) unless the behaviour change is intended and documented in the PR.
-- **Fixture:** none · Status: seed
+- **Fixture:** `fixtures/web-failing-test` · Status: seed
 
 ### web-no-dead-code
 - **Rule:** No unused files, exports or dependencies in the JS workspace.
 - **Why:** Agents leave orphans behind; dead code misleads the next agent reading the repo.
 - **Sensor:** knip (`knip.json`), `make knip` (check-all, drift.yml).
 - **Remediation:** Delete the unused file/export/dependency; if it is used in a way knip cannot see, configure it in `knip.json` and say why in the PR.
-- **Fixture:** none · Status: seed
+- **Fixture:** `fixtures/web-unused-file` · Status: seed
 
 ## Generated code
 
@@ -302,10 +303,10 @@ variables are unset before the scan.
 - **Fixture:** `fixtures/harness-nondeterministic`; `scripts/test/determinism.bats` · Status: seed
 
 ### harness-scope
-- **Rule:** `make check` (scope `changed`) may skip a sensor only when none of its inputs and no harness file (`protected-paths.txt`) changed since the merge base, counting staged, unstaged and untracked files; `make check-all` and CI (scope `full`, `HARNESS_SCOPE=full`) run every sensor. Skipped today: `lint-sh`, `fmt-check-sh`, `test-sh` (inputs: `*.sh`, `*.bash`, `*.bats`, `scripts/**`), the main cost of `make check` (NFR-H3, [ADR 0013](../adr/0013-harness-nfr-budgets.md), [ADR 0014](../adr/0014-make-check-scoped-to-the-change.md)); `gen-check` while its inputs and the generated files hash to the stamp of its last green run. Scoped to the affected set in scope `changed`: `lint-go` and `test-go` to the changed Go packages of `apps/api` plus every package that imports them (tests included), `lint-web` and `arch-web` to the changed JS workspaces plus their dependents; skipped when that set is empty; `secrets` ([repo-no-secrets](#repo-no-secrets)) to the changed and untracked files, all git-known files when a harness file changed. `typecheck-web` and `test-web` are not scoped: Turborepo's task cache already replays unchanged packages. `arch-go` is not scoped (go-arch-lint checks the whole module). Cached only in scope `changed`: Go test results (`test-go`, `test-analyzers`, `test-harness` without `-count=1`; integration tests always `-count=1`) the dependency-cruiser graph (`--cache node_modules/.cache/depcruise`) and Turborepo's task cache (`typecheck-web`, `test-web`; `--force` in any other scope, so `make harness-determinism` really runs vitest and tsc twice).
+- **Rule:** `make check` (scope `changed`) may skip a sensor only when none of its inputs and no harness file (`protected-paths.txt`) changed since the merge base, counting staged, unstaged and untracked files; `make check-all` and CI (scope `full`, `HARNESS_SCOPE=full`) run every sensor. Skipped today: `lint-sh`, `fmt-check-sh`, `test-sh` (inputs: `*.sh`, `*.bash`, `*.bats`, `scripts/**`), the main cost of `make check` (NFR-H3, [ADR 0013](../adr/0013-harness-nfr-budgets.md), [ADR 0014](../adr/0014-make-check-scoped-to-the-change.md)); `fixture-claims` (inputs: `docs/harness/rules.md`, `scripts/harness/fixtures/**`); `gen-check` while its inputs and the generated files hash to the stamp of its last green run. Scoped to the affected set in scope `changed`: `lint-go` and `test-go` to the changed Go packages of `apps/api` plus every package that imports them (tests included), `lint-web` and `arch-web` to the changed JS workspaces plus their dependents; skipped when that set is empty; `secrets` ([repo-no-secrets](#repo-no-secrets)) to the changed and untracked files, all git-known files when a harness file changed. `typecheck-web` and `test-web` are not scoped: Turborepo's task cache already replays unchanged packages. `arch-go` is not scoped (go-arch-lint checks the whole module). Cached only in scope `changed`: Go test results (`test-go`, `test-analyzers`, `test-harness` without `-count=1`; integration tests always `-count=1`) the dependency-cruiser graph (`--cache node_modules/.cache/depcruise`) and Turborepo's task cache (`typecheck-web`, `test-web`; `--force` in any other scope, so `make harness-determinism` really runs vitest and tsc twice).
 - **Why:** Agents run `make check` after every change; a sensor whose inputs did not change can only repeat its last verdict, so running it costs time and finds nothing.
 - **Sensor:** `scripts/harness/unchanged.sh` decides (`gen-check.sh --unchanged` for `gen-check`), `scripts/harness/affected.sh go|web` the affected set (`$(call scoped,…)` in the Makefile); the target prints `<target>: skipped, …` instead of running. It fails closed: no merge base (`BASE_REF`), a git error, a missing or unmatched stamp, or any scope but `changed` means run and uncached; the affected set is everything on a harness file, `go.mod`, `go.sum`, a `package.json`, the lockfile or workspace config, a non-Go file under `apps/api`, a `.go` file in no package, a JS/TS/JSON file outside a workspace, or a failing `go list` or `turbo ls`. Timing rows (`harness-latency-budget`) carry the scope.
-- **Remediation:** A skipped sensor that should have run means its trigger pathspecs miss an input: add the input to the `$(call sh_sensor,…)` pathspecs in the Makefile, to `INPUTS` in `gen-check.sh`, or to what makes `affected.sh` return everything (Harness change: Y); to run everything now, `make check-all` or `HARNESS_SCOPE=full make check`.
+- **Remediation:** A skipped sensor that should have run means its trigger pathspecs miss an input: add the input to the `$(call sh_sensor,…)` pathspecs in the Makefile, to the `unchanged.sh` pathspecs of its `fixture-claims` recipe, to `INPUTS` in `gen-check.sh`, or to what makes `affected.sh` return everything (Harness change: Y); to run everything now, `make check-all` or `HARNESS_SCOPE=full make check`.
 - **Fixture:** none (decides whether a sensor runs, never fails); `scripts/test/unchanged.bats`, `scripts/test/gen-check.bats`, `scripts/test/affected.bats`, `scripts/test/trivy.bats`; the scoped sensors' fixtures `go-tests-dependent-package`, `web-lint-dependent-workspace` run in scope `changed` (`SCOPE=changed` in `fixture.conf`, also in CI) · Status: seed
 
 ### ci-workflows-valid
@@ -358,3 +359,10 @@ In CI these run in the `pr-conventions` job of `harness-integrity.yml` (base bra
 - **Sensor:** `.bin/harness check-links` (`apps/api/tools/harness/checklinks.go`; `make docs-links`, part of `make check`; fast-check hook per Markdown file; `pre-commit` git hook on the staged tree when a Markdown file is staged).
 - **Remediation:** Create `CLAUDE.md` next to the `AGENTS.md` the message names, containing the line `@AGENTS.md`; put shared guidance in `AGENTS.md`, never only in `CLAUDE.md`.
 - **Fixture:** `fixtures/docs-agents-without-claude` · Status: seed
+
+### rules-fixture-claims
+- **Rule:** Every `### <rule-id>` in this file has one `**Fixture:**` line, either `none (<reason>)` (free text, may name other rules' fixtures and tests) or one or more `` `fixtures/<dir>` `` joined by `, `, optionally followed by `; ` and backticked test paths. Each named dir is a git-known `scripts/harness/fixtures/<dir>/fixture.conf` whose `RULE=` is that rule's id; each test path matches a git-known file.
+- **Why:** The selftest ([ADR 0009](../adr/0009-harness-selftest.md)) proves only the fixtures that exist; a line claiming coverage that is not there makes this guide promise a tested sensor that nothing tests (exec plan 0003 found seven such lines).
+- **Sensor:** `.bin/harness fixture-claims` (`apps/api/tools/harness/fixtureclaims.go`; `make fixture-claims`, part of `make check`, skipped while rules.md, the fixtures and the other harness files are unchanged: [harness-scope](#harness-scope)).
+- **Remediation:** Make the line say what is true: name each fixture as `` `fixtures/<dir>` `` (the directory under `scripts/harness/fixtures/` whose `fixture.conf` has `RULE=` this rule), add a fixture if the sensor is deterministic and local, or write `none (<why this rule has no fixture>)`; never claim another rule's fixture as coverage.
+- **Fixture:** `fixtures/rules-bogus-fixture-claim` · Status: team-convention ([ADR 0015](../adr/0015-anticipated-rules-and-nfr-classes-b-o.md))

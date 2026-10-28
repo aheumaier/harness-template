@@ -57,7 +57,7 @@ db-reset: ## Drop this worktree's database volume, recreate, migrate
 	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
 
 check: $(HARNESS) ## Fast sensors (<60s warm): format, lint, arch, unit tests, secrets, gen-check
-	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links lint-web arch-web typecheck-web test-web
+	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links fixture-claims lint-web arch-web typecheck-web test-web
 	@$(MAKE) gen-check
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
@@ -218,9 +218,15 @@ specs: ## spec-kit specs/ are well formed; feat changes to apps/ or api/ come wi
 	@$(RUN) specs specs-structure,specs-required-for-features -- env BASE_REF="$(BASE_REF)" scripts/harness/check-specs.sh
 
 ##@ Docs
-.PHONY: docs-links
+.PHONY: docs-links fixture-claims
 docs-links: $(HARNESS) ## Relative links and anchors in Markdown resolve; every AGENTS.md has a CLAUDE.md importing it
 	@$(RUN) check-links docs-links-resolve,docs-claude-imports-agents -- $(HARNESS) check-links .
+
+# In make check, runs only when rules.md, a fixture or another harness file changed (rules.md#harness-scope).
+fixture-claims: $(HARNESS) ## Every rules.md Fixture line names fixtures that exist and test that rule, or none (<reason>)
+	@if scripts/harness/unchanged.sh docs/harness/rules.md 'scripts/harness/fixtures/*'; then \
+	  echo "$@: skipped, neither rules.md nor a fixture changed (make check-all runs it)"; \
+	else $(RUN) fixture-claims rules-fixture-claims -- $(HARNESS) fixture-claims .; fi
 
 ##@ Generation
 .PHONY: gen gen-check gen-sqlc gen-atlas-sum gen-oapi gen-api-client
