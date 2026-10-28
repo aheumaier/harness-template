@@ -1,0 +1,6 @@
+# Harness file (protected). Trivy config for repo-no-secrets and deps-no-known-vulns (docs/harness/rules.md),
+# loaded by scripts/harness/trivy.sh, which scans a copy of the git-known files (never .env.local, .cache/).
+scan:
+  skip-dirs:
+    # Deliberate violations (a planted secret): the selftest applies them outside this directory.
+    - scripts/harness/fixtures

@@ -1,0 +1,113 @@
+#!/usr/bin/env bats
+# scripts/harness/trivy.sh: what it hands Trivy. A stub .bin/trivy lists the files of the tree it is given, so
+# these tests pin the input set (git-known files only; the changed ones in scope `changed`) and fail-closed paths.
+# The real scanners are exercised by `make secrets` (fixture repo-secret-planted) and `make vuln-deps`.
+bats_require_minimum_version 1.5.0
+load helpers
+
+setup() {
+  sandbox scripts/harness/trivy.sh scripts/harness/unchanged.sh scripts/harness/merge-base.sh \
+    scripts/harness/protected-paths.txt scripts/tool-versions.env
+  T="$SANDBOX/scripts/harness/trivy.sh"
+  mkdir -p "$SANDBOX/.bin" "$SANDBOX/docs"
+  # Records its arguments and TRIVY_* environment; the last argument is the tree to scan.
+  cat >"$SANDBOX/.bin/trivy" <<'STUB'
+#!/usr/bin/env bash
+d="$(dirname "$0")"
+printf '%s\n' "$@" >"$d/trivy.args"
+env | grep '^TRIVY_' >"$d/trivy.env"
+cd "${!#}" && find . -type f | sed "s|^\./|scanned: |"
+STUB
+  chmod +x "$SANDBOX/.bin/trivy"
+  sed -n 's/^TRIVY_VERSION=//p' "$REPO/scripts/tool-versions.env" >"$SANDBOX/.bin/.trivy.version"
+  printf '.bin/\n.cache/\n.env.local\n' >"$SANDBOX/.gitignore"
+  printf 'scan: {}\n' >"$SANDBOX/trivy.yaml"
+  echo old >"$SANDBOX/docs/old.md"
+  echo gone >"$SANDBOX/docs/gone.md"
+  sandbox_base
+  git -C "$SANDBOX" checkout -qb feature
+  echo 'SECRET=x' >"$SANDBOX/.env.local"
+  export BASE_REF=main
+}
+
+@test "usage error without a mode" {
+  run -2 "$T"
+  has "usage: trivy.sh secret|vuln"
+}
+
+@test "fails closed without the pinned trivy in .bin" {
+  rm "$SANDBOX/.bin/.trivy.version"
+  run -1 "$T" secret
+  has "run make setup [repo-no-secrets]"
+}
+
+@test "scope changed: secret scans only changed and untracked files, never ignored ones" {
+  echo new >"$SANDBOX/docs/new.md"
+  echo edit >>"$SANDBOX/docs/old.md"
+  rm "$SANDBOX/docs/gone.md"
+  run -0 "$T" secret
+  [[ "$output" == $'scanned: docs/new.md\nscanned: docs/old.md' ]] || {
+    echo "$output" >&2
+    return 1
+  }
+}
+
+@test "scope changed: a deleted file last in the diff is skipped, not an error" {
+  rm "$SANDBOX/docs/old.md"
+  run -0 "$T" secret
+  [[ -z "$output" ]]
+}
+
+@test "scope changed: a harness file change scans everything" {
+  echo '# x' >>"$SANDBOX/trivy.yaml"
+  run -0 "$T" secret
+  has "scanned: docs/gone.md"
+  has "scanned: .gitignore"
+  [[ "$output" != *env.local* ]] || return 1
+}
+
+@test "scope full, vuln mode and no merge base each scan everything git knows" {
+  HARNESS_SCOPE=full run -0 "$T" secret
+  has "scanned: docs/old.md"
+  [[ "$output" != *env.local* ]] || return 1
+  run -0 "$T" vuln
+  has "scanned: docs/old.md"
+  BASE_REF=nope run -0 "$T" secret
+  has "scanned: docs/old.md"
+}
+
+@test "secret scan: offline, built-in rules without allow-list, no ignore file, no TRIVY_* overrides" {
+  TRIVY_SKIP_FILES=docs/old.md HARNESS_SCOPE=full run -0 "$T" secret
+  for flag in --offline-scan --skip-db-update --skip-check-update --skip-vex-repo-update --disable-telemetry; do
+    grep -qxF -- "$flag" "$SANDBOX/.bin/trivy.args" || return 1
+  done
+  grep -A1 -xF -- --ignorefile "$SANDBOX/.bin/trivy.args" | sed -n 2p | grep -qx '' || return 1
+  grep -A1 -xF -- --secret-config "$SANDBOX/.bin/trivy.args" | grep -q 'scripts/harness/trivy-secret.yaml$' || return 1
+  [[ ! -s "$SANDBOX/.bin/trivy.env" ]] || return 1
+}
+
+@test "vuln: a go.mod or lockfile Trivy reports no packages for fails closed" {
+  mkdir -p "$SANDBOX/m"
+  echo 'module m' >"$SANDBOX/m/go.mod"
+  run -1 "$T" vuln
+  has "m/go.mod:1: Trivy found no packages in it (unsupported format?) [deps-no-known-vulns]"
+}
+
+@test "the scan copy lives outside the repo and is removed afterwards" {
+  export TMPDIR="$BATS_TEST_TMPDIR/tmp"
+  mkdir -p "$TMPDIR"
+  git -C "$SANDBOX" status --porcelain --ignored >"$BATS_TEST_TMPDIR/before"
+  HARNESS_SCOPE=full run -0 "$T" secret
+  has "scanned: docs/old.md"
+  # The stub saw a tree under TMPDIR, not under the repo.
+  [[ "$(tail -1 "$SANDBOX/.bin/trivy.args")" == "$TMPDIR"/trivy-secret.* ]] || return 1
+  [[ -z "$(ls -A "$TMPDIR")" ]] || return 1
+  git -C "$SANDBOX" status --porcelain --ignored >"$BATS_TEST_TMPDIR/after"
+  # Only the stub's own records in .bin/ (ignored) may differ.
+  diff <(grep -v '^!! .bin/' "$BATS_TEST_TMPDIR/before") <(grep -v '^!! .bin/' "$BATS_TEST_TMPDIR/after") || return 1
+}
+
+@test "nothing changed: scans nothing, silent" {
+  run -0 "$T" secret
+  [[ -z "$output" ]]
+}

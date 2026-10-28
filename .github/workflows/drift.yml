@@ -24,13 +24,21 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - run: make setup
+      # The Trivy vulnerability DB for vuln-deps, shared with ci.yml and refreshed once a day.
+      - id: today
+        run: echo "date=$(date -u +%Y-%m-%d)" >>"$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/trivy
+          key: trivy-db-${{ steps.today.outputs.date }}
+          restore-keys: trivy-db-
       - name: Sweep
         id: sweep
         run: |
           report="$RUNNER_TEMP/drift.md"
           fence='```'
           : >"$report"
-          for target in deadcode-go knip vuln-go docs-links; do
+          for target in deadcode-go knip vuln-go vuln-deps docs-links; do
             if ! out="$(make "$target" 2>&1)"; then
               printf '### make %s\n\n%s\n%s\n%s\n\n' "$target" "$fence" "$out" "$fence" >>"$report"
             fi

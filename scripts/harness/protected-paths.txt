@@ -15,6 +15,7 @@
 *.squawk.toml config
 *.shellcheckrc config
 knip.json config
+trivy.yaml config
 *tsconfig*.json config
 .claude/settings.json config
 .editorconfig config

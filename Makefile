@@ -56,15 +56,15 @@ db-reset: ## Drop this worktree's database volume, recreate, migrate
 	@$(WITH_ENV) docker compose --progress quiet down -v; docker compose --progress quiet up -d --wait db
 	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
 
-check: $(HARNESS) ## Fast sensors (<60s warm): format, lint, arch, unit tests, gen-check
-	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci schema-doc-fresh docs-links lint-web arch-web typecheck-web test-web
+check: $(HARNESS) ## Fast sensors (<60s warm): format, lint, arch, unit tests, secrets, gen-check
+	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links lint-web arch-web typecheck-web test-web
 	@$(MAKE) gen-check
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
 CHECK_ALL_SKIP ?=
 check-all: export HARNESS_SCOPE := full
 check-all: check ##Everything: check + integration, contract, migration, security, dead code
-	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go lint-migrations squawk migrations-append-only lint-api contract-check knip harness-integrity commits specs)
+	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go vuln-deps lint-migrations squawk migrations-append-only lint-api contract-check knip harness-integrity commits specs)
 	@$(MAKE) test-integration
 
 harness-selftest: $(HARNESS) ## Every fixture in scripts/harness/fixtures must be rejected by its sensor (FIXTURE=name for one)
@@ -190,6 +190,16 @@ fmt-check-sh: ## shfmt (style from .editorconfig) on every shell script
 
 test-sh: $(HARNESS) ## bats tests for scripts/ and .claude/hooks/ (scripts/test)
 	@$(call sh_sensor,$(RUN) bats sh-tests-pass -- bats scripts/test)
+
+##@ Secrets and dependency vulnerabilities (Trivy: trivy.yaml, scripts/harness/trivy.sh)
+.PHONY: secrets vuln-deps
+# The sensor id is the rule id: budgets.txt row repo-no-secrets (NFR-H9). $(GCL) runs install-tools.sh
+# (Trivy too) once tool-versions.env changes, before the scan, not racing it under -j4.
+secrets: $(GCL) ## Offline secret scan of the git-known files (in make check, only the changed ones)
+	@$(RUN) repo-no-secrets repo-no-secrets -- scripts/harness/trivy.sh secret
+
+vuln-deps: $(GCL) ## Known vulns in pnpm-lock.yaml and every go.mod (fetches the Trivy DB into .cache/trivy)
+	@$(RUN) trivy-vuln deps-no-known-vulns -- scripts/harness/trivy.sh vuln
 
 ##@ CI and harness integrity (.github/, protected harness files)
 .PHONY: lint-ci harness-integrity commits specs

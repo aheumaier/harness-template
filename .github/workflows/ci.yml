@@ -31,6 +31,14 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - run: make setup
+      # The Trivy vulnerability DB for deps-no-known-vulns (make vuln-deps), refreshed once a day.
+      - id: today
+        run: echo "date=$(date -u +%Y-%m-%d)" >>"$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/trivy
+          key: trivy-db-${{ steps.today.outputs.date }}
+          restore-keys: trivy-db-
       # contract-check, harness-integrity, commits and specs run in their own base-branch workflows, which
       # see the PR title and honour the human label waivers.
       - run: make check-all BASE_REF="$BASE_REF" CHECK_ALL_SKIP="contract-check harness-integrity commits specs"
