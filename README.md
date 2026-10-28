@@ -59,25 +59,24 @@ Claude Code hooks fail closed.
    make check
    make harness-selftest
    ```
-3. **Rename the template identity (human).** There is no rename script. Replace `harness-template` and
-   `github.com/aheumaier/harness-template` in every tracked file:
-   ```sh
-   git grep -l harness-template
-   ```
-   The hits are:
-   - `package.json` and the `packages/*`, `apps/web` package names;
-   - the Go module path in `apps/api/go.mod`, `apps/api/tools/*/go.mod` and every import;
-   - the goimports local prefix in `apps/api/.golangci.yml` and `apps/api/.custom-gcl.yml`;
-   - the title and URL in `api/openapi.yaml`;
-   - `.specify/memory/constitution.md`;
-   - the guides and ADRs;
-   - the fixture overlays in `scripts/harness/fixtures/`. They import the module path, so rename them as well,
-     or selftest fails.
+3. **Rename the template identity (human).** One command renames:
+   - the package name (`harness-template`, `@harness-template/*`);
+   - the Go module path (`github.com/aheumaier/harness-template`);
+   - the CODEOWNERS owner (`@aheumaier`).
 
-   Many of these files are protected. After renaming:
-   - regenerate with `make gen`; never edit `*.gen.go` or `packages/api-client/src/gen/` by hand;
-   - run `make check-all`;
-   - run `make harness-selftest`.
+   It is a dry run that lists each file and its changed lines; `WRITE=1` applies:
+   ```sh
+   make rename NAME=acme-shop MODULE=github.com/acme/shop OWNER=@acme
+   make rename NAME=acme-shop MODULE=github.com/acme/shop OWNER=@acme WRITE=1
+   make gen check-all harness-selftest
+   ```
+   - **What it covers:** every git-known text file. That includes go.mod files and imports, linter configs,
+     `api/openapi.yaml`, package.json files, `pnpm-lock.yaml`, the generated client and the fixture overlays.
+   - **What it skips:** history (`docs/adr/`, `docs/exec-plans/`) and this README. Rewrite the README for your
+     product.
+   - **Running it again:** a second run changes nothing.
+   - **Protected files:** many of the changed files are protected, so the rename PR needs the
+     `harness-change-approved` label.
 4. **Ownership (human).**
    - Replace `@aheumaier` in [.github/CODEOWNERS](.github/CODEOWNERS).
    - Create the labels `harness-change-approved`, `breaking-change-approved` and `no-spec-needed`

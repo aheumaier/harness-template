@@ -30,7 +30,7 @@ HARNESS     := .bin/harness
 HARNESS_SRC := $(shell find $(API)/tools/harness -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
 
 ##@ Workflow
-.PHONY: help setup check check-all harness-selftest harness-determinism new-domain dev db-up db-migrate db-reset
+.PHONY: help setup check check-all harness-selftest harness-determinism new-domain rename dev db-up db-migrate db-reset
 
 help: ## Show targets
 	@awk 'BEGIN{FS=":.*##"} /^##@/{printf "\n%s\n",substr($$0,5)} /^[a-z0-9-]+:.*##/{printf "  %-18s %s\n",$$1,$$2}' $(MAKEFILE_LIST)
@@ -40,6 +40,9 @@ setup: ## Tools, deps, this worktree's Postgres (own ports) + migrations, .env.l
 
 new-domain: ## Scaffold a domain through every layer: make new-domain NAME=billing
 	@scripts/new-domain.sh $(NAME)
+
+rename: $(HARNESS) ## Rename the template once (dry run): make rename NAME=acme-shop MODULE=github.com/acme/shop OWNER=@acme [WRITE=1]
+	@$(HARNESS) rename $(if $(WRITE),-write) . $(NAME) $(MODULE) $(OWNER)
 
 dev: db-up ## Run API + web for this worktree (Ctrl-C stops both)
 	@$(WITH_ENV) trap 'kill 0' EXIT; \
