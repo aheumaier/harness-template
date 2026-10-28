@@ -28,7 +28,7 @@ flowchart LR
 |------|------------|
 | `api/openapi.yaml` | OpenAPI 3.1 contract. One tag per domain plus `platform`. Generator markers `harness:domain-*`. |
 | `apps/api/cmd/api` | Entry point. `main.go` creates the only root context and wires platform providers; `routes.go` registers every tag's handlers (marker `harness:domain-routes`). |
-| `apps/api/internal/platform` | Shared plumbing, imports no domain: `config` (env, fail fast), `logging` (slog JSON), `db` (pgx pool, `db.Pool`), `auth` (fail-closed stub), `telemetry` (OTel), `problem` (RFC 9457 errors), `health` (`/healthz`). |
+| `apps/api/internal/platform` | Shared plumbing, imports no domain: `config` (env, fail fast), `logging` (slog JSON with request and trace IDs), `requestid` (`X-Request-Id`), `accesslog` (one line per request), `db` (pgx pool with query spans, `db.Pool`), `auth` (fail-closed stub), `telemetry` (OTel), `problem` (RFC 9457 errors), `health` (`/healthz`). |
 | `apps/api/internal/<domain>` | A business domain, created by `make new-domain`; see [Layers](#layers). None exist yet. |
 | `apps/api/db/migrations` | Atlas versioned migrations + `atlas.sum`. Append only. |
 | `apps/api/db/queries` | sqlc queries, one file per domain. |
@@ -70,8 +70,9 @@ only `packages/api-client` performs HTTP, and `apps/*` never import each other.
 
 ## Request flow
 
-`net/http` server (`cmd/api/main.go`) → auth middleware (`platform/auth`) → `ServeMux` (`routes.go`) →
-generated strict handler (decodes and validates against the spec; invalid input becomes a 400 problem via
+`net/http` server (`cmd/api/main.go`) → request ID (`platform/requestid`) → `otelhttp` server span → access
+log (`platform/accesslog`) → auth middleware (`platform/auth`) → `accesslog.Route` (records the matched pattern) → `ServeMux` (`routes.go`) → generated strict
+handler (decodes and validates against the spec; invalid input becomes a 400 problem via
 `problem.RequestError`) → `api.go` method → `service` → `store` → Postgres. Every function below `cmd`
 receives the request's `context.Context`.
 
@@ -80,7 +81,14 @@ receives the request's `context.Context`.
 - **Errors:** handlers return typed problem responses declared in the spec; unexpected errors become a 500
   problem via `problem.ResponseError`, never a stack trace.
 - **Config:** environment only, parsed once in `platform/config`; required values have no defaults.
-- **Observability:** slog JSON logs, OpenTelemetry tracing (`OTEL_TRACES_EXPORTER`, `none` locally).
+- **Observability:** slog JSON logs, OpenTelemetry tracing (`OTEL_TRACES_EXPORTER`, `none` locally),
+  instrumented as [ADR 0018](docs/adr/0018-http-and-db-instrumentation.md) records. At runtime every
+  response carries `X-Request-Id` (an incoming one is kept only if it matches the contract's pattern), but
+  the contract declares it only on `/healthz` 200 so far ([TD-16](docs/exec-plans/tech-debt-tracker.md)).
+  A problem carries `instance` (`urn:request-id:<id>`) when `platform/problem` writes it or when a handler
+  building a spec problem response sets it with `problem.Instance(ctx)` (the scaffold doesn't yet, TD-16). Log lines in a request carry
+  `request_id`, `trace_id` and `span_id`; one `request` line per request has method, route template, status
+  and `duration_ms`; each SQL query is a child span of the server span.
 - **Environments:** each git worktree has its own Postgres container, volume and ports (`.env.local`,
   written by `make setup`), so parallel agents never share state.
 - **Generated code** is committed; `make gen-check` fails if it is stale or hand-edited.

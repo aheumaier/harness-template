@@ -9,7 +9,8 @@
 - **Health:** `GET /healthz` checks the database and returns a problem with 503 when it is unreachable.
 - **Migrations** are lint-checked for destructive and locking operations and set `lock_timeout` /
   `statement_timeout` ([db-safe-locking](harness/rules.md#db-safe-locking)).
-- **Observability:** structured JSON logs (slog) and OpenTelemetry traces (`OTEL_TRACES_EXPORTER`).
+- **Observability:** structured JSON logs (slog) and OpenTelemetry traces (`OTEL_TRACES_EXPORTER`), correlated
+  by request ID and trace ID ([ARCHITECTURE.md](../ARCHITECTURE.md#cross-cutting-concerns)).
 - **Tests** run with the race detector; integration tests run against a real Postgres per worktree.
 
 ## Before production

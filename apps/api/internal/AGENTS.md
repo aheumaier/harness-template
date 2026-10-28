@@ -1,6 +1,6 @@
 # apps/api/internal
 
-- `platform/` is plumbing (config, logging, db, auth, telemetry, problem, health). It imports no domain.
+- `platform/` is plumbing (config, logging, requestid, accesslog, db, auth, telemetry, problem, health). It imports no domain.
   Add to it only what every domain needs; domain logic never goes here.
 - Every other directory is a domain created by `make new-domain NAME=<name>` with `model/ store/ service/ api/`.
   Read the domain's own `AGENTS.md` before changing it.
@@ -10,5 +10,7 @@
 - `api.go` maps requests to service calls and service errors to the problem responses declared in the spec.
   Services return plain Go values and typed errors, never HTTP status codes.
 - Pass `ctx` everywhere; never `context.Background()` outside `cmd/` and tests.
+- Log with the `*Context` methods so lines carry `request_id` and `trace_id`. Don't `WithGroup` a request
+  logger (the IDs would land inside the group); add attrs instead.
 - Unit tests live next to the code (`*_test.go`, `-short`); tests that need Postgres use the
   `integration` build tag and run in `make check-all`.

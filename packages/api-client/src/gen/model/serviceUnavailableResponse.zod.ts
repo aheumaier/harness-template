@@ -20,7 +20,7 @@ export const ServiceUnavailableResponse = zod.object({
   "title": zod.string(),
   "status": zod.int().min(serviceUnavailableResponseStatusMin).max(serviceUnavailableResponseStatusMax),
   "detail": zod.string().optional(),
-  "instance": zod.string().optional()
+  "instance": zod.string().optional().describe('Identifies this occurrence. When set, it is `urn:request-id:<id>`, the request\'s `X-Request-Id`.')
 }).describe('RFC 9457 problem details.')
 
 export type ServiceUnavailableResponse = zod.input<typeof ServiceUnavailableResponse>;

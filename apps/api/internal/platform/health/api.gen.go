@@ -38,7 +38,9 @@ type HealthStatus string
 
 // Problem RFC 9457 problem details.
 type Problem struct {
-	Detail   *string `json:"detail,omitempty"`
+	Detail *string `json:"detail,omitempty"`
+
+	// Instance Identifies this occurrence. When set, it is `urn:request-id:<id>`, the request's `X-Request-Id`.
 	Instance *string `json:"instance,omitempty"`
 	Status   int     `json:"status"`
 	Title    string  `json:"title"`
@@ -222,15 +224,23 @@ type GetHealthResponseObject interface {
 	VisitGetHealthResponse(w http.ResponseWriter) error
 }
 
-type GetHealth200JSONResponse Health
+type GetHealth200ResponseHeaders struct {
+	XRequestId string
+}
+
+type GetHealth200JSONResponse struct {
+	Body    Health
+	Headers GetHealth200ResponseHeaders
+}
 
 func (response GetHealth200JSONResponse) VisitGetHealthResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Request-Id", fmt.Sprint(response.Headers.XRequestId))
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err

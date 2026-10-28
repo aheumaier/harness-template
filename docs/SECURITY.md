@@ -33,3 +33,6 @@ Defaults this template ships with, and what a product built on it must do before
   and add authorization per operation; declare `securitySchemes` in `api/openapi.yaml`.
 - Secrets from a secret manager, not environment files; TLS termination; rate limiting.
 - Add a threat model as a design doc and an ADR for the auth choice.
+- Stop trusting client correlation keys at the edge: today any caller's `traceparent` (trace ID and sampled
+  flag) and valid `X-Request-Id` are kept. Use `otelhttp.WithPublicEndpointFn` so an outside parent becomes
+  a span link, and generate request IDs for untrusted callers.

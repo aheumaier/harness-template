@@ -22,3 +22,4 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0015](0015-anticipated-rules-and-nfr-classes-b-o.md) | Phase 0 rules are adopted as team-convention; NFR classes B and O fail | proposed |
 | [0016](0016-tool-supply-chain.md) | Downloaded tools are sha256-pinned; scanners run only as pinned release binaries | proposed |
 | [0017](0017-per-worktree-observability-stack.md) | One pinned grafana/otel-lgtm container per worktree is the observability stack | proposed |
+| [0018](0018-http-and-db-instrumentation.md) | HTTP and database instrumentation through otelhttp and otelpgx (amends 0002) | proposed |

@@ -13,10 +13,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aheumaier/harness-template/apps/api/internal/platform/accesslog"
 	"github.com/aheumaier/harness-template/apps/api/internal/platform/auth"
 	"github.com/aheumaier/harness-template/apps/api/internal/platform/config"
 	"github.com/aheumaier/harness-template/apps/api/internal/platform/db"
 	"github.com/aheumaier/harness-template/apps/api/internal/platform/logging"
+	"github.com/aheumaier/harness-template/apps/api/internal/platform/requestid"
 	"github.com/aheumaier/harness-template/apps/api/internal/platform/telemetry"
 )
 
@@ -56,7 +58,7 @@ func run(ctx context.Context, getenv func(string) string) error {
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           authn(routes(pool)),
+		Handler:           handler(log, authn, routes(pool)),
 		ReadHeaderTimeout: 5 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return ctx },
 	}
@@ -75,4 +77,11 @@ func run(ctx context.Context, getenv func(string) string) error {
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+// handler wraps the routes in the platform middleware, outermost first: the request ID (on every response
+// and log line), the OTel server span, the access log line, authentication, and the route capture that the
+// access log and the span name read. The order is an invariant (ADR 0018), pinned by main_test.go.
+func handler(log *slog.Logger, authn func(http.Handler) http.Handler, mux http.Handler) http.Handler {
+	return requestid.Middleware(telemetry.Middleware("api")(accesslog.Middleware(log)(authn(accesslog.Route(mux)))))
 }
