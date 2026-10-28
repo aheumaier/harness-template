@@ -61,7 +61,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Why:** Tests are the cheapest behavioural sensor; the race detector catches concurrency bugs agents rarely reason about.
 - **Sensor:** `make test-go`, `make test-analyzers`, `make test-harness` (Go test cache in `make check`, `-count=1` in `make check-all` and CI: [harness-scope](#harness-scope)).
 - **Remediation:** Read the first failing test above, fix the code (not the test) unless the behaviour change is intended and documented in the PR.
-- **Fixture:** none · Status: seed
+- **Fixture:** `go-tests-dependent-package` · Status: seed
 
 ### go-no-known-vulns
 - **Rule:** No reachable known vulnerabilities in Go dependencies or the standard library.
@@ -186,7 +186,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Why:** Type-aware lint catches unsafe `any` flows and hook-order bugs that tsc accepts.
 - **Sensor:** ESLint, `make lint-web`; fast-check hook per edited file.
 - **Remediation:** Fix the reported line; do not add `eslint-disable` (harness-integrity rejects disables without a reason and rule reference).
-- **Fixture:** none · Status: seed
+- **Fixture:** `web-lint-dependent-workspace` · Status: seed
 
 ### web-typecheck
 - **Rule:** All workspace packages type-check under `tsconfig.base.json` (`strict`, `noUncheckedIndexedAccess`).
@@ -239,7 +239,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Why:** Sensors and hooks are code that guards all other code: a hook that blocks too much stalls agents, one that blocks too little is a false sense of safety.
 - **Sensor:** bats-core (`make test-sh`, part of `make check`). Scripts that need the full toolchain (`selftest.sh`, `gen-check.sh`, `contract-check.sh`, `new-domain.sh` end to end) are exercised by `make harness-selftest` and the CI generator probe instead.
 - **Remediation:** Read the first `not ok` test and its `expected output to contain` lines, fix the script (not the test) unless the behaviour change is intended and stated in the PR.
-- **Fixture:** none (like go-tests-pass) · Status: seed
+- **Fixture:** none (a failing bats test is its own fixture) · Status: seed
 
 ## Harness integrity and CI (.github/)
 
@@ -279,11 +279,11 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Fixture:** `fixtures/harness-nondeterministic`; `scripts/test/determinism.bats` · Status: seed
 
 ### harness-scope
-- **Rule:** `make check` (scope `changed`) may skip a sensor only when none of its inputs and no harness file (`protected-paths.txt`) changed since the merge base, counting staged, unstaged and untracked files; `make check-all` and CI (scope `full`, `HARNESS_SCOPE=full`) run every sensor. Skipped today: `lint-sh`, `fmt-check-sh`, `test-sh` (inputs: `*.sh`, `*.bash`, `*.bats`, `scripts/**`), the main cost of `make check` (NFR-H3, [ADR 0013](../adr/0013-harness-nfr-budgets.md)); `gen-check` while its inputs and the generated files hash to the stamp of its last green run. Cached only in scope `changed`: Go test results (`test-go`, `test-analyzers`, `test-harness` without `-count=1`; integration tests always `-count=1`) and the dependency-cruiser graph (`--cache node_modules/.cache/depcruise`).
+- **Rule:** `make check` (scope `changed`) may skip a sensor only when none of its inputs and no harness file (`protected-paths.txt`) changed since the merge base, counting staged, unstaged and untracked files; `make check-all` and CI (scope `full`, `HARNESS_SCOPE=full`) run every sensor. Skipped today: `lint-sh`, `fmt-check-sh`, `test-sh` (inputs: `*.sh`, `*.bash`, `*.bats`, `scripts/**`), the main cost of `make check` (NFR-H3, [ADR 0013](../adr/0013-harness-nfr-budgets.md)); `gen-check` while its inputs and the generated files hash to the stamp of its last green run. Scoped to the affected set in scope `changed`: `lint-go` and `test-go` to the changed Go packages of `apps/api` plus every package that imports them (tests included), `lint-web` and `arch-web` to the changed JS workspaces plus their dependents; skipped when that set is empty. `typecheck-web` and `test-web` are not scoped: Turborepo's task cache already replays unchanged packages. `arch-go` is not scoped (go-arch-lint checks the whole module). Cached only in scope `changed`: Go test results (`test-go`, `test-analyzers`, `test-harness` without `-count=1`; integration tests always `-count=1`) and the dependency-cruiser graph (`--cache node_modules/.cache/depcruise`).
 - **Why:** Agents run `make check` after every change; a sensor whose inputs did not change can only repeat its last verdict, so running it costs time and finds nothing.
-- **Sensor:** `scripts/harness/unchanged.sh` decides (`gen-check.sh --unchanged` for `gen-check`); the target prints `<target>: skipped, …` instead of running. It fails closed: no merge base (`BASE_REF`), a git error, a missing or unmatched stamp, or any scope but `changed` means run and uncached. Timing rows (`harness-latency-budget`) carry the scope.
-- **Remediation:** A skipped sensor that should have run means its trigger pathspecs miss an input: add the input to the `$(call sh_sensor,…)` pathspecs in the Makefile or to `INPUTS` in `gen-check.sh` (Harness change: Y); to run everything now, `make check-all` or `HARNESS_SCOPE=full make check`.
-- **Fixture:** none (decides whether a sensor runs, never fails); `scripts/test/unchanged.bats`, `scripts/test/gen-check.bats` · Status: seed
+- **Sensor:** `scripts/harness/unchanged.sh` decides (`gen-check.sh --unchanged` for `gen-check`), `scripts/harness/affected.sh go|web` the affected set (`$(call scoped,…)` in the Makefile); the target prints `<target>: skipped, …` instead of running. It fails closed: no merge base (`BASE_REF`), a git error, a missing or unmatched stamp, or any scope but `changed` means run and uncached; the affected set is everything on a harness file, `go.mod`, `go.sum`, a `package.json`, the lockfile or workspace config, a non-Go file under `apps/api`, a `.go` file in no package, a JS/TS/JSON file outside a workspace, or a failing `go list` or `turbo ls`. Timing rows (`harness-latency-budget`) carry the scope.
+- **Remediation:** A skipped sensor that should have run means its trigger pathspecs miss an input: add the input to the `$(call sh_sensor,…)` pathspecs in the Makefile, to `INPUTS` in `gen-check.sh`, or to what makes `affected.sh` return everything (Harness change: Y); to run everything now, `make check-all` or `HARNESS_SCOPE=full make check`.
+- **Fixture:** none (decides whether a sensor runs, never fails); `scripts/test/unchanged.bats`, `scripts/test/gen-check.bats`, `scripts/test/affected.bats`; the scoped sensors' fixtures `go-tests-dependent-package`, `web-lint-dependent-workspace` run in scope `changed` · Status: seed
 
 ### ci-workflows-valid
 - **Rule:** GitHub workflows and composite actions pass actionlint, including shellcheck on every `run:` block.

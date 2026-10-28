@@ -18,6 +18,11 @@ DEPCRUISE_CACHE = $(if $(CACHED),--cache node_modules/.cache/depcruise)
 # Load this worktree's ports/DB URL (written by `make setup`) into a recipe's shell.
 WITH_ENV := [[ -f .env.local ]] || { echo "no .env.local: run make setup" >&2; exit 1; }; set -a; source .env.local; set +a;
 API  := apps/api
+# `$(call scoped,<go|web>,<everything>) <command on $$scope>`: in make check, runs the command on the packages or
+# workspaces a change affects plus their dependents (scripts/harness/affected.sh), or skips it when there are
+# none; on <everything> in make check-all, CI and whenever affected.sh cannot narrow it (rules.md#harness-scope).
+scoped = scope="$$(scripts/harness/affected.sh $(1))" || scope="$(2)"; [[ -n "$$scope" ]] || \
+	{ echo "$@: skipped, nothing it checks is affected (make check-all runs it)"; exit 0; };
 GCL  := .bin/golangci-lint-custom
 ANALYZERS_SRC := $(shell find $(API)/tools/analyzers -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
 HARNESS     := .bin/harness
@@ -96,13 +101,13 @@ fmt: $(GCL) ## Auto-format Go and shell code
 	@shfmt -w $(SH_FILES)
 
 lint-go: $(GCL)
-	@$(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-domain-isolation,go-format --dir $(API) -- ../../$(GCL) run ./...
+	@$(call scoped,go,./...) $(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-domain-isolation,go-format --dir $(API) -- ../../$(GCL) run $$scope
 
 arch-go:
 	@$(RUN) go-arch-lint go-layers --dir $(API) -- go-arch-lint check --output-color=false
 
 test-go:
-	@$(RUN) go-test go-tests-pass --dir $(API) -- go test -race $(GO_TEST_COUNT) -short ./...
+	@$(call scoped,go,./...) $(RUN) go-test go-tests-pass --dir $(API) -- go test -race $(GO_TEST_COUNT) -short $$scope
 
 test-analyzers:
 	@$(RUN) analyzer-tests go-tests-pass --dir $(API)/tools/analyzers -- go test $(GO_TEST_COUNT) ./...
@@ -119,10 +124,10 @@ deadcode-go: ## Unreachable Go functions (drift.yml; deadcode exits 0, so fail o
 ##@ Web sensors (apps/web, packages/*)
 .PHONY: lint-web arch-web typecheck-web test-web knip
 lint-web:
-	@$(RUN) eslint web-no-direct-http,web-domain-pure,web-lint -- eslint --max-warnings=0 .
+	@$(call scoped,web,.) $(RUN) eslint web-no-direct-http,web-domain-pure,web-lint -- eslint --max-warnings=0 $$scope
 
 arch-web:
-	@$(RUN) dependency-cruiser web-domain-pure,web-no-cross-app -- depcruise apps packages --config .dependency-cruiser.cjs --output-type err $(DEPCRUISE_CACHE)
+	@$(call scoped,web,apps packages) $(RUN) dependency-cruiser web-domain-pure,web-no-cross-app -- depcruise $$scope --config .dependency-cruiser.cjs --output-type err $(DEPCRUISE_CACHE)
 
 typecheck-web:
 	@$(RUN) tsc web-typecheck -- turbo run typecheck --output-logs=errors-only
