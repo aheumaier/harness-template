@@ -106,7 +106,9 @@ PR; **–** needs none.
 - [ ] P1.5 — H — `make dev` writes structured logs to `.tmp/dev/*.log`; skill `query-runtime`
 - [ ] P2.1 — H — `new-domain.sh` scaffolds service, handler and integration tests; generator probe runs them
   (NFR-B1)
-- [ ] P2.2 — – — web: jsdom + Testing Library, or keep `renderToString` (guide fixed in Q5)
+- [x] P2.2 — no-op — web: jsdom + Testing Library, or keep `renderToString` → kept: the one web test
+  (`App.test.tsx`) renders to a string, and no test needs interaction or effects yet (P2.3 drives the browser
+  through Playwright, P2.1 scaffolds Go tests); the guide from Q5 stands
 - [ ] P2.3 — H — Playwright: `make e2e` against `make dev`, one journey (NFR-B2); skill `drive-app`
 - [ ] P2.4 — H — approved-fixture snapshots of API responses (contract-shaped golden files)
 - [ ] P2.5 — H — coverage report per package (Go + Vitest) into the CI summary; trend in the drift issue
