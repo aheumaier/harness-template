@@ -121,6 +121,7 @@ Check these in order:
    | P2.4 | P1.2 (the response header is in the contract) |
    | P3.2, P3.3, P3.4 | P3.1 |
    | P3.4 | Q3 |
+   | P3.8 | P3.1, P3.6, P3.7 (the agent skips what the sensors already catch) |
    | P4.2 | P4.1 |
 
    A slice whose dependency is `[!]` is skipped, not blocked: take the next pickable one.
@@ -174,6 +175,15 @@ answer is "no change", tick P2.2 as a no-op with the reason.
 
 It is verified by `actionlint` and by a dry run of the prompt assembly. Don't mark it blocked; the secret
 is a human TODO.
+
+**Orphans, clones, reuse (P3.6–P3.8, G11).**
+- P3.6: a make target counts as an entry point when it has a `## ` help comment; an entry point needs no
+  caller. A script used only by a fixture is an orphan.
+- P3.7: if `jscpd` cannot be pinned within the pnpm release-age policy, ship `dupl` alone plus a tech-debt
+  row. Thresholds: the strictest that passes after cheap fixes; never a baseline or ignore file for
+  existing clones.
+- P3.8: name `reuse-reviewer`; tools Read, Grep, Glob only; the CLAUDE.md line is part of the slice (a
+  harness change). It reviews the diff, never the whole repo; a whole-repo run waits for P3.3's schedule.
 
 **Template sync (P4.3).** The upstream URL comes from `HARNESS_UPSTREAM` in `scripts/tool-versions.env`,
 defaulting to this repo's `origin`. A missing upstream makes `make harness-sync-check` exit 2 with a

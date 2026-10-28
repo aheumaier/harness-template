@@ -38,6 +38,7 @@ From a comparison on 2026-10-28 (`perf/harness-nfr` @ 53ec497). ✅ present · �
 | G8 | Quality grades per domain *and layer*, kept fresh | OpenAI (QUALITY_SCORE, background agents) | `docs/QUALITY.md` manual, empty, per domain only, no staleness check | 🟡 |
 | G9 | `docs/references/*-llms.txt` for the pinned stack | OpenAI | none | ❌ |
 | G10 | Rippable harness: know which rules still fire, retire dead ones | O'Reilly, Osmani | `timings.jsonl` records latency only, not findings | ❌ |
+| G11 | Orphans and duplication: unused scripts and make targets, copy-paste clones, one concept implemented twice | OpenAI (agents replicate existing patterns, garbage collection); core belief "the best code is the code nobody writes" | `go-no-dead-code` weekly only (drift.yml), knip in check-all; nothing for scripts, make targets or clones; reuse left to `code-reviewer` | 🟡 |
 | — | Enforced merge gates | Fowler (human input where it matters) | out of scope: [TD-2](../tech-debt-tracker.md), blocked on the GitHub plan | — |
 
 **Doc drift found** (Phase 0 fixes it and adds the sensor that would have caught the first item):
@@ -71,7 +72,7 @@ They comment, never fail (Phase 3, ADR).
 | 0 | Quick wins: Trivy, pre-commit, structured-logging lints, doc truth | secrets and JS/nested-Go vulns are detected; `rules-fixture-claims` is green; every drift item above is fixed | implemented |
 | 1 | Runtime legibility (G1) | NFR-O1 met: logs by request ID and a p95 latency, per worktree, via `make` | proposed |
 | 2 | Behaviour harness (G2) | NFR-B1 and NFR-B2 met; coverage reported per package; weekly mutation score in the drift issue | proposed |
-| 3 | Inferential sensors and garbage collection (G3, G4, G8) | reviewer comments on every PR (advisory); scheduled reviews and `agent-gc` open issues/PRs; QUALITY.md has a staleness check | proposed |
+| 3 | Inferential sensors and garbage collection (G3, G4, G8, G11) | reviewer comments on every PR (advisory); scheduled reviews and `agent-gc` open issues/PRs; QUALITY.md has a staleness check; orphan scripts, dead Go code and clones fail `check-all`; `reuse-reviewer` exists | proposed |
 | 4 | Taste lints and harness lifecycle (G5, G7, G9, G10) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue | proposed |
 
 ## Progress
@@ -115,6 +116,10 @@ PR; **–** needs none.
 - [ ] P3.3 — H — scheduled security, data-handling and modularity reviews → drift issue
 - [ ] P3.4 — H — enable `agent-gc`: doc-gardening PRs for drift the computational checks found
 - [ ] P3.5 — H — QUALITY.md grades per domain and layer, `Updated:` date, staleness check in drift
+- [ ] P3.6 — H — `repo-no-orphan-scripts` (unreferenced scripts and make targets); `deadcode-go` into
+  `check-all`
+- [ ] P3.7 — H — clone detection: golangci `dupl` (Go) and `jscpd` (TS) with thresholds, in `check-all`
+- [ ] P3.8 — H — `reuse-reviewer` agent: does the diff re-implement something that exists?
 - [ ] P4.1 — – — ADR amending core belief 3: size and complexity limits as sensors, not style
 - [ ] P4.2 — H — Go: `funlen`, `cyclop`/`gocognit`, file length; TS: `max-lines`, `complexity`, `max-params`
 - [ ] P4.3 — H — template version marker (`.harness-version`) + `make harness-sync-check` against upstream
@@ -339,6 +344,30 @@ the feedback.
   date. The drift run flags rows older than 30 days or rows for deleted domains. `new-domain.sh` already
   writes the row marker (`harness:quality-rows`).
 
+G11 splits by what a machine can decide. Reachability and token clones are computational (P3.6, P3.7); only
+"the same concept written twice in different code" needs judgement (P3.8). The agent never looks for dead
+code: `deadcode` and knip do that without false positives from entry points they can see.
+
+- **P3.6 — orphans.** A `harness orphans <root>` subcommand (ADR 0012) and rule `repo-no-orphan-scripts`.
+  - Every file under `scripts/` (fixtures and P2.1's `scripts/templates/` excluded) is named in the Makefile, a workflow, a
+    git or Claude hook, a skill, an agent or a guide; every make target is called by another target, a
+    workflow, a hook, a skill or a guide, or is listed in `make help` as an entry point (`## ` comment).
+  - Fixture: an unreferenced script and an unreferenced make target.
+  - Move `deadcode-go` from drift-only into `check-all` (measure it; NFR-H4). Extend it to
+    `apps/api/tools/*` if those modules are clean, else a tech-debt row.
+- **P3.7 — clones.** Rule `repo-no-clones`: golangci `dupl` in `lint-go` and `jscpd` (pinned dev dependency)
+  for `apps/web` and `packages/`, generated code excluded. Thresholds are the strictest the current tree
+  passes after cheap fixes; record them in rules.md. One fixture per language. No baseline file.
+- **P3.8 — `reuse-reviewer`.** `.claude/agents/reuse-reviewer.md`, read-only (Read, Grep, Glob), scoped to
+  the diff: for each new function, script, component or file, search for an existing one with the same
+  purpose (`platform`, `packages/domain`, the stdlib, a pinned dependency, `scripts/harness/*.sh`,
+  `.bin/harness`).
+  - Each finding names both places as `file:line` and why they are one concept; a finding without the
+    existing location is not reported.
+  - Advisory (P3.1). CLAUDE.md calls it when a diff adds functions, scripts or files; fixes, docs and
+    config don't need it.
+  - A finding class seen twice becomes a computational rule (P3.1), so the agent narrows over time.
+
 ### Phase 4 — taste lints and harness lifecycle
 
 - **P4.1 — ADR amending core belief 3.** Both primary sources name function length, file length, complexity
@@ -557,3 +586,7 @@ the feedback.
   rename lives in `.bin/harness` although it is no sensor or hook, widening ADR 0012's scope for its
   portable file handling; the PR description proposes this. Not fixed: anchors into skipped files
   (`make check-all` docs-links catches them).
+- 2026-10-28: user request: G11 (orphans and duplication) added as P3.6–P3.8 after P3.5. Split by what a
+  machine can decide: unused scripts/targets and dead Go code (P3.6) and token clones (P3.7) are sensors;
+  only re-implementing an existing concept needs the advisory `reuse-reviewer` agent (P3.8), which waits
+  for both sensors so it doesn't duplicate them.
