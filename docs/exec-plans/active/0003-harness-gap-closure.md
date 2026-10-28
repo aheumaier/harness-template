@@ -590,3 +590,13 @@ code: `deadcode` and knip do that without false positives from entry points they
   machine can decide: unused scripts/targets and dead Go code (P3.6) and token clones (P3.7) are sensors;
   only re-implementing an existing concept needs the advisory `reuse-reviewer` agent (P3.8), which waits
   for both sensors so it doesn't duplicate them.
+- 2026-10-28: user request: the code-simplifier agent, trialled read-only on the rename tool, found
+  reuse and duplication that `code-reviewer` doesn't check for; applied in 1ec83b1 (`refactor(harness)`).
+  Proposal for the PR description: a "Simplicity" check in `code-reviewer.md` (protected).
+- 2026-10-28: user request: the loop runs up to three slices in parallel, one lane (own worktree, Postgres
+  and ports from `make setup`) each; only the orchestrator commits, by cherry-picking one lane at a time and
+  rechecking here. Slices sharing `drift.yml` or a named file, and slices measuring an NFR in seconds, don't
+  run side by side; gates review their slices' shas, not a range. Each slice is reviewed once, by the
+  orchestrator: P1.2's subagent ran both reviewers and the orchestrator ran them again. No `make db-down`
+  target exists, so closing a lane calls `docker compose -p <project> down -v` directly (worth a target).
+  P1.2 still finishes the old way, in this worktree.
