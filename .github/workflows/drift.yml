@@ -1,6 +1,6 @@
 # Harness file (protected). Weekly sweep for drift that accumulates without any single PR causing it:
-# dead code, known vulnerabilities in dependencies, a stale schema doc, dead doc links. Findings go to one
-# open issue labelled `drift` (created, or commented on).
+# dead code, known vulnerabilities in dependencies, a stale schema doc, dead doc links, test coverage that
+# fell since the last run. Findings go to one open issue labelled `drift` (created, or commented on).
 name: drift
 
 on:
@@ -15,6 +15,7 @@ jobs:
   drift:
     permissions:
       contents: read
+      actions: read # earlier drift runs and their coverage artifacts
       issues: write
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -32,8 +33,30 @@ jobs:
           path: .cache/trivy
           key: trivy-db-${{ steps.today.outputs.date }}
           restore-keys: trivy-db-
+      # The baseline for the coverage change (ADR 0020): coverage.tsv of the newest earlier scheduled drift run
+      # that has one, so a manual run never resets the weekly baseline. Its own step, because only it needs a
+      # token; the Sweep runs third-party code (pnpm, deadcode, knip, Trivy) and gets none.
+      - name: Coverage baseline
+        id: baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! ids="$(gh run list --workflow drift.yml --branch "$GITHUB_REF_NAME" --event schedule \
+            --status success --limit 10 --json databaseId --jq '.[].databaseId')"; then
+            echo "::warning::gh run list failed: this drift run reports coverage without the change since the last one"
+            exit 0
+          fi
+          for id in $ids; do
+            if gh run download "$id" --name coverage --dir "$RUNNER_TEMP/coverage-$id" 2>/dev/null; then
+              echo "previous=$RUNNER_TEMP/coverage-$id/coverage.tsv" >>"$GITHUB_OUTPUT"
+              break
+            fi
+          done
       - name: Sweep
         id: sweep
+        env:
+          COVERAGE_BASELINE: ${{ steps.baseline.outputs.previous }}
         run: |
           report="$RUNNER_TEMP/drift.md"
           fence='```'
@@ -48,6 +71,19 @@ jobs:
           elif ! out="$(git diff --exit-code -- docs/generated)"; then
             printf '### docs/generated is stale (run make gen-schema-doc)\n\n%sdiff\n%s\n%s\n\n' "$fence" "$out" "$fence" >>"$report"
           fi
+          # Coverage, a trend, never a gate (ADR 0020): the full table goes to the job summary every week; the
+          # issue gets only the packages whose coverage fell since the baseline. coverage.sh parses the
+          # baseline rather than trusting it.
+          if ! out="$(make coverage COVERAGE_PREVIOUS="$COVERAGE_BASELINE" 2>&1)"; then
+            printf '### make coverage failed\n\n%s\n%s\n%s\n\n' "$fence" "$out" "$fence" >>"$report"
+          else
+            printf '%s\n' "$out" >>"$GITHUB_STEP_SUMMARY"
+            if [[ -n "$COVERAGE_BASELINE" ]]; then
+              out="$(make coverage-fell COVERAGE_PREVIOUS="$COVERAGE_BASELINE" 2>&1)" ||
+                out="$(printf '### make coverage-fell failed\n\n%s\n%s\n%s' "$fence" "$out" "$fence")"
+              [[ -z "$out" ]] || printf '%s\n\n' "$out" >>"$report"
+            fi
+          fi
           cat "$report"
           # GitHub caps an issue body or comment at 65536 characters; the full report is in this log.
           if (($(wc -c <"$report") > 60000)); then
@@ -57,6 +93,15 @@ jobs:
           fi
           echo "report=$report" >>"$GITHUB_OUTPUT"
           [[ -s "$report" ]] && echo "found=true" >>"$GITHUB_OUTPUT" || echo "found=false" >>"$GITHUB_OUTPUT"
+      # Next week's baseline for the coverage change (the Makefile's COVERAGE_TSV); kept long enough to survive
+      # a few skipped weeks.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: .cache/coverage/coverage.tsv
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 35
       - name: Open or update the drift issue
         if: steps.sweep.outputs.found == 'true'
         env:

@@ -12,16 +12,36 @@ same target is red on your machine (with `BASE_REF=origin/main` for diff-based s
 | `ci.yml` | PR, push to main | `check-all` | `make setup && make check-all` minus `contract-check`, `harness-integrity`, `commits` and `specs` (own workflows, PR title, label waivers); uploads `.cache/harness/timings.jsonl` as `harness-timings-check-all` (8 days) and shows latency-budget warnings as annotations | yes |
 | | | `harness-selftest` | every fixture rejected by its sensor ([rules.md](rules.md)) | yes |
 | | | `generator-probe` | `make new-domain NAME=zzz_probe && make check`, then discards the probe and asserts a clean tree | yes |
+| `coverage.yml` | PR, push to main | `coverage` | `make setup && make coverage` into the job summary ([coverage](#coverage)); `continue-on-error`, a report, not a sensor | no |
 | `contract-gate.yml` | PR via `pull_request_target` (incl. label changes) | `api-no-breaking-change` | the **base branch's** `make contract-check` against the PR's spec when `api/openapi.yaml` changed (oasdiff, red only on breaking changes) | yes |
 | `harness-integrity.yml` | PR via `pull_request_target` (incl. label and title changes) | `harness-integrity` | the **base branch's** `make harness-integrity` against the PR head (`HARNESS_ROOT`) | yes |
 | | | `pr-conventions` | the **base branch's** `make commits specs` against the PR head and title (Conventional Commits, PR title ≤ 90 characters, spec-kit specs) | yes |
 | `migration-gate.yml` | PR touching `apps/api/db/migrations/**` | `migrations` | append-only, Atlas lint, squawk | no (path-filtered; same sensors in `check-all`) |
-| `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, schema doc, doc links → one open `drift` issue | no |
+| `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, Trivy (`vuln-deps`), schema doc, doc links, coverage that fell since the last run ([coverage](#coverage)) → one open `drift` issue | no |
 | `harness-nfr.yml` | nightly, manual | `harness-nfr` | p95 per sensor over 7 days of `harness-timings-check-all` artifacts vs `budgets.txt` (`scripts/harness/nfr-report.sh`, alerts only) and `make harness-determinism` (`make check` twice; fails on any difference) → one open `harness-nfr` issue | no |
 
 `.github/actions/setup` installs the pinned toolchain (`scripts/tool-versions.env`) and caches `.bin`,
 Go modules and the pnpm store. Actions are pinned to commit SHAs; `make lint-ci` (actionlint) validates all
 of it as part of `make check`.
+
+## Coverage
+
+`make coverage` (`scripts/harness/coverage.sh`) prints unit-test statement coverage per Go package of
+`apps/api` (`go test -short`, generated files excluded, plus the module total `apps/api/...`) and per JS
+workspace with a `coverage` script (Vitest; `coverage.sh` sets the v8 provider and the json-summary
+reporter; a workspace with neither `test` nor `coverage` reads `no tests`, one with `test` only fails), and
+keeps the numbers in `.cache/coverage/coverage.tsv`. It is a trend, never a gate
+([ADR 0020](../adr/0020-test-coverage-is-a-trend.md)): a gate on a number invites tests written for the
+number. It fails only when it cannot measure (missing tool, failing tests, unparseable input), never on a
+percentage. It is a report, not a sensor: no rule id, in neither `make check` nor `make check-all`, and run
+by no required check.
+
+- `coverage.yml` writes the table to the `coverage` job summary of every PR and push to `main`.
+- `drift.yml` writes it to its job summary with the change in percentage points since the newest earlier
+  scheduled drift run on the same branch (a manual run never becomes the baseline), uploads
+  `coverage.tsv` as the `coverage` artifact (35 days) for the next run, and adds to the `drift` issue only
+  the packages whose coverage fell (`make coverage-fell`). Only its baseline step gets a token.
+- A ratchet or any other threshold needs its own ADR, justified by a finding.
 
 ## Label waivers
 

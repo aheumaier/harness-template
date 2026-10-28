@@ -80,6 +80,19 @@ DETERMINISM_TARGET ?= check
 harness-determinism: ## Run make check twice on this tree: same exit status, findings and tree (NFR-R1)
 	@$(RUN) determinism harness-deterministic -- scripts/harness/determinism.sh $(MAKE) $(DETERMINISM_TARGET)
 
+##@ Reports
+.PHONY: coverage coverage-fell
+# A trend, never a gate (ADR 0020): not in check or check-all; coverage.yml puts it in its job summary,
+# drift.yml compares it with the last scheduled run's. COVERAGE_PREVIOUS=<coverage.tsv> adds the change column.
+COVERAGE_DIR := .cache/coverage
+COVERAGE_TSV := $(COVERAGE_DIR)/coverage.tsv
+COVERAGE_PREVIOUS ?=
+coverage: ## Unit-test coverage per Go package and JS workspace, as Markdown (.cache/coverage/coverage.tsv)
+	@scripts/harness/coverage.sh collect $(COVERAGE_DIR)
+	@scripts/harness/coverage.sh report $(COVERAGE_TSV) "$(COVERAGE_PREVIOUS)"
+coverage-fell: ## After make coverage: only the packages that fell since COVERAGE_PREVIOUS=<coverage.tsv>
+	@scripts/harness/coverage.sh report --fell $(COVERAGE_TSV) "$(COVERAGE_PREVIOUS)"
+
 ##@ Tools
 .PHONY: tools deps
 tools: $(GCL) $(HARNESS) ## Install pinned CLI tools into .bin
