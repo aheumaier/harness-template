@@ -60,7 +60,7 @@ reported: [ADR 0013](../../adr/0013-harness-nfr-budgets.md). Numbers land in `sc
 |----|-------------|--------|-------|-------------|--------------|
 | NFR-H1 | Each PreToolUse hook, per call | ≤ 50 ms | 30 ms (protect-harness), 21 ms (guard-bash), 24 ms (only-make-check), timing included (2026-10-28) | hook wrapper timing | warn; alert |
 | NFR-H2 | fast-check (PostToolUse), per edited file | ≤ 1 s | 0.02–0.5 s (`.md` 0.08 s, was 0.37); `.tsx` in apps/web 1.05 s, over budget (type-aware eslint 0.97 s alone; 2026-10-28) | fast-check timing | warn; alert |
-| NFR-H3 | `make check`, change without shell or harness files | ≤ 10 s | 2.9 s (2026-10-28, warm; Go test cache, gen-check stamp) | `run.sh` + make wall time | warn; alert |
+| NFR-H3 | `make check`, change without shell or harness files | ≤ 10 s | 2.1–2.2 s (2026-10-28, warm, one Go or tsx edit; affected set, Go test cache, gen-check stamp) | `run.sh` + make wall time | warn; alert |
 | NFR-H4 | `make check`, any change | ≤ 60 s | 36 s (2026-10-28, shell change, `bats`-bound) | same | warn; alert |
 | NFR-H5 | one sensor in `make check` | ≤ 5 s, or its row in `budgets.txt` | `bats` 27.9 s (2026-10-28), `go-test` 0.37 s, `analyzer-tests` 0.37 s (Go test cache, 2026-10-28; uncached in `full`); rest ≤ 5 s | `run.sh` | warn; alert |
 | NFR-H6 | `make check` rerun, nothing changed | ≤ 3 s | 2.9 s (2026-10-28; was 3.7 s) | two runs back to back | warn; alert |
@@ -109,7 +109,8 @@ One slice per commit, in this order (the [loop prompt](0002-loop-prompt.md) work
   `.bin/harness check-links` (goldmark, GitHub slugs)
 - [x] P10 — e14ceff — `make harness-integrity BASE_REF=HEAD` 0.08 → 0.09 s (sensor 0.05 → 0.03 s); `.bin/harness
   integrity-check` parses the diff in Go; harness-integrity.yml builds the binary from the base checkout
-- [ ] P11 (phase 2) `affected.sh`; scoped Go and web targets; full run on config changes
+- [x] P11 — 91924c3 — `make check BASE_REF=HEAD`, one Go edit 3.0 → 2.1 s, one tsx edit 2.9 → 2.2 s (no change:
+  1.9 s); `lint-go`/`test-go`/`lint-web`/`arch-web` run on the affected set plus dependents, skipped when empty
 
 ### Phase 0 — measure and alert
 
@@ -307,3 +308,16 @@ Per [ADR 0012](../../adr/0012-parsing-sensors-in-go.md): `guard-bash` and every 
   main's bash version (ADR 0010), the Go path first runs on the next PR. Gap: the setup action's `.bin`
   cache key does not hash `apps/api/tools/harness/**`, so CI can restore a stale `.bin/harness` (TD-4).
   Selftest 30/30; integrity names only this slice's files; rest of check-all and integration green.
+- 2026-10-28: P11 (91924c3). `scripts/harness/affected.sh go|web` prints the affected set: changed Go packages
+  plus every package whose `go list -test` deps include one (test-only importers count), or changed workspaces
+  plus their dependents (`turbo ls --filter=...{./ws}`); exit 1 means everything. `$(call scoped,…)` in the
+  Makefile runs `lint-go`, `test-go`, `lint-web`, `arch-web` on that set or prints `skipped`. Each target calls
+  affected.sh itself (~40 ms; computing it once for all four is a follow-up). Deviations from phase 2:
+  `typecheck-web`/`test-web` are not scoped, Turborepo's task cache already replays unchanged packages
+  (57/84 ms); `arch-go` stays full (A4 unverified) and is now the long pole of `make check` (~2.2 s, about
+  the whole wall time). dependency-cruiser's cache compares args, so a scoped run never serves a full one. At
+  skeleton size the gain is 0.7–0.9 s; the exit criterion (NFR-H3 on a 10× fixture repo) is not measured in
+  this slice. New fixtures `go-tests-dependent-package` and `web-lint-dependent-workspace` go red when
+  affected.sh drops the dependents (mutation checked); 9 bats cases, bash 3.2. Selftest 32/32 (the lint-go,
+  arch-web and lint-web fixtures now run scoped); integrity names only this slice's files; rest of check-all
+  and integration green.
