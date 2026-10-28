@@ -105,14 +105,61 @@ STUB
   done
   grep -A1 -xF -- --ignorefile "$SANDBOX/.bin/trivy.args" | sed -n 2p | grep -qx '' || return 1
   grep -A1 -xF -- --secret-config "$SANDBOX/.bin/trivy.args" | grep -q 'scripts/harness/trivy-secret.yaml$' || return 1
+  # No scan cache on disk (no contention with vuln mode or the pre-commit hook for .cache/trivy).
+  grep -A1 -xF -- --cache-backend "$SANDBOX/.bin/trivy.args" | sed -n 2p | grep -qx memory || return 1
+  # Findings exit 3, so Trivy's own fatal exit 1 is not read as a finding.
+  grep -A1 -xF -- --exit-code "$SANDBOX/.bin/trivy.args" | sed -n 2p | grep -qx 3 || return 1
+  # The secret scan sees the fixtures too: nothing skipped.
+  ! grep -qxF -- --skip-dirs "$SANDBOX/.bin/trivy.args" || return 1
   [[ ! -s "$SANDBOX/.bin/trivy.env" ]] || return 1
 }
 
-@test "vuln: a go.mod or lockfile Trivy reports no packages for fails closed" {
+@test "vuln scan: skips only the fixtures dir, findings exit 3" {
+  HARNESS_SCOPE=full run -0 "$T" vuln
+  grep -A1 -xF -- --skip-dirs "$SANDBOX/.bin/trivy.args" | sed -n 2p | grep -qx scripts/harness/fixtures || return 1
+  grep -A1 -xF -- --exit-code "$SANDBOX/.bin/trivy.args" | sed -n 2p | grep -qx 3 || return 1
+}
+
+@test "vuln: a go.mod with requires or a lockfile with packages that Trivy reports nothing for fails closed" {
   mkdir -p "$SANDBOX/m"
-  echo 'module m' >"$SANDBOX/m/go.mod"
+  printf 'module m\n\nrequire example.com/x v1.0.0\n' >"$SANDBOX/m/go.mod"
+  printf "lockfileVersion: '9.0'\n\npackages:\n\n  x@1.0.0:\n    resolution: {integrity: sha512-x}\n" >"$SANDBOX/pnpm-lock.yaml"
   run -1 "$T" vuln
   has "m/go.mod:1: Trivy found no packages in it (unsupported format?) [deps-no-known-vulns]"
+  has "pnpm-lock.yaml:1: Trivy found no packages in it (unsupported format?) [deps-no-known-vulns]"
+}
+
+@test "vuln: a go.mod without requires and a lockfile without packages pass (nothing to scan)" {
+  mkdir -p "$SANDBOX/m"
+  printf 'module m\n\ngo 1.27\n' >"$SANDBOX/m/go.mod"
+  printf "lockfileVersion: '9.0'\n\nimporters:\n\n  .: {}\n\npackages: {}\n" >"$SANDBOX/pnpm-lock.yaml"
+  run -0 "$T" vuln
+  [[ "$output" != *"found no packages"* ]] || return 1
+}
+
+@test "trivy failing to run (exit 1, no output) exits 2 with its exit code, in both modes" {
+  printf '#!/usr/bin/env bash\nexit 1\n' >"$SANDBOX/.bin/trivy"
+  HARNESS_SCOPE=full run -2 "$T" secret
+  has "trivy failed to run (exit 1) [repo-no-secrets]"
+  # A go.mod that would trip the fail-closed check: a scan that never ran must not report it.
+  mkdir -p "$SANDBOX/m"
+  printf 'module m\n\nrequire example.com/x v1.0.0\n' >"$SANDBOX/m/go.mod"
+  run -2 "$T" vuln
+  has "trivy failed to run (exit 1) [deps-no-known-vulns]"
+  [[ "$output" != *"found no packages"* ]] || return 1
+}
+
+@test "trivy's findings exit (3) is exit 1, with the finding printed" {
+  cat >"$SANDBOX/.bin/trivy" <<'STUB'
+#!/usr/bin/env bash
+echo 'docs/old.md:1: CRITICAL secret: AWS Access Key ID (trivy aws-access-key-id) [repo-no-secrets]'
+exit 3
+STUB
+  HARNESS_SCOPE=full run -1 "$T" secret
+  [[ "$output" == 'docs/old.md:1: CRITICAL secret: AWS Access Key ID (trivy aws-access-key-id) [repo-no-secrets]' ]] || {
+    echo "$output" >&2
+    return 1
+  }
 }
 
 @test "the scan copy lives outside the repo and is removed afterwards" {

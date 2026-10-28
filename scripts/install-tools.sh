@@ -45,8 +45,17 @@ download() { # name url: fetch into $BIN/.dl-<name>, verify against <NAME>_SHA25
     echo "no sha256 pin $var in scripts/tool-versions.env for $name on ${os}/${arch}" >&2
     exit 1
   }
-  curl -fsSL "$url" -o "$BIN/.dl-$name"
-  got="$(sha256 "$BIN/.dl-$name")"
+  # Every failure path removes the partial download (set -e exits before a RETURN trap would run).
+  curl -fsSL "$url" -o "$BIN/.dl-$name" || {
+    rm -f "$BIN/.dl-$name"
+    echo "download failed for $name ($url); not installed" >&2
+    exit 1
+  }
+  got="$(sha256 "$BIN/.dl-$name")" || {
+    rm -f "$BIN/.dl-$name"
+    echo "could not hash $BIN/.dl-$name for $name; not installed" >&2
+    exit 1
+  }
   [[ "$got" == "$want" ]] || {
     rm -f "$BIN/.dl-$name"
     echo "sha256 mismatch for $name ($url): got $got, pinned $want ($var); not installed" >&2

@@ -35,7 +35,7 @@ you re-measure.
 | NFR-H7 | `make check-all` in CI | ≤ 10 min | not measured | job duration | alert |
 | NFR-R1 | Deterministic: same tree, same verdict and same findings | 0 differences | 0 (`make harness-determinism`, scope full; since step 8 tsc and vitest run uncached, `turbo --force`; 342 s, load avg 11–17, 2026-10-28) | nightly double run | **fail** (nightly) + alert |
 | NFR-R2 | Fail closed: a sensor that cannot run (missing tool, base ref, parse error) exits non-zero | 0 silent passes | merge-base, affected.sh, gen-check stamp, integrity-check (shebang and mode changes count), every hook on a missing or failing binary (2026-10-28); no fixtures with a broken environment yet | fixtures with a broken environment | **fail** |
-| NFR-R3 | Detection: every rule with a fixture rejects it ([ADR 0009](../adr/0009-harness-selftest.md)) | 100 % | 100 % (selftest 32/32, also in scope full as CI runs it, 2026-10-28) | `make harness-selftest` | **fail** |
+| NFR-R3 | Detection: every rule with a fixture rejects it ([ADR 0009](../adr/0009-harness-selftest.md)) | 100 % | 100 % (selftest 44/44, 2026-10-28, gate of Phase 0) | `make harness-selftest` | **fail** |
 | NFR-R4 | Actionable: every sensor failure through `run.sh` names its rule id and remediation; every hook block names its reason | 100 % | 100 % | `run.bats`, selftest, hook bats tests | **fail** |
 | NFR-R5 | Portable: same verdict on macOS and Linux | 0 differences | Linux only in CI | selftest on a macOS runner (weekly) | **fail** (weekly) + alert |
 
@@ -44,7 +44,7 @@ you re-measure.
 | Id | Requirement | Target | Today | Measured by | On violation |
 |----|-------------|--------|-------|-------------|--------------|
 | NFR-H8 | `pre-commit` git hook, typical commit (≤ 20 staged files) | ≤ 2 s | 0.57 s warm, 10 staged files (Q2) | `timing.sh` row `pre-commit`, local only (the hook never runs in CI) | warn |
-| NFR-H9 | `repo-no-secrets` in `make check` | ≤ 5 s | 0.43 s warm, full tree (Q1) | `run.sh`, budgets row `repo-no-secrets 5000 NFR-H9` | warn; alert. If it stays over budget, the full scan moves to `check-all` and `check` scans changed files only |
+| NFR-H9 | `repo-no-secrets` in `make check` | ≤ 5 s | 0.43 s warm, full tree (Q1) | `run.sh`, budgets row `repo-no-secrets 5000 NFR-H9` | warn; alert. In place: `check` scans only the changed files (`HARNESS_SCOPE=changed`), the full tree only when a harness file changed; if that full scan stays over budget, it moves to `check-all` |
 | NFR-B1 | Every domain created by `make new-domain` has a passing service test, handler test and integration test before its first edit | 100 % | 0 domains, scaffold has no tests | CI `generator-probe` job ([ci.md](ci.md)) runs the generated tests | **fail** |
 | NFR-B2 | The app's critical path is covered by an e2e test that runs against this worktree's `make dev` | ≥ 1 journey (`/healthz` + web shell renders) | none | `make e2e` in `check-all` and CI | **fail** |
 | NFR-O1 | An agent in a fresh worktree can fetch the log lines of one request by its ID and a p95 latency, through `make` targets only | yes | no | integration test in `check-all`: request → `make logs REQUEST_ID=…` | **fail** |

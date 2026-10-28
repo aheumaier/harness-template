@@ -345,8 +345,10 @@ env file themselves. No guide or skill tells an agent to read it.
 - `guard-bash` blocks `rm -r` outside the repo; use `BATS_TEST_TMPDIR`.
 - `.cache/` and `.tmp/` must be gitignored before anything writes there.
 - No `eslint --cache` (type-aware rules).
-- `scripts/harness/fixtures/` must be excluded from repo-wide content scanners, or fixtures turn the real
-  tree red.
+- A fixture under `scripts/harness/fixtures/` must not hold a literal violation that a repo-wide content
+  scanner flags, or it turns the real tree red: assemble it in `apply.sh` (as the `repo-secret-*` fixtures
+  do), or exclude the directory from that scanner only if the scanner has no blind spot there (the vuln scan
+  skips it; the secret scan must not, since Phase 0 gate).
 
 **Verify before reporting.** Run `make check` and `make harness-selftest` (`FIXTURE=<name>` for yours). Run
 `make check-all` if you touched CI, the Makefile or wiring. Fix the code, not the sensor.

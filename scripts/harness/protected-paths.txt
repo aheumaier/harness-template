@@ -16,6 +16,7 @@
 *.shellcheckrc config
 knip.json config
 trivy.yaml config
+pnpm-workspace.yaml config
 *tsconfig*.json config
 .claude/settings.json config
 .editorconfig config

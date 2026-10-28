@@ -1,3 +1,4 @@
+# Harness file (protected): holds the install policy docs/SECURITY.md cites (release age, build scripts).
 packages:
   - apps/web
   - packages/*

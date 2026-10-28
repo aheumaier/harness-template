@@ -20,3 +20,4 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0013](0013-harness-nfr-budgets.md) | Harness NFRs are budgets; latency alerts, reliability fails | proposed |
 | [0014](0014-make-check-scoped-to-the-change.md) | make check runs what the change can affect; check-all and CI run everything uncached | proposed |
 | [0015](0015-anticipated-rules-and-nfr-classes-b-o.md) | Phase 0 rules are adopted as team-convention; NFR classes B and O fail | proposed |
+| [0016](0016-tool-supply-chain.md) | Downloaded tools are sha256-pinned; scanners run only as pinned release binaries | proposed |

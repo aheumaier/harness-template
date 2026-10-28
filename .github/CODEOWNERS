@@ -16,6 +16,7 @@ atlas.hcl                   @aheumaier
 .gitattributes              @aheumaier
 knip.json                   @aheumaier
 /trivy.yaml                 @aheumaier
+/pnpm-workspace.yaml        @aheumaier
 tsconfig*.json              @aheumaier
 /Makefile                   @aheumaier
 /scripts/harness/           @aheumaier

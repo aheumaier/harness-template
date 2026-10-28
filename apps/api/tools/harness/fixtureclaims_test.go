@@ -107,6 +107,13 @@ func TestFixtureClaims(t *testing.T) {
 			"docs/harness/rules.md:7: b: a second `**Fixture:**` line (one per rule) [rules-fixture-claims]",
 			"docs/harness/rules.md:9: a-last: no `- **Fixture:**` line [rules-fixture-claims]",
 		}},
+		{"duplicate rule id", []string{
+			"### a", "- **Fixture:** `fixtures/a-one`" + status,
+			"### b", "- **Fixture:** `fixtures/b-fx`" + status,
+			"### a", "- **Fixture:** `fixtures/a-two`" + status,
+		}, []string{
+			"docs/harness/rules.md:5: a: a second `### a` heading (first at line 1; rule ids are unique) [rules-fixture-claims]",
+		}},
 		// The fixture (scripts/harness/fixtures/rules-bogus-fixture-claim) appends a rule to rules.md.
 		{"fixture rules-bogus-fixture-claim", []string{
 			"### a", "- **Fixture:** `fixtures/a-one`" + status,
@@ -136,6 +143,7 @@ func TestFixtureClaims(t *testing.T) {
 func TestFixtureClaimsExitCodes(t *testing.T) {
 	ok := claimRepo(t, []string{"### a", "- **Fixture:** none (no sensor)"}, nil)
 	bad := claimRepo(t, []string{"### a", "- **Fixture:** none"}, nil)
+	dup := claimRepo(t, []string{"### a", "- **Fixture:** none (no sensor)", "### a", "- **Fixture:** none (no sensor)"}, nil)
 	noRules := claimRepo(t, []string{"# Harness rules"}, nil)
 	noFile := linkRepo(t, map[string][]string{"a.md": {"# A"}})
 	for _, tt := range []struct {
@@ -144,6 +152,7 @@ func TestFixtureClaimsExitCodes(t *testing.T) {
 	}{
 		{[]string{"fixture-claims", ok}, 0},
 		{[]string{"fixture-claims", bad}, 1},
+		{[]string{"fixture-claims", dup}, 1},
 		{[]string{"fixture-claims", noRules}, 2}, // fail closed: nothing to check is not a pass
 		{[]string{"fixture-claims", noFile}, 2},
 		{[]string{"fixture-claims", t.TempDir()}, 2}, // not a git repo

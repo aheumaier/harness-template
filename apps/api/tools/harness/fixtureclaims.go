@@ -9,7 +9,8 @@ package main
 //	`fixtures/<dir>`[, `fixtures/<dir>`…][; `<test path>`[, `<test path>`…]]
 //
 // Each <dir> is a git-known scripts/harness/fixtures/<dir>/fixture.conf whose RULE= is the enclosing rule id;
-// each test path is a git pathspec that matches a git-known file. Run from `make fixture-claims` (make
+// each test path is a git pathspec that matches a git-known file. A rule id has one `### <id>` heading: a
+// second one is a finding. Run from `make fixture-claims` (make
 // check). Fails closed (exit 2) when rules.md is missing or holds no rules.
 
 import (
@@ -62,6 +63,7 @@ func fixtureClaims(root string, stdout io.Writer) (bool, error) {
 		rule             string // the enclosing `### <id>`, "" outside one
 		ruleLine, claims int
 		rules            int
+		firstLine        = map[string]int{} // rule id → line of its first `### <id>`
 	)
 	endRule := func() {
 		if rule != "" && claims == 0 {
@@ -77,6 +79,12 @@ func fixtureClaims(root string, stdout io.Writer) (bool, error) {
 			endRule()
 			rule, ruleLine, claims = strings.TrimSpace(line[4:]), n, 0
 			rules++
+			// Anchors, run.sh's remediation lookup and fixture RULE= all resolve an id to one section.
+			if first, dup := firstLine[rule]; dup {
+				c.report(n, "%s: a second `### %s` heading (first at line %d; rule ids are unique)", rule, rule, first)
+			} else {
+				firstLine[rule] = n
+			}
 		case strings.HasPrefix(line, "#"):
 			endRule()
 			rule = ""
