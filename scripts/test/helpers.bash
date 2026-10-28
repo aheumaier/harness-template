@@ -50,9 +50,12 @@ own() {
 }
 
 # Write-through guard for the hardlinks above, in every bats file that loads this one: the real harness
-# scripts must be byte-identical after the file's tests. A checksum, not `git diff --quiet`, so uncommitted
+# scripts must be byte-identical, with the same executable bits, after the file's tests. A checksum, not `git diff --quiet`, so uncommitted
 # harness edits of the developer do not fail it. A file that needs its own setup_file/teardown_file calls these.
-harness_cksum() { (cd "$REPO" && find scripts .claude/hooks -type f -exec cksum {} + | LC_ALL=C sort -k3); }
+harness_cksum() {
+  (cd "$REPO" && find scripts .claude/hooks -type f -exec cksum {} + | LC_ALL=C sort -k3 &&
+    find scripts .claude/hooks -type f -perm -u+x | LC_ALL=C sort)
+}
 setup_file() { harness_cksum >"$BATS_FILE_TMPDIR/harness.cksum"; }
 teardown_file() {
   harness_cksum >"$BATS_FILE_TMPDIR/harness.cksum.after"

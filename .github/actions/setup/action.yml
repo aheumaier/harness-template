@@ -19,6 +19,7 @@ runs:
         cache-dependency-path: |
           apps/api/go.sum
           apps/api/tools/analyzers/go.sum
+          apps/api/tools/harness/go.sum
 
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
@@ -29,7 +30,7 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: .bin
-        key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', 'apps/api/.custom-gcl.yml', 'apps/api/tools/analyzers/**') }}
+        key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', 'apps/api/.custom-gcl.yml', 'apps/api/tools/analyzers/**', 'apps/api/tools/harness/**') }}
 
     - name: Install pinned tools
       shell: bash

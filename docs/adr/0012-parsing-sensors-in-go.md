@@ -33,9 +33,10 @@ Sensors and hooks are bash (`scripts/harness/*.sh`, `.claude/hooks/*.sh`). Measu
 - **The module is sensor code:** `apps/api/tools/harness/*` is added to `scripts/harness/protected-paths.txt`
   as `config` and to `.github/CODEOWNERS` in the PR that creates it.
 - **Hooks keep a thin bash wrapper** in `.claude/hooks/` (so `.claude/settings.json` does not change) that
-  `exec`s `.bin/harness`. A missing binary would exit 127, which Claude Code treats as a non-blocking error,
-  so the wrapper checks for it and exits 2 with "run make setup". To avoid a deadlock, the guard-bash wrapper
-  lets exactly `make setup` and `make .bin/harness` through when the binary is missing. The wrapper has a
+  calls `.bin/harness`, without `exec` so the timing EXIT trap of ADR 0013 still records the hook. A missing
+  binary would exit 127, which Claude Code treats as a non-blocking error, so the wrapper checks for it and
+  exits 2 with "run make setup" (`scripts/harness/hook-bootstrap.sh`). To avoid a deadlock, the guard-bash
+  wrapper lets exactly `make setup` and `make .bin/harness` through when the binary is missing. The wrapper has a
   bats test for both paths.
 - **Staleness:** `.bin/harness` is a Make target that depends on its sources (like `$(GCL)` on
   `ANALYZERS_SRC`) and is a prerequisite of `check`, `check-all` and `harness-selftest`, so every run rebuilds
@@ -57,3 +58,9 @@ Sensors and hooks are bash (`scripts/harness/*.sh`, `.claude/hooks/*.sh`). Measu
   the workflow must build `.bin/harness` from the base-branch checkout and never from the PR head; otherwise a
   PR could ship the binary that judges it.
 - Each port is a harness change: human-approved PR, one port per PR.
+- Not ported: the Bash branch of `protect-harness` stays a heuristic over command text (only its JSON input
+  moved). It guards against accidents, not attacks; CODEOWNERS and `integrity-check` are the backstop. Reusing
+  guard-bash's AST walk for it is the next candidate if it misses a write.
+- `integrity-check` computes its merge base in Go, the same way as `merge-base.sh` (default ref, messages),
+  because CI runs the base-branch binary against the PR head in another directory; the two are kept in step
+  by hand.

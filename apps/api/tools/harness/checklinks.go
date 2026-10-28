@@ -61,7 +61,9 @@ func checkLinks(root string, stdout io.Writer) (bool, error) {
 	return c.bad, nil
 }
 
-// gitFiles lists tracked and untracked, not ignored files matching the pathspecs, without skippedPath.
+// gitFiles lists tracked and untracked, not ignored files matching the pathspecs, without skippedPath and
+// without tracked files deleted from the working tree (`rm docs/x.md` leaves them in ls-files -c): their
+// links are gone, and links to them are reported where they are.
 func gitFiles(root string, pathspecs ...string) ([]string, error) {
 	cmd := exec.Command("git", append([]string{"-C", root, "ls-files", "-z", "-co", "--exclude-standard", "--"}, pathspecs...)...)
 	cmd.Stderr = os.Stderr
@@ -71,7 +73,10 @@ func gitFiles(root string, pathspecs ...string) ([]string, error) {
 	}
 	var files []string
 	for _, f := range strings.Split(string(out), "\x00") {
-		if f != "" && !skippedPath.MatchString(f) {
+		if f == "" || skippedPath.MatchString(f) {
+			continue
+		}
+		if _, err := os.Lstat(filepath.Join(root, f)); err == nil {
 			files = append(files, f)
 		}
 	}

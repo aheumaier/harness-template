@@ -227,9 +227,23 @@ func TestIntegrityCheck(t *testing.T) {
 			gitT(t, own, "rm", "-q", "scripts/harness/run.sh")
 			return ""
 		}, false, []string{
+			"scripts/harness/run.sh:1: removed harness config line: #!/usr/bin/env bash [harness-config-not-loosened]",
 			"scripts/harness/run.sh:2: removed harness config line: set -eu [harness-config-not-loosened]",
 			"scripts/harness/run.sh:3: removed harness config line: echo ok [harness-config-not-loosened]",
 		}},
+		{"a changed shebang is a config line, a comment on line 1 too", func(t *testing.T, own string) string {
+			replace(t, own, "scripts/harness/run.sh", "#!/usr/bin/env bash", "#!/usr/bin/true")
+			return ""
+		}, false, []string{
+			"scripts/harness/run.sh:1: removed harness config line: #!/usr/bin/env bash [harness-config-not-loosened]",
+			"scripts/harness/run.sh:1: added harness config line: #!/usr/bin/true [harness-config-not-loosened]",
+		}},
+		{"a file mode change of a harness config is reported (chmod -x on a hook)", func(t *testing.T, own string) string {
+			if err := os.Chmod(filepath.Join(own, "scripts/harness/run.sh"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			return ""
+		}, false, []string{"scripts/harness/run.sh: file mode changed from 100644 to 100755 [harness-config-not-loosened]"}},
 		{"removing a suppression is not a finding", func(t *testing.T, own string) string {
 			add(t, own, "x.go", "f() "+nolint)
 			commitAll(t, own, "suppressed")

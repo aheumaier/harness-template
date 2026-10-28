@@ -18,3 +18,4 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0011](0011-conventional-commits-and-spec-kit.md) | Conventional Commits and spec-kit specs for product features | accepted |
 | [0012](0012-parsing-sensors-in-go.md) | Sensors that parse move to one Go binary; orchestration stays in bash | proposed |
 | [0013](0013-harness-nfr-budgets.md) | Harness NFRs are budgets; latency alerts, reliability fails | proposed |
+| [0014](0014-make-check-scoped-to-the-change.md) | make check runs what the change can affect; check-all and CI run everything uncached | proposed |

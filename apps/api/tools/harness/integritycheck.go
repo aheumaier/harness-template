@@ -7,7 +7,8 @@ package main
 //	                               id that is not a `### <id>` heading in docs/harness/rules.md, or is an
 //	                               @ts-ignore/@ts-nocheck (never allowed)
 //	[harness-config-not-loosened]  a harness config (`config` in protected-paths.txt) gained or lost a
-//	                               non-comment line. Waived only by a human: HARNESS_CHANGE_APPROVED=1 (CI:
+//	                               non-comment line (a shebang is not a comment), or changed its file
+//	                               mode (a hook without its x bit no longer runs). Waived only by a human: HARNESS_CHANGE_APPROVED=1 (CI:
 //	                               the `harness-change-approved` PR label).
 //
 // The binary, its marker lists, protected-paths.txt and the rules.md that rule ids are looked up in come from
@@ -102,7 +103,8 @@ func integrityCheck(own, root, baseRef string, approved bool, stdout io.Writer) 
 			return false, err
 		}
 		for _, c := range rows {
-			if commentRE.MatchString(c.text) {
+			// A shebang is code: `#!/usr/bin/true` turns a sensor script into a pass.
+			if commentRE.MatchString(c.text) && (c.line != 1 || !strings.HasPrefix(c.text, "#!")) {
 				continue
 			}
 			what := "removed"
@@ -110,6 +112,13 @@ func integrityCheck(own, root, baseRef string, approved bool, stdout io.Writer) 
 				what = "added"
 			}
 			report("%s:%d: %s harness config line: %s [harness-config-not-loosened]", c.path, c.line, what, c.text)
+		}
+		modes, err := modeChanges(root, base, configs)
+		if err != nil {
+			return false, err
+		}
+		for _, m := range modes {
+			report("%s: file mode changed from %s to %s [harness-config-not-loosened]", m[2], m[0], m[1])
 		}
 	}
 	return bad, nil
@@ -152,21 +161,42 @@ func configPatterns(file string) ([]string, error) {
 	return patterns, nil
 }
 
+// git runs git in root and returns its stdout.
+func git(root string, args ...string) ([]byte, error) {
+	cmd := exec.Command("git", append([]string{"-C", root, "-c", "core.quotePath=false"}, args...)...)
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git %s: %w", args[0], err)
+	}
+	return out, nil
+}
+
+// modeChanges lists [old mode, new mode, path] for the files matching pathspecs whose mode changed since
+// base; a diff without content lines (`chmod -x`) has no rows in changes. Added and deleted files (mode
+// 000000 on one side) are left to changes.
+func modeChanges(root, base string, pathspecs []string) ([][3]string, error) {
+	out, err := git(root, append([]string{"diff", "--raw", "-z", "--no-renames", "--no-ext-diff", base, "--"}, pathspecs...)...)
+	if err != nil {
+		return nil, err
+	}
+	var modes [][3]string
+	f := strings.Split(string(out), "\x00")
+	for i := 0; i+1 < len(f); i += 2 { // `:old new sha sha status` NUL path NUL
+		meta := strings.Fields(strings.TrimPrefix(f[i], ":"))
+		if len(meta) >= 2 && meta[0] != meta[1] && meta[0] != "000000" && meta[1] != "000000" {
+			modes = append(modes, [3]string{meta[0], meta[1], f[i+1]})
+		}
+	}
+	return modes, nil
+}
+
 // changes lists the lines added and removed since base in the files matching pathspecs; untracked files
 // count as added. --text --no-textconv: the change's .gitattributes (`-diff`, `binary`, textconv) must not
 // turn a hunk into "Binary files differ".
 func changes(root, base string, pathspecs []string) ([]change, error) {
-	git := func(args ...string) ([]byte, error) {
-		cmd := exec.Command("git", append([]string{"-C", root, "-c", "core.quotePath=false"}, args...)...)
-		cmd.Stderr = os.Stderr
-		out, err := cmd.Output()
-		if err != nil {
-			return nil, fmt.Errorf("git %s: %w", args[0], err)
-		}
-		return out, nil
-	}
 	var rows []change
-	untracked, err := git(append([]string{"ls-files", "-z", "-o", "--exclude-standard", "--"}, pathspecs...)...)
+	untracked, err := git(root, append([]string{"ls-files", "-z", "-o", "--exclude-standard", "--"}, pathspecs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +212,7 @@ func changes(root, base string, pathspecs []string) ([]change, error) {
 			rows = append(rows, change{f, i + 1, true, trimTabs(l)})
 		}
 	}
-	diff, err := git(append([]string{"diff", "-U0", "--text", "--no-textconv", "--no-color", "--no-ext-diff",
+	diff, err := git(root, append([]string{"diff", "-U0", "--text", "--no-textconv", "--no-color", "--no-ext-diff",
 		"--no-renames", "--src-prefix=a/", "--dst-prefix=b/", base, "--"}, pathspecs...)...)
 	if err != nil {
 		return nil, err

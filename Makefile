@@ -15,6 +15,7 @@ RUN  := scripts/harness/run.sh
 CACHED = $(filter changed,$(or $(HARNESS_SCOPE),changed))
 GO_TEST_COUNT = $(if $(CACHED),,-count=1)
 DEPCRUISE_CACHE = $(if $(CACHED),--cache node_modules/.cache/depcruise)
+TURBO_FORCE = $(if $(CACHED),,--force)
 # Load this worktree's ports/DB URL (written by `make setup`) into a recipe's shell.
 WITH_ENV := [[ -f .env.local ]] || { echo "no .env.local: run make setup" >&2; exit 1; }; set -a; source .env.local; set +a;
 API  := apps/api
@@ -130,10 +131,10 @@ arch-web:
 	@$(call scoped,web,apps packages) $(RUN) dependency-cruiser web-domain-pure,web-no-cross-app -- depcruise $$scope --config .dependency-cruiser.cjs --output-type err $(DEPCRUISE_CACHE)
 
 typecheck-web:
-	@$(RUN) tsc web-typecheck -- turbo run typecheck --output-logs=errors-only
+	@$(RUN) tsc web-typecheck -- turbo run typecheck --output-logs=errors-only $(TURBO_FORCE)
 
 test-web:
-	@$(RUN) vitest web-tests-pass -- turbo run test --output-logs=errors-only
+	@$(RUN) vitest web-tests-pass -- turbo run test --output-logs=errors-only $(TURBO_FORCE)
 
 knip: ## Unused files, exports and dependencies in the JS workspace
 	@$(RUN) knip web-no-dead-code -- knip

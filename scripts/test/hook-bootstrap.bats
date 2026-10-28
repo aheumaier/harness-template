@@ -24,6 +24,19 @@ bash_payload() { printf '{"cwd":"%s","tool_name":"Bash","tool_input":{"command":
   run -0 "$SANDBOX/.claude/hooks/only-make-check.sh" < <(bash_payload 'make check')
 }
 
+@test "guard-bash blocks when the binary fails in any other way than allow or block" {
+  mkdir -p "$SANDBOX/.bin"
+  for rc in 1 126; do
+    printf '#!/bin/sh\nexit %s\n' "$rc" >"$SANDBOX/.bin/harness"
+    chmod +x "$SANDBOX/.bin/harness"
+    run -2 "$SANDBOX/.claude/hooks/guard-bash.sh" < <(bash_payload 'ls')
+    has "guard-bash: blocked: .bin/harness failed (exit $rc)"
+  done
+  printf '#!/bin/sh\nkill -9 $$\n' >"$SANDBOX/.bin/harness"
+  run -2 "$SANDBOX/.claude/hooks/guard-bash.sh" < <(bash_payload 'ls')
+  has 'exit 137'
+}
+
 @test "anything else is blocked with run make setup" {
   for c in 'ls' 'make setup; rm -rf /x' 'make setup && ls' 'make setup\" ; rm -rf /x' 'make setupx' 'make check'; do
     for h in guard-bash protect-harness; do

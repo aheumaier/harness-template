@@ -9,7 +9,9 @@
 #   files/     overlay committed on branch `fixture` (the violation)
 #   apply.sh   optional script run in the copy root after files/ (edits that are not whole files)
 #   fixture.conf  RULE (rules.md id), TARGET (make target = the sensor), EXPECT (ERE the tool output must
-#                 match), NEEDS_DOCKER=1 (optional)
+#                 match), NEEDS_DOCKER=1 (optional), SCOPE=changed|full (optional HARNESS_SCOPE of the run,
+#                 default the caller's: a scoped sensor's fixture sets changed, so CI's full scope does not
+#                 bypass the affected set it tests)
 # and asserts `make TARGET` fails, its output matches EXPECT, and run.sh printed RULE's remediation.
 set -euo pipefail
 
@@ -69,14 +71,14 @@ for name in "${names[@]}"; do
     fail=$((fail + 1))
     continue
   }
-  RULE='' TARGET='' EXPECT='' NEEDS_DOCKER=0
+  RULE='' TARGET='' EXPECT='' NEEDS_DOCKER=0 SCOPE=''
   # Parsed, not sourced: only these keys, values optionally single- or double-quoted.
   while IFS='=' read -r key val; do
     val="${val#[\'\"]}"
     val="${val%[\'\"]}"
-    case "$key" in RULE) RULE="$val" ;; TARGET) TARGET="$val" ;; EXPECT) EXPECT="$val" ;; NEEDS_DOCKER) NEEDS_DOCKER="$val" ;; esac
-  done < <(grep -E '^(RULE|TARGET|EXPECT|NEEDS_DOCKER)=' "$dir/fixture.conf")
-  [[ "$TARGET" =~ ^[a-z0-9-]+$ && -n "$RULE" && -n "$EXPECT" ]] || {
+    case "$key" in RULE) RULE="$val" ;; TARGET) TARGET="$val" ;; EXPECT) EXPECT="$val" ;; NEEDS_DOCKER) NEEDS_DOCKER="$val" ;; SCOPE) SCOPE="$val" ;; esac
+  done < <(grep -E '^(RULE|TARGET|EXPECT|NEEDS_DOCKER|SCOPE)=' "$dir/fixture.conf")
+  [[ "$TARGET" =~ ^[a-z0-9-]+$ && -n "$RULE" && -n "$EXPECT" && "$SCOPE" =~ ^(changed|full)?$ ]] || {
     echo "✗ $name: bad fixture.conf" >&2
     fail=$((fail + 1))
     continue
@@ -108,7 +110,7 @@ for name in "${names[@]}"; do
   }
 
   status=0
-  make -C "$work" --no-print-directory "$TARGET" BASE_REF=main >"$out" 2>&1 || status=$?
+  env ${SCOPE:+"HARNESS_SCOPE=$SCOPE"} make -C "$work" --no-print-directory "$TARGET" BASE_REF=main >"$out" 2>&1 || status=$?
 
   problems=()
   ((status != 0)) || problems+=("make $TARGET passed; expected it to fail")

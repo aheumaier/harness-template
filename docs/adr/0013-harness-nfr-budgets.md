@@ -33,6 +33,8 @@ tool upgrades), so no single PR is to blame and no PR review catches it.
 - Failing on wall time would make the harness flaky on loaded machines, so latency is never a gate; a sensor
   that keeps breaking its budget is fixed through the `harness-nfr` issue, not by a red build.
 - Timings stay local or in CI artifacts; nothing leaves the repo's own CI.
+- Hooks run in CI only inside bats tests, so the nightly trend covers sensors; hook budgets (NFR-H1, NFR-H2)
+  only warn locally until a source of real hook timings exists.
 - Adds two rules. `harness-deterministic` gets a selftest fixture (ADR 0009): a sensor whose verdict
   alternates through a counter file, which the double run must reject; no randomness, so the fixture itself
   stays deterministic. `harness-latency-budget` only warns, and the selftest asserts a non-zero exit, so it is

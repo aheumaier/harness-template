@@ -121,6 +121,22 @@ func TestCheckLinks(t *testing.T) {
 	}
 }
 
+func TestCheckLinksTrackedFileDeleted(t *testing.T) {
+	root := linkRepo(t, map[string][]string{"a.md": {"[x](gone.md)"}, "gone.md": {"# Gone"}})
+	if out, err := exec.Command("git", "-C", root, "add", "-A").CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v: %s", err, out)
+	}
+	if err := os.Remove(filepath.Join(root, "gone.md")); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	bad, err := checkLinks(root, &out)
+	want := "a.md: broken link (gone.md): ./gone.md does not exist [docs-links-resolve]\n"
+	if err != nil || !bad || out.String() != want {
+		t.Errorf("bad=%v err=%v, output:\n%swant:\n%s", bad, err, out.String(), want)
+	}
+}
+
 func TestCheckLinksExitCodes(t *testing.T) {
 	ok := linkRepo(t, map[string][]string{"a.md": {"# A"}})
 	broken := linkRepo(t, map[string][]string{"a.md": {"[x](gone.md)"}})
