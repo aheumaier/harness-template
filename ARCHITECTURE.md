@@ -99,7 +99,13 @@ receives the request's `context.Context`.
   `request_id`, `trace_id` and `span_id`; one `request` line per request has method, route template, status
   and `duration_ms`; each SQL query is a child span of the server span.
 - **Environments:** each git worktree has its own Postgres container, volume and ports (`.env.local`,
-  written by `make setup`), so parallel agents never share state.
+  written by `make setup`), so parallel agents never share state. Its port block also holds an opt-in
+  observability stack (`make obs-up`, compose profile `obs`, [ADR 0017](docs/adr/0017-per-worktree-observability-stack.md)):
+  `.env.local` points the API's three exporters at it, and `make dev` turns them off if the stack is down
+  when `make dev` starts (restart dev after `make obs-up`). Read it through make only:
+  `make logs REQUEST_ID=…` (or `QUERY=<LogQL>`), `make traces ID=<trace_id>`, and
+  `make metrics QUERY=<PromQL>`, which without `QUERY` fails with an example p95 query; `make obs-down`
+  removes it, `make down` removes every container and volume of the worktree.
 - **Generated code** is committed; `make gen-check` fails if it is stale or hand-edited.
 
 ## Invariants worth knowing

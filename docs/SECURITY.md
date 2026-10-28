@@ -14,7 +14,7 @@ Defaults this template ships with, and what a product built on it must do before
   git-known files (in `make check` the changed ones, in CI all of them), and the `pre-commit` git hook (installed by `make setup`) scans the
   staged files before a commit exists.
 - **Downloaded tools are verified:** each binary `scripts/install-tools.sh` downloads (Trivy, Atlas,
-  ShellCheck) is checked against a sha256 pinned per OS/arch in `scripts/tool-versions.env` and not installed
+  ShellCheck, jq) is checked against a sha256 pinned per OS/arch in `scripts/tool-versions.env` and not installed
   on a mismatch or a missing pin; scanners run only as these release binaries, never as GitHub Actions or
   container images ([ADR 0016](adr/0016-tool-supply-chain.md)).
 - **Dependency vulnerabilities:** `govulncheck` (root Go module) and Trivy (`pnpm-lock.yaml` and every
@@ -25,7 +25,8 @@ Defaults this template ships with, and what a product built on it must do before
 - **SAST:** gosec in golangci-lint (rule `go-sec`, `make lint-go`, so `make check`, the per-edit hook and
   CI), tests included, generated code excluded; a false positive is suppressed on its line only with a reason.
 - **Errors** never expose internals: unexpected errors are a generic 500 problem; details go to logs.
-- **Postgres** binds to `127.0.0.1` only.
+- **Postgres and the obs stack** bind to `127.0.0.1` only; OTLP has no auth and Grafana keeps `admin`/`admin`
+  ([ADR 0017](adr/0017-per-worktree-observability-stack.md)).
 
 ## Before production
 

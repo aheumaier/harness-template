@@ -7,6 +7,7 @@ MAKEFLAGS += --no-print-directory
 
 include scripts/tool-versions.env
 export GOTOOLCHAIN := $(GO_TOOLCHAIN)
+export OBS_IMAGE # compose.yaml interpolates the obs service even when its profile is off
 export PATH := $(CURDIR)/.bin:$(CURDIR)/node_modules/.bin:$(PATH)
 
 RUN  := scripts/harness/run.sh
@@ -44,8 +45,14 @@ new-domain: ## Scaffold a domain through every layer: make new-domain NAME=billi
 rename: $(HARNESS) ## Rename the template once (dry run): make rename NAME=acme-shop MODULE=github.com/acme/shop OWNER=@acme [WRITE=1]
 	@$(HARNESS) rename $(if $(filter 1,$(WRITE)),-write) . $(NAME) $(MODULE) $(OWNER)
 
-dev: db-up ## Run API + web for this worktree (Ctrl-C stops both)
-	@$(WITH_ENV) trap 'kill 0' EXIT; \
+dev: db-up ## Run API + web for this worktree (Ctrl-C stops both); telemetry goes to make obs-up's stack if it runs
+	@$(WITH_ENV) off=; \
+	  if [[ -z "$${OTLP_PORT:-}" ]]; then off="no OTLP_PORT in this worktree's env: run make setup"; \
+	  elif ! (: <"/dev/tcp/127.0.0.1/$$OTLP_PORT") 2>/dev/null; then \
+	    off="no obs stack on :$$OTLP_PORT (make obs-up, then restart make dev)"; fi; \
+	  if [[ -n "$$off" ]]; then echo "telemetry off: $$off"; \
+	    export OTEL_TRACES_EXPORTER=none OTEL_METRICS_EXPORTER=none OTEL_LOGS_EXPORTER=none; fi; \
+	  trap 'kill 0' EXIT; \
 	  echo "api http://$$HTTP_ADDR  web http://localhost:$$WEB_PORT"; \
 	  (cd $(API) && go run ./cmd/api) & (cd apps/web && node_modules/.bin/vite) & wait
 
@@ -55,8 +62,8 @@ db-up: ## Start this worktree's Postgres
 db-migrate: db-up ## Apply pending migrations to this worktree's Postgres
 	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
 
-db-reset: ## Drop this worktree's database volume, recreate, migrate
-	@$(WITH_ENV) docker compose --progress quiet down -v; docker compose --progress quiet up -d --wait db
+db-reset: ## Drop this worktree's database volume (and the obs stack), recreate, migrate
+	@$(WITH_ENV) docker compose --progress quiet --profile obs down -v && docker compose --progress quiet up -d --wait db
 	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
 
 check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=60s any: NFR-H3/H4): format, lint, arch, unit tests, secrets, gen-check
@@ -79,6 +86,31 @@ harness-determinism: export HARNESS_SCOPE := full
 DETERMINISM_TARGET ?= check
 harness-determinism: ## Run make check twice on this tree: same exit status, findings and tree (NFR-R1)
 	@$(RUN) determinism harness-deterministic -- scripts/harness/determinism.sh $(MAKE) $(DETERMINISM_TARGET)
+
+##@ Runtime: this worktree's logs, metrics and traces (compose profile obs, ADR 0017)
+.PHONY: obs-up obs-down down logs metrics traces
+# The query targets read the stack's HTTP APIs through scripts/obs-query.sh; their inputs (REQUEST_ID, QUERY,
+# SINCE, LIMIT, ID) reach it as environment variables, never spliced into the recipe. Make expands `$` in a
+# command-line value (QUERY='x$y' arrives as 'x'): write `$$`, or pass it from the environment (QUERY=… make logs).
+OBS_QUERY := scripts/obs-query.sh
+obs-up: ## Start this worktree's OTel collector, Loki, Prometheus, Tempo, Grafana (then restart make dev)
+	@$(WITH_ENV) docker compose --progress quiet --profile obs up -d --wait obs && \
+	  echo "obs up: make logs, make metrics, make traces; grafana http://127.0.0.1:$$GRAFANA_PORT"
+
+obs-down: ## Stop the obs stack and drop its telemetry (Postgres keeps running)
+	@$(WITH_ENV) docker compose --progress quiet --profile obs rm -fsv obs >/dev/null
+
+down: ## Remove all of this worktree's containers and volumes, Postgres data too (make setup recreates)
+	@$(WITH_ENV) docker compose --progress quiet --profile obs down -v
+
+logs: ## Log records as JSON lines: make logs REQUEST_ID=<id> | QUERY='<LogQL>' [SINCE=1h] [LIMIT=100] (`$$` for `$`)
+	@$(WITH_ENV) $(OBS_QUERY) logs
+
+metrics: ## PromQL instant query, one series per line: make metrics QUERY='<PromQL>' (`$$` for `$`)
+	@$(WITH_ENV) $(OBS_QUERY) metrics
+
+traces: ## Spans of one trace as JSON lines, in start order: make traces ID=<trace_id>
+	@$(WITH_ENV) $(OBS_QUERY) traces
 
 ##@ Reports
 .PHONY: coverage coverage-fell
@@ -196,7 +228,8 @@ schema-doc-fresh:
 	@$(RUN) schema-doc db-schema-doc-fresh -- scripts/gen-schema-doc.sh --check
 
 test-integration: ## Integration tests against the worktree's Postgres (.env.local)
-	@$(WITH_ENV) $(RUN) go-integration go-tests-pass --dir $(API) -- go test -race -count=1 -tags=integration ./...
+	@$(WITH_ENV) unset OTEL_TRACES_EXPORTER OTEL_METRICS_EXPORTER OTEL_LOGS_EXPORTER OTEL_EXPORTER_OTLP_ENDPOINT \
+	  OTEL_METRIC_EXPORT_INTERVAL; $(RUN) go-integration go-tests-pass --dir $(API) -- go test -race -count=1 -tags=integration ./...
 
 ##@ Shell sensors (scripts/, .claude/hooks/)
 .PHONY: lint-sh fmt-check-sh test-sh

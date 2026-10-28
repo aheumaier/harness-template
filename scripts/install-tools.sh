@@ -92,6 +92,15 @@ if ! stamp_ok trivy "$TRIVY_VERSION"; then
   stamp trivy "$TRIVY_VERSION"
 fi
 
+if ! stamp_ok jq "$JQ_VERSION"; then
+  echo "installing jq $JQ_VERSION" >&2
+  o=$os && [[ $o == darwin ]] && o=macos
+  download jq "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-${o}-${arch}"
+  mv "$BIN/.dl-jq" "$BIN/jq"
+  chmod +x "$BIN/jq"
+  stamp jq "$JQ_VERSION"
+fi
+
 # pnpm >=11 ships a native binary via optionalDependencies; older pnpm's self-switching cannot install it,
 # so pin it here. Must equal "packageManager" in package.json.
 if ! stamp_ok pnpm "$PNPM_VERSION"; then

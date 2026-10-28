@@ -1,6 +1,8 @@
 # ADR 0017: One pinned grafana/otel-lgtm container per worktree is the observability stack
 
 Status: proposed · 2026-10-28
+Amends [ADR 0008](0008-per-worktree-isolation.md) (port block +0..+7, `reserved_ports` reads every `*_PORT`,
+`.env.local` reuse)
 
 ## Context
 Gap G1 of exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`, slice P1.1): the agent can read
@@ -71,6 +73,17 @@ Assumption A5 ("~500 MB of RAM") held.
 - **Not the bare collector.** It was the fallback if a threshold failed; none did. It would also leave the
   p95 of NFR-O1 to hand-written `jq` aggregation over OTLP JSON, which PromQL's `histogram_quantile` gives
   for free from P1.3's RED histograms, and trace lookup to grepping files.
+- **`jq` is a pinned download in `.bin/`** (P1.4), installed by `scripts/install-tools.sh` and verified
+  against a sha256 per OS/arch like Trivy, Atlas and ShellCheck ([ADR 0016](0016-tool-supply-chain.md));
+  never a system `jq`.
+- **`make dev` probes the collector:** when nothing listens on `OTLP_PORT` (or the worktree has none), it
+  prints "telemetry off" and sets the three `OTEL_*_EXPORTER`s to `none`. The probe only cuts noise (export
+  errors every interval); the OTel config stays the only validator ([ADR 0021](0021-telemetry-export-over-otlp-http.md)).
+  A `make dev` started before `make obs-up` exports nothing until restarted.
+- **Who owns an image reference:** an image with a persistent volume (Postgres) is frozen per worktree in
+  `.env.local` by `make setup`, so a bump never upgrades an existing data volume in place; an image without
+  one (`OBS_IMAGE`) is read live from `scripts/tool-versions.env` by `make` and `setup-worktree.sh`, so a bump
+  reaches every worktree at its next `make obs-up`.
 
 ## Consequences
 - One 2.58 GB image per machine, shared by all worktrees; about 0.53 GiB of Docker VM memory per running

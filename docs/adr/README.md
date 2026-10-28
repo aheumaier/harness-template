@@ -21,7 +21,7 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0014](0014-make-check-scoped-to-the-change.md) | make check runs what the change can affect; check-all and CI run everything uncached | proposed |
 | [0015](0015-anticipated-rules-and-nfr-classes-b-o.md) | Phase 0 rules are adopted as team-convention; NFR classes B and O fail | proposed |
 | [0016](0016-tool-supply-chain.md) | Downloaded tools are sha256-pinned; scanners run only as pinned release binaries | proposed |
-| [0017](0017-per-worktree-observability-stack.md) | One pinned grafana/otel-lgtm container per worktree is the observability stack | proposed |
+| [0017](0017-per-worktree-observability-stack.md) | One pinned grafana/otel-lgtm container per worktree is the observability stack (amends 0008) | proposed |
 | [0018](0018-http-and-db-instrumentation.md) | HTTP and database instrumentation through otelhttp and otelpgx (amends 0002) | proposed |
 | [0019](0019-inferential-sensors-are-advisory.md) | Inferential sensors are advisory; a finding class seen twice becomes a computational rule | proposed |
 | [0020](0020-test-coverage-is-a-trend.md) | Test coverage is a trend, never a gate | proposed |
