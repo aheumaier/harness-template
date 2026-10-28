@@ -107,7 +107,8 @@ One slice per commit, in this order (the [loop prompt](0002-loop-prompt.md) work
   only-make-check 43 → 24 ms, fast-check stdin 40 → 22 ms; `.bin/harness` parses hook input and guard-bash commands
 - [x] P9 — a52802e — `make docs-links` 0.37 → 0.06 s (sensor 0.40 → 0.02 s), fast-check on a Markdown file 374 → 80 ms;
   `.bin/harness check-links` (goldmark, GitHub slugs)
-- [ ] P10 (phase 3) port `integrity-check`; workflow builds the binary from the base branch
+- [x] P10 — e14ceff — `make harness-integrity BASE_REF=HEAD` 0.08 → 0.09 s (sensor 0.05 → 0.03 s); `.bin/harness
+  integrity-check` parses the diff in Go; harness-integrity.yml builds the binary from the base checkout
 - [ ] P11 (phase 2) `affected.sh`; scoped Go and web targets; full run on config changes
 
 ### Phase 0 — measure and alert
@@ -296,3 +297,13 @@ Per [ADR 0012](../../adr/0012-parsing-sensors-in-go.md): `guard-bash` and every 
   test for the Markdown route (sandbox excludes `rules.md`, whose links leave the sandbox). Selftest 30/30
   (both docs fixtures rejected). Integrity names only this slice's files; rest of check-all and integration
   green.
+- 2026-10-28: P10 (e14ceff). `integrity-check.sh` parsed `git diff -U0` with awk and bash regexes; at this
+  size it was already fast (0.05 s), so the gain is reliability, not time: `.bin/harness integrity-check`
+  reads the path from the `--- a/`/`+++ b/` lines (a deleted config file keeps its path), unquotes C-quoted
+  paths, and fails closed on a bad BASE_REF, a missing merge base, rules.md or `config` entries. Same rule
+  ids, lines and exit codes; `make harness-integrity` wall time is `make` overhead (0.09 s). All bats cases
+  plus both fixtures and 7 new cases as Go table tests; 11 mutants all killed. harness-integrity.yml builds
+  the binary with setup-go (pinned SHA, `cache: false`) from the base checkout; this PR's own run still uses
+  main's bash version (ADR 0010), the Go path first runs on the next PR. Gap: the setup action's `.bin`
+  cache key does not hash `apps/api/tools/harness/**`, so CI can restore a stale `.bin/harness` (TD-4).
+  Selftest 30/30; integrity names only this slice's files; rest of check-all and integration green.
