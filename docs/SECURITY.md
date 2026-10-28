@@ -15,6 +15,8 @@ Defaults this template ships with, and what a product built on it must do before
   pnpm's `minimumReleaseAge: 1440` (24 h, `pnpm-workspace.yaml`). It is not strict: when no version that old
   matches, pnpm installs a newer one and records it in `minimumReleaseAgeExclude`, which a PR review must
   check.
+- **SAST:** gosec in golangci-lint (rule `go-sec`, `make lint-go`, so `make check`, the per-edit hook and
+  CI), tests included, generated code excluded; a false positive is suppressed on its line only with a reason.
 - **Errors** never expose internals: unexpected errors are a generic 500 problem; details go to logs.
 - **Postgres** binds to `127.0.0.1` only.
 
