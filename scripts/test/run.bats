@@ -4,7 +4,8 @@ bats_require_minimum_version 1.5.0
 load helpers
 
 setup() {
-  sandbox scripts/harness/run.sh
+  unset HARNESS_BUDGETS GITHUB_ACTIONS GITHUB_STEP_SUMMARY # budgets from the sandbox, no CI annotations
+  sandbox scripts/harness/run.sh scripts/harness/timing.sh
   mkdir -p "$SANDBOX/docs/harness" "$SANDBOX/sub"
   printf '%s\n' '### rule-a' '- **Remediation:** Fix A.' '' '### rule-b' '- **Remediation:** Fix B.' \
     >"$SANDBOX/docs/harness/rules.md"
@@ -35,4 +36,48 @@ setup() {
   HARNESS_MAX_LINES=2 run -1 "$RUN" sensor rule-a --dir sub -- bash -c 'seq 6; exit 1'
   has 'cwd: sub'
   has '… 4 more lines'
+}
+
+@test "records every run in .cache/harness/timings.jsonl" {
+  run -0 "$RUN" quick rule-a -- true
+  run -2 "$RUN" broken rule-a -- bash -c 'exit 2'
+  run cat "$SANDBOX/.cache/harness/timings.jsonl"
+  has '{"sensor":"quick","start_ms":'
+  has '"exit":0,"scope":"changed"'
+  has '{"sensor":"broken","start_ms":'
+  has '"exit":2,'
+}
+
+@test "warns over budget and keeps the sensor's exit status" {
+  printf '%s\n' '# comment' 'default 600000 NFR-H5' 'slow 1 NFR-H5' >"$SANDBOX/scripts/harness/budgets.txt"
+  run -0 --separate-stderr "$RUN" slow rule-a -- sleep 0.1
+  [ -z "$output" ]
+  output="$stderr"
+  has "harness: sensor 'slow' took "
+  has " s (budget 0.001 s, NFR-H5)"
+  run -1 "$RUN" slow rule-a -- bash -c 'sleep 0.1; exit 1'
+  has "harness: sensor 'slow' took"
+  has 'remediation: Fix A.'
+}
+
+@test "uses the default budget for a sensor without a row and is silent under budget" {
+  printf '%s\n' 'default 1 NFR-H5' 'roomy 600000 NFR-H5' >"$SANDBOX/scripts/harness/budgets.txt"
+  run -0 "$RUN" other rule-a -- sleep 0.1
+  has "harness: sensor 'other' took"
+  run -0 "$RUN" roomy rule-a -- true
+  [ -z "$output" ]
+}
+
+@test "a timing that cannot be written does not fail or print" {
+  printf 'not a dir' >"$SANDBOX/.cache"
+  run -0 "$RUN" sensor rule-a -- true
+  [ -z "$output" ]
+}
+
+@test "runs the sensor untimed when the timing helper is missing" {
+  rm "$SANDBOX/scripts/harness/timing.sh"
+  run -3 "$RUN" sensor rule-a -- bash -c 'exit 3'
+  has 'remediation: Fix A.'
+  run ! has 'timing.sh'
+  [ ! -e "$SANDBOX/.cache/harness/timings.jsonl" ]
 }

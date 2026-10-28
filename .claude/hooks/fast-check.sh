@@ -9,17 +9,23 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../scripts/harness/timing.sh
+source "$ROOT/scripts/harness/timing.sh" 2>/dev/null && harness_time_exit hook fast-check
 cd "$ROOT" || exit 0
 # shellcheck source=../../scripts/tool-versions.env
 source scripts/tool-versions.env
 export GOTOOLCHAIN="$GO_TOOLCHAIN" PATH="$ROOT/.bin:$ROOT/node_modules/.bin:$PATH"
+export HARNESS_SCOPE=fast-check # tags the timings of the sensors below
 RUN=scripts/harness/run.sh
 
 file="${1:-}"
 if [[ -z "$file" ]]; then
-  file="$(node -e 'let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
-    try { const i = JSON.parse(s).tool_input ?? {}; process.stdout.write(i.file_path ?? i.notebook_path ?? ""); } catch {}
-  })')"
+  [[ -x .bin/harness ]] || {
+    # shellcheck source=../../scripts/harness/hook-bootstrap.sh
+    source scripts/harness/hook-bootstrap.sh && harness_missing fast-check
+    exit 2
+  }
+  file="$(.bin/harness hook-input target 2>/dev/null)"
 fi
 [[ -n "$file" ]] || exit 0
 file="${file#"$ROOT"/}"
@@ -41,6 +47,10 @@ case "$file" in
 
   apps/api/tools/analyzers/*.go)
     check $RUN analyzer-tests go-tests-pass --dir apps/api/tools/analyzers -- go vet ./...
+    ;;
+
+  apps/api/tools/harness/*.go)
+    check $RUN harness-tests go-tests-pass --dir apps/api/tools/harness -- go vet ./...
     ;;
 
   apps/api/*.go)
@@ -70,9 +80,8 @@ case "$file" in
     ;;
 
   apps/*.ts | apps/*.tsx | packages/*.ts | packages/*.tsx | apps/*.js | apps/*.mjs | packages/*.js | packages/*.mjs)
+    # The file only. No tsc: it checks the whole package (NFR-H2, exec plan 0002); make check typechecks.
     check $RUN eslint web-no-direct-http,web-domain-pure,web-lint -- eslint --max-warnings=0 "$file"
-    pkg="$(cut -d/ -f1-2 <<<"$file")"
-    [[ -f "$pkg/tsconfig.json" ]] && check $RUN tsc web-typecheck --dir "$pkg" -- tsc --noEmit
     ;;
 
   *.sh | *.bash | *.bats)
@@ -81,7 +90,7 @@ case "$file" in
     ;;
 
   *.md)
-    check $RUN check-links docs-links-resolve -- scripts/harness/check-links.sh
+    check $RUN check-links docs-links-resolve,docs-claude-imports-agents -- .bin/harness check-links .
     ;;
 esac
 exit 0

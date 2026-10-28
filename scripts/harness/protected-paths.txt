@@ -1,5 +1,5 @@
 # Harness files (AGENTS.md golden principle 5): agents propose changes to these in the PR description
-# instead of making them. Read by scripts/harness/integrity-check.sh and the .claude/hooks protection
+# instead of making them. Read by `.bin/harness integrity-check` and the .claude/hooks protection
 # hook; .github/CODEOWNERS mirrors this list.
 #
 # One git pathspec glob per line (`*` also matches `/`). `config` marks a file that defines what the sensors
@@ -32,6 +32,7 @@ scripts/harness/* config
 scripts/git-hooks/* config
 scripts/test/*
 apps/api/tools/analyzers/* config
+apps/api/tools/harness/* config
 .claude/hooks/* config
 .claude/*
 .github/*

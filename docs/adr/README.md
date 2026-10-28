@@ -16,3 +16,6 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0009](0009-harness-selftest.md) | Sensors are tested with violation fixtures (harness-selftest) | accepted |
 | [0010](0010-base-branch-gates.md) | Label-waivable gates run the base branch's harness (pull_request_target) | accepted |
 | [0011](0011-conventional-commits-and-spec-kit.md) | Conventional Commits and spec-kit specs for product features | accepted |
+| [0012](0012-parsing-sensors-in-go.md) | Sensors that parse move to one Go binary; orchestration stays in bash | proposed |
+| [0013](0013-harness-nfr-budgets.md) | Harness NFRs are budgets; latency alerts, reliability fails | proposed |
+| [0014](0014-make-check-scoped-to-the-change.md) | make check runs what the change can affect; check-all and CI run everything uncached | proposed |

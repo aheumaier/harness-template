@@ -1,13 +1,15 @@
 # CI and branch protection
 
 CI runs the same `make` targets you run locally; a workflow adds no checks of its own. If CI is red, the
-same target is red on your machine (with `BASE_REF=origin/main` for diff-based sensors).
+same target is red on your machine (with `BASE_REF=origin/main` for diff-based sensors). CI sets
+`HARNESS_SCOPE=full`, so every sensor runs; a local `make check` skips those whose inputs did not change
+([harness-scope](rules.md#harness-scope)).
 
 ## Workflows (`.github/workflows/`)
 
 | Workflow | Trigger | Job (= status check) | Runs | Required |
 |----------|---------|----------------------|------|----------|
-| `ci.yml` | PR, push to main | `check-all` | `make setup && make check-all` minus `contract-check`, `harness-integrity`, `commits` and `specs` (own workflows, PR title, label waivers) | yes |
+| `ci.yml` | PR, push to main | `check-all` | `make setup && make check-all` minus `contract-check`, `harness-integrity`, `commits` and `specs` (own workflows, PR title, label waivers); uploads `.cache/harness/timings.jsonl` as `harness-timings-check-all` (8 days) and shows latency-budget warnings as annotations | yes |
 | | | `harness-selftest` | every fixture rejected by its sensor ([rules.md](rules.md)) | yes |
 | | | `generator-probe` | `make new-domain NAME=zzz_probe && make check`, then discards the probe and asserts a clean tree | yes |
 | `contract-gate.yml` | PR via `pull_request_target` (incl. label changes) | `api-no-breaking-change` | the **base branch's** `make contract-check` against the PR's spec when `api/openapi.yaml` changed (oasdiff, red only on breaking changes) | yes |
@@ -15,6 +17,7 @@ same target is red on your machine (with `BASE_REF=origin/main` for diff-based s
 | | | `pr-conventions` | the **base branch's** `make commits specs` against the PR head and title (Conventional Commits, PR title ≤ 90 characters, spec-kit specs) | yes |
 | `migration-gate.yml` | PR touching `apps/api/db/migrations/**` | `migrations` | append-only, Atlas lint, squawk | no (path-filtered; same sensors in `check-all`) |
 | `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, schema doc, doc links → one open `drift` issue | no |
+| `harness-nfr.yml` | nightly, manual | `harness-nfr` | p95 per sensor over 7 days of `harness-timings-check-all` artifacts vs `budgets.txt` (`scripts/harness/nfr-report.sh`, alerts only) and `make harness-determinism` (`make check` twice; fails on any difference) → one open `harness-nfr` issue | no |
 
 `.github/actions/setup` installs the pinned toolchain (`scripts/tool-versions.env`) and caches `.bin`,
 Go modules and the pnpm store. Actions are pinned to commit SHAs; `make lint-ci` (actionlint) validates all

@@ -17,6 +17,8 @@ concurrency:
 env:
   # Sensors that diff against a base (contract, migrations, harness integrity) compare with the PR target.
   BASE_REF: origin/${{ github.base_ref || 'main' }}
+  # CI runs every sensor; only a local `make check` skips the ones whose inputs did not change (rules.md#harness-scope).
+  HARNESS_SCOPE: full
 
 jobs:
   check-all:
@@ -32,6 +34,16 @@ jobs:
       # contract-check, harness-integrity, commits and specs run in their own base-branch workflows, which
       # see the PR title and honour the human label waivers.
       - run: make check-all BASE_REF="$BASE_REF" CHECK_ALL_SKIP="contract-check harness-integrity commits specs"
+      # Sensor and hook timings (scripts/harness/timing.sh) for the nightly latency report (exec plan 0002);
+      # kept 8 days so that its 7-day window is always complete. Budget warnings are already annotations.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: harness-timings-check-all
+          path: .cache/harness/timings.jsonl
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 8
 
   harness-selftest:
     runs-on: ubuntu-24.04

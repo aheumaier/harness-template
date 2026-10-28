@@ -1,0 +1,87 @@
+# Harness file (protected). Nightly check of the harness NFRs (ADR 0013, exec plan 0002):
+#   latency (NFR-H*): p95 of every sensor over the last 7 days of ci.yml timings against
+#     scripts/harness/budgets.txt (rules.md#harness-latency-budget); alerts only;
+#   determinism (NFR-R1): `make check` twice on main (rules.md#harness-deterministic); fails the workflow.
+# Findings go to one open issue labelled `harness-nfr` (created, or commented on); a clean night posts nothing.
+name: harness-nfr
+
+on:
+  schedule:
+    - cron: "43 3 * * *" # daily 03:43 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  harness-nfr:
+    permissions:
+      contents: read
+      actions: read # ci.yml runs and their timing artifacts
+      issues: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: make setup
+      - name: Measure
+        id: measure
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          report="$RUNNER_TEMP/harness-nfr.md"
+          timings="$RUNNER_TEMP/timings"
+          fence='```'
+          : >"$report"
+          since="$(date -u -d '7 days ago' +%Y-%m-%d)"
+          # A run without the artifact (cancelled before the upload step) is skipped.
+          gh run list --workflow ci.yml --status completed --created ">=$since" --limit 1000 \
+            --json databaseId --jq '.[].databaseId' | while read -r id; do
+            gh run download "$id" --name harness-timings-check-all --dir "$timings/$id" 2>/dev/null || true
+          done
+          mapfile -t files < <(find "$timings" -name timings.jsonl 2>/dev/null)
+          if ((${#files[@]} == 0)); then
+            printf '### Latency (NFR-H*)\n\nNo harness-timings-check-all artifact from ci.yml since %s: the timings pipeline is broken.\n\n' "$since" >>"$report"
+          elif table="$(scripts/harness/nfr-report.sh "${files[@]}" 2>&1)"; then
+            [[ -z "$table" ]] ||
+              printf '### Latency: p95 over budget (NFR-H*, %d ci.yml runs since %s)\n\n%s\n\n' "${#files[@]}" "$since" "$table" >>"$report"
+          else
+            printf '### Latency (NFR-H*): nfr-report.sh failed\n\n%s\n%s\n%s\n\n' "$fence" "$table" "$fence" >>"$report"
+          fi
+          # HARNESS_SCOPE=full: the double run must cover every sensor, whatever the merge base.
+          if ! out="$(HARNESS_SCOPE=full make harness-determinism 2>&1)"; then
+            printf '### Determinism (NFR-R1): make check differs between two runs on %s\n\n%s\n%s\n%s\n\n' \
+              "$GITHUB_SHA" "$fence" "$out" "$fence" >>"$report"
+            echo "nondeterministic=true" >>"$GITHUB_OUTPUT"
+          fi
+          cat "$report"
+          # GitHub caps an issue body or comment at 65536 characters; the full report is in this log.
+          if (($(wc -c <"$report") > 60000)); then
+            head -c 60000 "$report" >"$report.cut"
+            printf '\n\n(truncated; full report in the workflow run log)\n' >>"$report.cut"
+            mv "$report.cut" "$report"
+          fi
+          echo "report=$report" >>"$GITHUB_OUTPUT"
+          [[ -s "$report" ]] && echo "found=true" >>"$GITHUB_OUTPUT" || echo "found=false" >>"$GITHUB_OUTPUT"
+      - name: Open or update the harness-nfr issue
+        if: steps.measure.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ steps.measure.outputs.report }}
+        run: |
+          gh label create harness-nfr --color FBCA04 --description "Found by harness-nfr.yml" --force
+          issue="$(gh issue list --label harness-nfr --state open --json number --jq '.[0].number // empty')"
+          if [[ -n "$issue" ]]; then
+            gh issue comment "$issue" --body-file "$REPORT"
+          else
+            gh issue create --title "Harness NFRs: nightly check found violations" --label harness-nfr --body-file "$REPORT"
+          fi
+      # Reliability fails (ADR 0013); latency only alerts through the issue above.
+      - name: Fail on non-determinism (NFR-R1)
+        if: steps.measure.outputs.nondeterministic == 'true'
+        run: |
+          echo "make check gave two different results on the same tree; see the Measure step" >&2
+          exit 1

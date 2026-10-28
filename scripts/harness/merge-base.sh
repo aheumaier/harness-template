@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Base commit for the diff-based sensors (contract-check, migrations-append-only, integrity-check).
+# Base commit for the diff-based sensors (contract-check, migrations-append-only; `.bin/harness
+# integrity-check` implements the same in Go).
 #
 #   scripts/harness/merge-base.sh --ref   prints the default BASE_REF: origin/main if it exists, else main
 #   scripts/harness/merge-base.sh         prints the merge base of HEAD with $BASE_REF (default: --ref)

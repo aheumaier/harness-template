@@ -9,10 +9,13 @@
 #     a feat touching apps/ or api/ comes with a spec (the `no-spec-needed` label waives that rule only).
 #     rules.md#git-conventional-commits, #specs-structure, #specs-required-for-features
 #
-# pull_request_target: this workflow file, the Makefile and the scripts all come from the base branch, so a
-# PR cannot weaken the gate that judges it (with `pull_request`, the PR's own copy of this file would run).
+# pull_request_target: this workflow file, the Makefile, the scripts and the source of .bin/harness all come
+# from the base branch, so a PR cannot weaken the gate that judges it (with `pull_request`, the PR's own copy
+# of this file would run).
 # Safe only while all of these hold (docs/adr/0010-base-branch-gates.md):
-#   - nothing from the PR tree is executed: it is read with git, awk and grep only;
+#   - nothing from the PR tree is executed: it is read with git, awk, grep and .bin/harness only, and
+#     .bin/harness is built from the base checkout (`make` in the workspace root; the PR head is in pr-head/,
+#     outside apps/api/tools/harness), never from the PR head (ADR 0012);
 #   - only head.sha is used, as the checkout ref (never head.ref, title or body in a `run:` block; the title
 #     reaches check-commits.sh as the PR_TITLE env var, never interpolated into a script);
 #   - permissions stay `contents: read` and no secret is referenced.
@@ -41,6 +44,10 @@ jobs:
           path: pr-head
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: apps/api/go.mod
+          cache: false # no cache written from a pull_request_target run
       - run: make harness-integrity BASE_REF="origin/$GITHUB_BASE_REF"
         env:
           HARNESS_ROOT: ${{ github.workspace }}/pr-head

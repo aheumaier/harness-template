@@ -57,11 +57,11 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Fixture:** none (formatter, auto-fixable) · Status: seed
 
 ### go-tests-pass
-- **Rule:** `go test -race` passes for the app and the analyzers.
+- **Rule:** `go test -race` passes for the app; `go test` for the analyzers and the hook parser (`apps/api/tools/harness`).
 - **Why:** Tests are the cheapest behavioural sensor; the race detector catches concurrency bugs agents rarely reason about.
-- **Sensor:** `make test-go`, `make test-analyzers`.
+- **Sensor:** `make test-go`, `make test-analyzers`, `make test-harness` (Go test cache in `make check`, `-count=1` in `make check-all` and CI: [harness-scope](#harness-scope)).
 - **Remediation:** Read the first failing test above, fix the code (not the test) unless the behaviour change is intended and documented in the PR.
-- **Fixture:** none · Status: seed
+- **Fixture:** `go-tests-dependent-package` · Status: seed
 
 ### go-no-known-vulns
 - **Rule:** No reachable known vulnerabilities in Go dependencies or the standard library.
@@ -184,14 +184,14 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ### web-lint
 - **Rule:** TypeScript passes `typescript-eslint` `strictTypeChecked` and `react-hooks` recommended, with zero warnings and no unused disable directives.
 - **Why:** Type-aware lint catches unsafe `any` flows and hook-order bugs that tsc accepts.
-- **Sensor:** ESLint, `make lint-web`.
+- **Sensor:** ESLint, `make lint-web`; fast-check hook per edited file.
 - **Remediation:** Fix the reported line; do not add `eslint-disable` (harness-integrity rejects disables without a reason and rule reference).
-- **Fixture:** none · Status: seed
+- **Fixture:** `web-lint-dependent-workspace` · Status: seed
 
 ### web-typecheck
 - **Rule:** All workspace packages type-check under `tsconfig.base.json` (`strict`, `noUncheckedIndexedAccess`).
 - **Why:** The type system carries the contract from the OpenAPI spec into components.
-- **Sensor:** `tsc --noEmit` per package via Turborepo, `make typecheck-web`.
+- **Sensor:** `tsc --noEmit` per package via Turborepo, `make typecheck-web` (part of `make check`). Not in the fast-check hook: tsc checks a whole package, too slow per edit (NFR-H2).
 - **Remediation:** Fix the type error at its source; never widen to `any` or add `@ts-ignore`/`@ts-expect-error`.
 - **Fixture:** none · Status: seed
 
@@ -214,7 +214,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ### gen-up-to-date
 - **Rule:** Generated code (sqlc stores, oapi-codegen servers, the orval API client, `atlas.sum`) is committed, current, and never hand-edited.
 - **Why:** Generated code is a projection of the contract/schema; hand edits are silently lost and stale output hides contract drift.
-- **Sensor:** `scripts/harness/gen-check.sh` (`make gen-check`, part of `make check`).
+- **Sensor:** `scripts/harness/gen-check.sh` (`make gen-check`, part of `make check`; skipped while unchanged since its last green run, [harness-scope](#harness-scope)).
 - **Remediation:** Change the source (api/openapi.yaml, db/queries/*.sql, db/migrations) instead, run `make gen`, and commit the regenerated files.
 - **Fixture:** `fixtures/gen-hand-edit-api-client` · Status: seed
 
@@ -239,30 +239,51 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Why:** Sensors and hooks are code that guards all other code: a hook that blocks too much stalls agents, one that blocks too little is a false sense of safety.
 - **Sensor:** bats-core (`make test-sh`, part of `make check`). Scripts that need the full toolchain (`selftest.sh`, `gen-check.sh`, `contract-check.sh`, `new-domain.sh` end to end) are exercised by `make harness-selftest` and the CI generator probe instead.
 - **Remediation:** Read the first `not ok` test and its `expected output to contain` lines, fix the script (not the test) unless the behaviour change is intended and stated in the PR.
-- **Fixture:** none (like go-tests-pass) · Status: seed
+- **Fixture:** none (a failing bats test is its own fixture) · Status: seed
 
 ## Harness integrity and CI (.github/)
 
 ### harness-suppression-reason
 - **Rule:** Every added suppression (`//nolint`, `//lint:ignore`, `//lint:file-ignore`, `eslint-disable`, `/* eslint … */`, `@ts-expect-error`, `# shellcheck disable`, `-- atlas:nolint`, `-- squawk-ignore`) has `reason: … (rule: <id>)` on the same line, where `<id>` is a `### <id>` heading in this file; `@ts-ignore` and `@ts-nocheck` are never allowed.
 - **Why:** A bare suppression silently turns a sensor off; the reason and rule id make each exception reviewable and greppable.
-- **Sensor:** `scripts/harness/integrity-check.sh` on lines added since the merge base with `BASE_REF` in Go, TS/JS, shell, SQL, git hook and workflow files, not vendored `.specify/` (`make harness-integrity`, in `make check-all` and `harness-integrity.yml`, which runs the base branch's copy of the script; the PR's `.gitattributes` cannot hide a hunk).
+- **Sensor:** `.bin/harness integrity-check` (`apps/api/tools/harness`) on lines added since the merge base with `BASE_REF` in Go, TS/JS, shell, SQL, git hook and workflow files, not vendored `.specify/` (`make harness-integrity`, in `make check-all` and `harness-integrity.yml`, which builds the binary from the base branch; the PR's `.gitattributes` cannot hide a hunk).
 - **Remediation:** Fix the code instead; if the suppression is truly needed, append `reason: <why it is safe> (rule: <rule-id>)` on the same line with an id from this file as it is on the base branch, and replace `@ts-ignore`/`@ts-nocheck` with a fixed type or a reasoned `@ts-expect-error`.
 - **Fixture:** `fixtures/harness-suppression-no-reason` · Status: seed
 
 ### harness-config-not-loosened
-- **Rule:** No non-comment line of a harness config (`config` entries in `scripts/harness/protected-paths.txt`: linter configs, Makefile, workflows, CODEOWNERS, `.gitattributes`, tool versions, the protected-path list itself, and sensor code: `scripts/harness/`, custom analyzers, Claude hooks, the tool installer) is added or removed unless a human approves. Tightening counts too: telling it from loosening takes judgment. Only `#` and blank lines count as comments (`//` and `/* */` can comment code out).
+- **Rule:** No non-comment line of a harness config (`config` entries in `scripts/harness/protected-paths.txt`: linter configs, Makefile, workflows, CODEOWNERS, `.gitattributes`, tool versions, the protected-path list itself, and sensor code: `scripts/harness/`, custom analyzers, Claude hooks, the tool installer) is added or removed, and no such file changes its mode, unless a human approves (a shebang is not a comment). Tightening counts too: telling it from loosening takes judgment. Only `#` and blank lines count as comments (`//` and `/* */` can comment code out).
 - **Why:** The cheapest way to make a red sensor green is to weaken its config; that must be a visible human decision, not an agent's shortcut.
-- **Sensor:** `scripts/harness/integrity-check.sh` on the diff since the merge base with `BASE_REF` (`make harness-integrity`, `harness-integrity.yml`; CI runs the base branch's workflow, script and path list via `pull_request_target` ([ADR 0010](../adr/0010-base-branch-gates.md)), so a PR cannot unprotect itself). Waived only by `HARNESS_CHANGE_APPROVED=1`, set in CI by the `harness-change-approved` PR label.
+- **Sensor:** `.bin/harness integrity-check` on the diff since the merge base with `BASE_REF` (`make harness-integrity`, `harness-integrity.yml`; CI runs the base branch's workflow, binary (built from the base checkout) and path list via `pull_request_target` ([ADR 0010](../adr/0010-base-branch-gates.md)), so a PR cannot unprotect itself). Waived only by `HARNESS_CHANGE_APPROVED=1`, set in CI by the `harness-change-approved` PR label.
 - **Remediation:** Revert the config change and fix the code; if the rule itself is wrong, explain why in the PR description (Harness change: Y + rationale) and ask a code owner to add the `harness-change-approved` label.
 - **Fixture:** `fixtures/harness-config-loosened` · Status: seed
 
 ### harness-files-protected
 - **Rule:** Agents do not edit harness files (`scripts/harness/protected-paths.txt`); they propose the change in the PR description. A human allows edits by starting the agent session with `HARNESS_EDIT=1`.
 - **Why:** A sensor the agent can edit is a suggestion: the cheapest fix for a red check is to change the check.
-- **Sensor:** PreToolUse hook `.claude/hooks/protect-harness.sh` (file tools exactly; shell writes heuristically) for Claude Code; `.github/CODEOWNERS` review and `harness-config-not-loosened` for every agent.
+- **Sensor:** PreToolUse hook `.claude/hooks/protect-harness.sh` (file tools exactly; shell writes heuristically) for Claude Code (like every hook, it parses its JSON input with `.bin/harness hook-input`, [ADR 0012](../adr/0012-parsing-sensors-in-go.md), and without the binary blocks everything but `make setup`); `.github/CODEOWNERS` review and `harness-config-not-loosened` for every agent.
 - **Remediation:** Do not edit the file: fix the code the sensor points at, or describe the harness change (file, diff, why) in the PR description under "Harness change".
 - **Fixture:** none (a hook, not a make target); `scripts/test/protect-harness.bats` · Status: seed
+
+### harness-latency-budget
+- **Rule:** Every sensor and hook finishes within its budget in `scripts/harness/budgets.txt` (`default` row: 5 s, NFR-H5; PreToolUse hooks 50 ms, NFR-H1; `fast-check` 1 s, NFR-H2); the budgets are the latency NFRs of exec plan 0002 ([ADR 0013](../adr/0013-harness-nfr-budgets.md)).
+- **Why:** Agents run `make check` after every change, so harness latency is agent throughput; it degrades a little per PR, and no single review notices.
+- **Sensor:** `scripts/harness/timing.sh`, used by `scripts/harness/run.sh` and every hook in `.claude/hooks/`, times each run, appends it to `.cache/harness/timings.jsonl` and prints `harness: sensor '<id>' took <t> s (budget <b> s, <nfr>)` (or `hook '<name>'`) when over budget. In GitHub Actions the line is also a `::warning` annotation and a job-summary entry, and `ci.yml` uploads `timings.jsonl` as the `harness-timings-check-all` artifact. Nightly, `harness-nfr.yml` computes each name's p95 over the last 7 days of those artifacts (`scripts/harness/nfr-report.sh`) and opens or comments on one `harness-nfr` issue for every p95 over budget. Hooks run in CI only inside bats tests, so their rows there do not measure real tool calls: NFR-H1 and NFR-H2 have the local warning and no trend yet. A warning only: the sensor or hook keeps its own exit status.
+- **Remediation:** Make the sensor or hook do less (scope it to the change, use the tool's cache, skip it when its inputs did not change: exec plan 0002 phases 1–2); if the budget itself is wrong, propose a new row in `budgets.txt` in the PR description (Harness change: Y).
+- **Fixture:** none (warns, never fails; the selftest asserts a failure); `scripts/test/run.bats`, `scripts/test/timing.bats`, `scripts/test/nfr-report.bats` · Status: seed
+
+### harness-deterministic
+- **Rule:** The same tree gives the same verdict, the same findings and the same tree after `make check`, run after run (NFR-R1, [ADR 0013](../adr/0013-harness-nfr-budgets.md)).
+- **Why:** A sensor that flips between runs teaches agents to rerun until green, and then every rule is only as strong as its flakiest sensor.
+- **Sensor:** `scripts/harness/determinism.sh` (`make harness-determinism`) runs `make check` twice in scope `full` (in `changed` scope the [gen-check stamp](#harness-scope) makes the second run skip by design) and compares exit status, findings (sorted output lines, durations and temp paths masked) and `git status`. Nightly on `main` in `harness-nfr.yml`, which fails and opens or comments on the `harness-nfr` issue.
+- **Remediation:** Remove the state the sensor depends on besides the tree: caches keyed on time or not on inputs, network calls, unseeded randomness, test order, shared temp files, tests that write into the tree. Make output order-stable (sort it). Never retry a sensor until it passes.
+- **Fixture:** `fixtures/harness-nondeterministic`; `scripts/test/determinism.bats` · Status: seed
+
+### harness-scope
+- **Rule:** `make check` (scope `changed`) may skip a sensor only when none of its inputs and no harness file (`protected-paths.txt`) changed since the merge base, counting staged, unstaged and untracked files; `make check-all` and CI (scope `full`, `HARNESS_SCOPE=full`) run every sensor. Skipped today: `lint-sh`, `fmt-check-sh`, `test-sh` (inputs: `*.sh`, `*.bash`, `*.bats`, `scripts/**`), the main cost of `make check` (NFR-H3, [ADR 0013](../adr/0013-harness-nfr-budgets.md), [ADR 0014](../adr/0014-make-check-scoped-to-the-change.md)); `gen-check` while its inputs and the generated files hash to the stamp of its last green run. Scoped to the affected set in scope `changed`: `lint-go` and `test-go` to the changed Go packages of `apps/api` plus every package that imports them (tests included), `lint-web` and `arch-web` to the changed JS workspaces plus their dependents; skipped when that set is empty. `typecheck-web` and `test-web` are not scoped: Turborepo's task cache already replays unchanged packages. `arch-go` is not scoped (go-arch-lint checks the whole module). Cached only in scope `changed`: Go test results (`test-go`, `test-analyzers`, `test-harness` without `-count=1`; integration tests always `-count=1`) the dependency-cruiser graph (`--cache node_modules/.cache/depcruise`) and Turborepo's task cache (`typecheck-web`, `test-web`; `--force` in any other scope, so `make harness-determinism` really runs vitest and tsc twice).
+- **Why:** Agents run `make check` after every change; a sensor whose inputs did not change can only repeat its last verdict, so running it costs time and finds nothing.
+- **Sensor:** `scripts/harness/unchanged.sh` decides (`gen-check.sh --unchanged` for `gen-check`), `scripts/harness/affected.sh go|web` the affected set (`$(call scoped,…)` in the Makefile); the target prints `<target>: skipped, …` instead of running. It fails closed: no merge base (`BASE_REF`), a git error, a missing or unmatched stamp, or any scope but `changed` means run and uncached; the affected set is everything on a harness file, `go.mod`, `go.sum`, a `package.json`, the lockfile or workspace config, a non-Go file under `apps/api`, a `.go` file in no package, a JS/TS/JSON file outside a workspace, or a failing `go list` or `turbo ls`. Timing rows (`harness-latency-budget`) carry the scope.
+- **Remediation:** A skipped sensor that should have run means its trigger pathspecs miss an input: add the input to the `$(call sh_sensor,…)` pathspecs in the Makefile, to `INPUTS` in `gen-check.sh`, or to what makes `affected.sh` return everything (Harness change: Y); to run everything now, `make check-all` or `HARNESS_SCOPE=full make check`.
+- **Fixture:** none (decides whether a sensor runs, never fails); `scripts/test/unchanged.bats`, `scripts/test/gen-check.bats`, `scripts/test/affected.bats`; the scoped sensors' fixtures `go-tests-dependent-package`, `web-lint-dependent-workspace` run in scope `changed` (`SCOPE=changed` in `fixture.conf`, also in CI) · Status: seed
 
 ### ci-workflows-valid
 - **Rule:** GitHub workflows and composite actions pass actionlint, including shellcheck on every `run:` block.
@@ -304,13 +325,13 @@ In CI these run in the `pr-conventions` job of `harness-integrity.yml` (base bra
 ### docs-links-resolve
 - **Rule:** Every relative link and `#anchor` in tracked Markdown files resolves.
 - **Why:** Guides are the agent's map; a dead link silently sends it searching (or guessing) instead of reading.
-- **Sensor:** `scripts/harness/check-links.sh` (`make docs-links`, part of `make check`).
+- **Sensor:** `.bin/harness check-links` (`apps/api/tools/harness/checklinks.go`; `make docs-links`, part of `make check`; fast-check hook per Markdown file).
 - **Remediation:** Point the link at the file's current path (or heading slug), or remove it if the target is gone; when you move a doc, update every link to it in the same change.
 - **Fixture:** `fixtures/docs-broken-link` · Status: seed
 
 ### docs-claude-imports-agents
 - **Rule:** Every `AGENTS.md` has a `CLAUDE.md` in the same directory with the line `@AGENTS.md` (plus any Claude-Code-only notes).
 - **Why:** Claude Code loads `CLAUDE.md`, not `AGENTS.md`; without the import an area guide is invisible to it, while other agents read `AGENTS.md` directly. One source, two entry points.
-- **Sensor:** `scripts/harness/check-links.sh` (`make docs-links`, part of `make check`).
+- **Sensor:** `.bin/harness check-links` (`apps/api/tools/harness/checklinks.go`; `make docs-links`, part of `make check`; fast-check hook per Markdown file).
 - **Remediation:** Create `CLAUDE.md` next to the `AGENTS.md` the message names, containing the line `@AGENTS.md`; put shared guidance in `AGENTS.md`, never only in `CLAUDE.md`.
 - **Fixture:** `fixtures/docs-agents-without-claude` · Status: seed

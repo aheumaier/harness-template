@@ -7,11 +7,20 @@
 # rule whose id appears in the output (or the only rule given), the remediation and its anchor in
 # docs/harness/rules.md. Remediation text lives ONLY in rules.md ("- **Remediation:** ..." line under
 # "### <rule-id>"), so guides and sensors cannot drift apart.
+#
+# Every run is timed by scripts/harness/timing.sh: one row in .cache/harness/timings.jsonl and, over the
+# sensor's budget in scripts/harness/budgets.txt, one warning line (rules.md#harness-latency-budget).
+# Timing never changes the exit status: if it cannot be measured or written, it is skipped.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 RULES="$ROOT/docs/harness/rules.md"
 MAX_LINES="${HARNESS_MAX_LINES:-80}"
+# shellcheck source=timing.sh
+source "$ROOT/scripts/harness/timing.sh" 2>/dev/null || {
+  harness_now_ms() { :; }
+  harness_record() { :; }
+}
 
 sensor="$1"
 rules="$2"
@@ -24,8 +33,10 @@ fi
 [[ "${1:-}" == "--" ]] && shift
 
 log="$(mktemp -t "harness-${sensor}.XXXXXX")"
+start="$(harness_now_ms)"
 (cd "$dir" && "$@") >"$log" 2>&1
 status=$?
+harness_record sensor "$sensor" "$start" "$status"
 
 if [[ $status -eq 0 ]]; then
   rm -f "$log"
