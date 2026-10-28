@@ -110,8 +110,9 @@ PR; **–** needs none.
 - [ ] P1.4 — H — `compose.yaml` profile `obs` on the worktree's port block; `make obs-up`, `make logs`,
   `make metrics`
 - [ ] P1.5 — H — `make dev` writes structured logs to `.tmp/dev/*.log`; skill `query-runtime`
-- [ ] P2.1 — H — `new-domain.sh` scaffolds service, handler and integration tests; generator probe runs them
-  (NFR-B1)
+- [x] P2.1 — 6884b56 — a scaffolded domain had no tests → `new-domain.sh` generates a service test (fake
+  store), a handler test (strict server + `httptest`) and an integration test, green on generation; the CI
+  generator probe runs them (NFR-B1 0 → 100 %); the heredocs moved to `scripts/templates/new-domain/`
 - [x] P2.2 — no-op — web: jsdom + Testing Library, or keep `renderToString` → kept: the one web test
   (`App.test.tsx`) renders to a string, and no test needs interaction or effects yet (P2.3 drives the browser
   through Playwright, P2.1 scaffolds Go tests); the guide from Q5 stands
@@ -675,3 +676,16 @@ code: `deadcode` and knip do that without false positives from entry points they
   b43eeaf and revisit P1.4 and P1.5. Noticed: P1.4 sets the `OTEL_*` variables in `.env.local` once the
   collector port exists; Loki may need a label or structured-metadata config to index `request_id` from
   otelslog attributes (check in P1.4); bats ~46 s against its 5 s budget (NFR-H5, predates this slice).
+- 2026-10-29: P2.1 integrated (6884b56, rebased from lane 5a2993f; tracker and ci.md conflicts merged,
+  TD-16 from the lane, TD-17 from the branch). Review fixed in one retry: placeholders validated in one
+  pass before anything is written, matched by `__[A-Z][A-Z0-9_]*__`; bats tests for a late-template
+  placeholder and that every template is used, renders and passes gofmt; the integration test goes through
+  `get()` and asserts the body; the generated `queries` interface is unexported; ARCHITECTURE.md and
+  `apps/api/internal/AGENTS.md` name the generated tests; TD-28 (no transaction pattern for services) and
+  TD-29 (a problem helper per handler). Deferred architecture NITs: a `go test -json` check that none of the
+  probe's tests skipped (a `t.Skip` would pass unseen) and an integration target scoped to the probe (the
+  probe runs the whole integration suite). TD-16's header half stays open. Noticed (protected): a
+  `scaffold-templates-render` rule would keep the bats render test a named sensor; CODEOWNERS could list
+  `/scripts/new-domain.sh` and `/scripts/templates/`; the undo command in `new-domain.sh` and its skill
+  (`git checkout -- .` before the scoped `git clean`) discards every unrelated tracked edit. go-integration
+  5.12–5.40 s against its 5 s budget and bats 44–52 s (NFR-H5) both predate this slice.
