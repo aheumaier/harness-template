@@ -1,0 +1,9 @@
+# Generated strict server for OpenAPI tag "__NAME__". Run via `make gen`.
+package: api
+output: api.gen.go
+generate:
+  std-http-server: true
+  strict-server: true
+  models: true
+output-options:
+  include-tags: [__NAME__]

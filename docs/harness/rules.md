@@ -74,7 +74,7 @@ whose `fixture.conf` tests that rule, or says `none (<reason>)` ([rules-fixture-
 ### go-tests-pass
 - **Rule:** `go test -race` passes for the app; `go test` for the analyzers and the hook parser (`apps/api/tools/harness`).
 - **Why:** Tests are the cheapest behavioural sensor; the race detector catches concurrency bugs agents rarely reason about.
-- **Sensor:** `make test-go`, `make test-analyzers`, `make test-harness` (Go test cache in `make check`, `-count=1` in `make check-all` and CI: [harness-scope](#harness-scope)).
+- **Sensor:** `make test-go`, `make test-analyzers`, `make test-harness` (Go test cache in `make check`, `-count=1` in `make check-all` and CI: [harness-scope](#harness-scope)); `make test-integration` (`-tags=integration`, in `make check-all`). The CI generator probe runs both on a fresh `make new-domain`, whose scaffold ships a service, handler and integration test (NFR-B1).
 - **Remediation:** Read the first failing test above, fix the code (not the test) unless the behaviour change is intended and documented in the PR.
 - **Fixture:** `fixtures/go-tests-dependent-package` · Status: seed
 

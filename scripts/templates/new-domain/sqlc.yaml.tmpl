@@ -1,0 +1,8 @@
+  - engine: postgresql
+    schema: db/migrations
+    queries: db/queries/__NAME__.sql
+    gen:
+      go:
+        package: store
+        out: internal/__NAME__/store
+        sql_package: pgx/v5

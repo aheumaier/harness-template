@@ -39,7 +39,7 @@ flowchart LR
 | `packages/domain` | Pure TypeScript domain logic shared by apps: no React, no browser APIs, no HTTP. |
 | `scripts/harness` | Sensors' glue: `run.sh` (uniform failure output with remediation), `gen-check.sh`, `contract-check.sh`, `check-commits.sh`, `check-specs.sh`, `merge-base.sh`, `unchanged.sh` and `affected.sh` (what `make check` skips or scopes in scope `changed`, `HARNESS_SCOPE`, [ADR 0014](docs/adr/0014-make-check-scoped-to-the-change.md)), `timing.sh`, `budgets.txt` and `nfr-report.sh` (latency budgets, timings in `.cache/harness/`, [ADR 0013](docs/adr/0013-harness-nfr-budgets.md)), `determinism.sh`, `hook-bootstrap.sh`, `selftest.sh` + `fixtures/`; `coverage.sh` (coverage trend; a report, not a sensor, [ci.md](docs/harness/ci.md#coverage)). |
 | `scripts/git-hooks` | Git hooks installed by `make setup` (`core.hooksPath`): `pre-commit` runs the secret scan and the cheap per-file sensors on the staged content, `commit-msg` checks Conventional Commits. |
-| `scripts/` | `setup-worktree.sh`, `install-tools.sh` (pinned versions in `tool-versions.env`), `new-domain.sh`, `gen-schema-doc.sh`. Shell is code: shellcheck + shfmt (`.shellcheckrc`, `.editorconfig`) and bats tests in `scripts/test/` for these scripts and `.claude/hooks/`. |
+| `scripts/` | `setup-worktree.sh`, `install-tools.sh` (pinned versions in `tool-versions.env`), `new-domain.sh` (its templates in `templates/new-domain/`), `gen-schema-doc.sh`. Shell is code: shellcheck + shfmt (`.shellcheckrc`, `.editorconfig`) and bats tests in `scripts/test/` for these scripts and `.claude/hooks/`. |
 | `docs/` | Rules, ADRs, design docs, exec plans, quality grades, generated schema doc. |
 | `specs/` | Product feature specs (`NNN-slug/`: spec, plan, tasks) written with spec-kit; created by the first `/speckit-specify`. |
 | `.specify/` | Vendored spec-kit 1.1.3 (scripts, templates; never edited) and our `memory/constitution.md` ([ADR 0011](docs/adr/0011-conventional-commits-and-spec-kit.md)). |
@@ -60,6 +60,7 @@ flowchart RL
 - `model`: domain types and pure functions. Imports only other `model` code.
 - `store`: sqlc-generated persistence. The only place (besides `platform/db`) that imports `pgx`.
 - `service`: use cases and business rules. No `net/http`, no SQL. The public face of a domain to other domains.
+  Declares the narrow interface over `*store.Queries` it uses, asserted at compile time; tests pass a fake.
 - `api`: generated strict server (`api.gen.go`) + `api.go` mapping requests to service calls and errors to
   problem responses. The only domain layer that imports `net/http`.
 - Cross-domain: `internal/a/**` may import `internal/b/service` or `internal/b/model`, never `b/store` or `b/api`.
@@ -94,7 +95,7 @@ receives the request's `context.Context`.
   response carries `X-Request-Id` (an incoming one is kept only if it matches the contract's pattern), but
   the contract declares it only on `/healthz` 200 so far ([TD-16](docs/exec-plans/tech-debt-tracker.md)).
   A problem carries `instance` (`urn:request-id:<id>`) when `platform/problem` writes it or when a handler
-  building a spec problem response sets it with `problem.Instance(ctx)` (the scaffold doesn't yet, TD-16). Log lines in a request carry
+  building a spec problem response sets it with `problem.Instance(ctx)` (the `new-domain` scaffold's 503 does). Log lines in a request carry
   `request_id`, `trace_id` and `span_id`; one `request` line per request has method, route template, status
   and `duration_ms`; each SQL query is a child span of the server span.
 - **Environments:** each git worktree has its own Postgres container, volume and ports (`.env.local`,

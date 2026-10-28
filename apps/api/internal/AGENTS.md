@@ -12,5 +12,7 @@
 - Pass `ctx` everywhere; never `context.Background()` outside `cmd/` and tests.
 - Log with the `*Context` methods so lines carry `request_id` and `trace_id`. Don't `WithGroup` a request
   logger (the IDs would land inside the group); add attrs instead.
+- A `service` declares the narrow interface over `*store.Queries` it uses, asserted at compile time; tests
+  pass a fake. A test may wire `store` itself (like `cmd/api/routes.go`); `api/` proper never imports `store`.
 - Unit tests live next to the code (`*_test.go`, `-short`); tests that need Postgres use the
   `integration` build tag and run in `make check-all`.

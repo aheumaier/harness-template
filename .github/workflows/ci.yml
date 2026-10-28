@@ -65,7 +65,8 @@ jobs:
       - run: make harness-selftest
 
   generator-probe:
-    # The domain generator must keep producing code that passes every fast sensor.
+    # The domain generator must keep producing code that passes every fast sensor, with a passing service,
+    # handler and integration test (NFR-B1).
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -76,6 +77,13 @@ jobs:
       - run: make setup
       - run: make new-domain NAME=zzz_probe
       - run: make check
+      - name: The probe's service, handler and integration tests exist and pass (NFR-B1)
+        # -tags=integration builds the untagged unit tests too, so this runs all three against make setup's Postgres.
+        run: |
+          for t in service/service_test.go api/api_test.go api/api_integration_test.go; do
+            test -s "apps/api/internal/zzz_probe/$t" || { echo "::error::make new-domain generated no $t (NFR-B1)"; exit 1; }
+          done
+          make test-integration
       - name: The probe stays inside the generator's paths
         run: |
           git checkout -- .

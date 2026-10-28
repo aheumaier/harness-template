@@ -1,0 +1,30 @@
+// Package service holds the __NAME__ domain's business logic. It may import model and store, never api.
+package service
+
+import (
+	"context"
+	"fmt"
+
+	"__MOD__/internal/__NAME__/store"
+)
+
+// queries is the part of the generated *store.Queries this service uses (asserted below); tests pass a fake.
+type queries interface {
+	Ping(ctx context.Context) (int32, error)
+}
+
+var _ queries = (*store.Queries)(nil)
+
+// Service is the __NAME__ domain's use-case API, called by its api package and by other domains.
+type Service struct{ q queries }
+
+// New returns a Service backed by the domain's queries (store.New(pool) outside tests).
+func New(q queries) *Service { return &Service{q: q} }
+
+// Ready reports whether the domain's storage answers. Generated stub: replace with real use cases.
+func (s *Service) Ready(ctx context.Context) error {
+	if _, err := s.q.Ping(ctx); err != nil {
+		return fmt.Errorf("__NAME__: ping: %w", err)
+	}
+	return nil
+}

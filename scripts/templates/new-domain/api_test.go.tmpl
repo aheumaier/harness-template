@@ -1,0 +1,57 @@
+package api_test
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"__MOD__/internal/__NAME__/api"
+	"__MOD__/internal/__NAME__/service"
+	"__MOD__/internal/platform/requestid"
+)
+
+// fakeQueries stands in for store.Queries: the handler runs through the generated strict server and the
+// real service, without Postgres.
+type fakeQueries struct{ err error }
+
+func (f fakeQueries) Ping(context.Context) (int32, error) { return 1, f.err }
+
+// get sends GET path through requestid.Middleware (as cmd/api does) to the domain's routes.
+func get(t *testing.T, svc *service.Service, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	mux := http.NewServeMux()
+	api.Register(mux, svc)
+	rec := httptest.NewRecorder()
+	requestid.Middleware(mux).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	return rec
+}
+
+func TestGet__PASCAL__Status_OK(t *testing.T) {
+	rec := get(t, service.New(fakeQueries{}), "/__KEBAB__/status")
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("got %d %q, want 200 application/json: %s", rec.Code, rec.Header().Get("Content-Type"), rec.Body)
+	}
+	var body api.__PASCAL__Status
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.Status != api.Ok {
+		t.Fatalf("body = %s (%v), want status ok", rec.Body, err)
+	}
+}
+
+// A failing store is a 503 problem whose instance names the request (components.schemas.Problem).
+func TestGet__PASCAL__Status_StorageDown(t *testing.T) {
+	rec := get(t, service.New(fakeQueries{err: errors.New("connection refused")}), "/__KEBAB__/status")
+	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Content-Type") != "application/problem+json" {
+		t.Fatalf("got %d %q, want 503 application/problem+json: %s", rec.Code, rec.Header().Get("Content-Type"), rec.Body)
+	}
+	var p api.Problem
+	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+		t.Fatal(err)
+	}
+	want := "urn:request-id:" + rec.Header().Get(requestid.Header)
+	if p.Status != http.StatusServiceUnavailable || p.Instance == nil || *p.Instance != want {
+		t.Fatalf("problem = %+v, want status 503 and instance %q", p, want)
+	}
+}

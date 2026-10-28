@@ -1,0 +1,40 @@
+// Package api serves the __NAME__ domain's HTTP operations (OpenAPI tag "__NAME__").
+// api.gen.go is generated from api/openapi.yaml by `make gen`; this file implements it.
+package api
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+
+	"__MOD__/internal/__NAME__/service"
+	"__MOD__/internal/platform/problem"
+)
+
+// Server implements StrictServerInterface by delegating to the service.
+type Server struct{ svc *service.Service }
+
+var _ StrictServerInterface = (*Server)(nil)
+
+// Register mounts the generated routes for this tag on mux.
+func Register(mux *http.ServeMux, svc *service.Service) {
+	HandlerFromMux(NewStrictHandlerWithOptions(&Server{svc: svc}, nil, StrictHTTPServerOptions{
+		RequestErrorHandlerFunc:  problem.RequestError,
+		ResponseErrorHandlerFunc: problem.ResponseError,
+	}), mux)
+}
+
+// Get__PASCAL__Status is the generated stub operation. Replace it with the domain's real operations.
+func (s *Server) Get__PASCAL__Status(ctx context.Context, _ Get__PASCAL__StatusRequestObject) (Get__PASCAL__StatusResponseObject, error) {
+	if err := s.svc.Ready(ctx); err != nil {
+		slog.WarnContext(ctx, "__NAME__ not ready", "err", err)
+		p := ServiceUnavailableApplicationProblemPlusJSONResponse{
+			Type: "about:blank", Title: http.StatusText(http.StatusServiceUnavailable), Status: http.StatusServiceUnavailable,
+		}
+		if instance := problem.Instance(ctx); instance != "" {
+			p.Instance = &instance
+		}
+		return Get__PASCAL__Status503ApplicationProblemPlusJSONResponse{p}, nil
+	}
+	return Get__PASCAL__Status200JSONResponse{Status: Ok}, nil
+}

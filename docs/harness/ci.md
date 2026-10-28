@@ -11,7 +11,7 @@ same target is red on your machine (with `BASE_REF=origin/main` for diff-based s
 |----------|---------|----------------------|------|----------|
 | `ci.yml` | PR, push to main | `check-all` | `make setup && make check-all` minus `contract-check`, `harness-integrity`, `commits` and `specs` (own workflows, PR title, label waivers); uploads `.cache/harness/timings.jsonl` as `harness-timings-check-all` (8 days) and shows latency-budget warnings as annotations | yes |
 | | | `harness-selftest` | every fixture rejected by its sensor ([rules.md](rules.md)) | yes |
-| | | `generator-probe` | `make new-domain NAME=zzz_probe && make check`, then discards the probe and asserts a clean tree | yes |
+| | | `generator-probe` | `make new-domain NAME=zzz_probe && make check`, then the probe's generated service, handler and integration tests (`make test-integration`, NFR-B1); discards the probe and asserts a clean tree | yes |
 | `coverage.yml` | PR, push to main | `coverage` | `make setup && make coverage` into the job summary ([coverage](#coverage)); `continue-on-error`, a report, not a sensor | no |
 | `contract-gate.yml` | PR via `pull_request_target` (incl. label changes) | `api-no-breaking-change` | the **base branch's** `make contract-check` against the PR's spec when `api/openapi.yaml` changed (oasdiff, red only on breaking changes) | yes |
 | `harness-integrity.yml` | PR via `pull_request_target` (incl. label and title changes) | `harness-integrity` | the **base branch's** `make harness-integrity` against the PR head (`HARNESS_ROOT`) | yes |
