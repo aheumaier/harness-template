@@ -33,10 +33,11 @@ flowchart LR
 | `apps/api/db/migrations` | Atlas versioned migrations + `atlas.sum`. Append only. |
 | `apps/api/db/queries` | sqlc queries, one file per domain. |
 | `apps/api/tools/analyzers` | Custom go/analysis linters (`noctxroot`, `domainiso`), a nested module built into `.bin/golangci-lint-custom`. |
+| `apps/api/tools/harness` | The parsing parts of hooks and sensors ([ADR 0012](docs/adr/0012-parsing-sensors-in-go.md)): hook input, `guard-bash`, `check-links`; a nested module built into `.bin/harness`. |
 | `apps/web` | Vite + React app. Talks to the API only through `@harness-template/api-client`. |
 | `packages/api-client` | Generated hooks and zod schemas (`src/gen/`, never edited) + hand-written `src/index.ts` (`problemOf`). |
 | `packages/domain` | Pure TypeScript domain logic shared by apps: no React, no browser APIs, no HTTP. |
-| `scripts/harness` | Sensors' glue: `run.sh` (uniform failure output with remediation), `gen-check.sh`, `contract-check.sh`, `integrity-check.sh`, `check-links.sh`, `check-commits.sh`, `check-specs.sh`, `merge-base.sh`, `selftest.sh` + `fixtures/`. |
+| `scripts/harness` | Sensors' glue: `run.sh` (uniform failure output with remediation), `gen-check.sh`, `contract-check.sh`, `integrity-check.sh`, `check-commits.sh`, `check-specs.sh`, `merge-base.sh`, `selftest.sh` + `fixtures/`. |
 | `scripts/git-hooks` | Git hooks installed by `make setup` (`core.hooksPath`): `commit-msg` checks Conventional Commits. |
 | `scripts/` | `setup-worktree.sh`, `install-tools.sh` (pinned versions in `tool-versions.env`), `new-domain.sh`, `gen-schema-doc.sh`. Shell is code: shellcheck + shfmt (`.shellcheckrc`, `.editorconfig`) and bats tests in `scripts/test/` for these scripts and `.claude/hooks/`. |
 | `docs/` | Rules, ADRs, design docs, exec plans, quality grades, generated schema doc. |

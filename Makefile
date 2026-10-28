@@ -203,8 +203,8 @@ specs: ## spec-kit specs/ are well formed; feat changes to apps/ or api/ come wi
 
 ##@ Docs
 .PHONY: docs-links
-docs-links: ## Relative links and anchors in Markdown resolve; every AGENTS.md has a CLAUDE.md importing it
-	@$(RUN) check-links docs-links-resolve,docs-claude-imports-agents -- scripts/harness/check-links.sh
+docs-links: $(HARNESS) ## Relative links and anchors in Markdown resolve; every AGENTS.md has a CLAUDE.md importing it
+	@$(RUN) check-links docs-links-resolve,docs-claude-imports-agents -- $(HARNESS) check-links .
 
 ##@ Generation
 .PHONY: gen gen-check gen-sqlc gen-atlas-sum gen-oapi gen-api-client

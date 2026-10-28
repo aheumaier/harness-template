@@ -3,8 +3,10 @@
 //
 //	harness hook-input <field>...  Claude Code hook JSON on stdin → the fields, one per line
 //	harness guard-bash <root>      PreToolUse guard for Bash commands (.claude/hooks/guard-bash.sh)
+//	harness check-links <root>     docs-links-resolve, docs-claude-imports-agents (make docs-links)
 //
-// Exit 2 is a block (or unusable input) for Claude Code; the hooks pass it on.
+// Exit 2 is a block (or unusable input) for Claude Code; the hooks pass it on. Sensors exit 1 on findings
+// and 2 when they cannot run.
 package main
 
 import (
@@ -18,7 +20,7 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root>"
+const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness check-links <root>"
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
@@ -54,6 +56,19 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stderr, "guard-bash: blocked: %v\n", err)
 		return 2
+	case "check-links":
+		if len(args) != 2 {
+			break
+		}
+		bad, err := checkLinks(args[1], stdout)
+		switch {
+		case err != nil:
+			fmt.Fprintf(stderr, "harness check-links: %v\n", err)
+			return 2
+		case bad:
+			return 1
+		}
+		return 0
 	}
 	fmt.Fprintln(stderr, usage)
 	return 2

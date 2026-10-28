@@ -90,7 +90,7 @@ case "$file" in
     ;;
 
   *.md)
-    check $RUN check-links docs-links-resolve -- scripts/harness/check-links.sh
+    check $RUN check-links docs-links-resolve,docs-claude-imports-agents -- .bin/harness check-links .
     ;;
 esac
 exit 0

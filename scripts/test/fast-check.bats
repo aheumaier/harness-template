@@ -59,3 +59,15 @@ web_sandbox() {
   FAKE_ESLINT_EXIT=1 run -2 "$SANDBOX/.claude/hooks/fast-check.sh" apps/web/src/a.ts
   has 'remediation:'
 }
+
+@test "checks an edited Markdown file's links through .bin/harness, with the remediation" {
+  sandbox .claude/hooks/fast-check.sh scripts/harness/run.sh scripts/harness/timing.sh scripts/tool-versions.env \
+    docs/harness/rules.md .bin/harness
+  echo docs/harness/rules.md >>"$SANDBOX/.git/info/exclude" # run.sh reads it; its links point outside the sandbox
+  printf '# A\n\n[ok](#a)\n' >"$SANDBOX/docs/a.md"
+  run -0 "$SANDBOX/.claude/hooks/fast-check.sh" docs/a.md
+  printf '[gone](gone.md)\n' >"$SANDBOX/docs/a.md"
+  run -2 "$SANDBOX/.claude/hooks/fast-check.sh" docs/a.md
+  has 'docs/a.md: broken link (gone.md): docs/gone.md does not exist [docs-links-resolve]'
+  has 'remediation:'
+}

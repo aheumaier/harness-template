@@ -325,13 +325,13 @@ In CI these run in the `pr-conventions` job of `harness-integrity.yml` (base bra
 ### docs-links-resolve
 - **Rule:** Every relative link and `#anchor` in tracked Markdown files resolves.
 - **Why:** Guides are the agent's map; a dead link silently sends it searching (or guessing) instead of reading.
-- **Sensor:** `scripts/harness/check-links.sh` (`make docs-links`, part of `make check`).
+- **Sensor:** `.bin/harness check-links` (`apps/api/tools/harness/checklinks.go`; `make docs-links`, part of `make check`; fast-check hook per Markdown file).
 - **Remediation:** Point the link at the file's current path (or heading slug), or remove it if the target is gone; when you move a doc, update every link to it in the same change.
 - **Fixture:** `fixtures/docs-broken-link` · Status: seed
 
 ### docs-claude-imports-agents
 - **Rule:** Every `AGENTS.md` has a `CLAUDE.md` in the same directory with the line `@AGENTS.md` (plus any Claude-Code-only notes).
 - **Why:** Claude Code loads `CLAUDE.md`, not `AGENTS.md`; without the import an area guide is invisible to it, while other agents read `AGENTS.md` directly. One source, two entry points.
-- **Sensor:** `scripts/harness/check-links.sh` (`make docs-links`, part of `make check`).
+- **Sensor:** `.bin/harness check-links` (`apps/api/tools/harness/checklinks.go`; `make docs-links`, part of `make check`; fast-check hook per Markdown file).
 - **Remediation:** Create `CLAUDE.md` next to the `AGENTS.md` the message names, containing the line `@AGENTS.md`; put shared guidance in `AGENTS.md`, never only in `CLAUDE.md`.
 - **Fixture:** `fixtures/docs-agents-without-claude` · Status: seed
