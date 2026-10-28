@@ -59,7 +59,7 @@ reported: [ADR 0013](../../adr/0013-harness-nfr-budgets.md). Numbers land in `sc
 | Id | Requirement | Target | Today | Measured by | On violation |
 |----|-------------|--------|-------|-------------|--------------|
 | NFR-H1 | Each PreToolUse hook, per call | ≤ 50 ms | 30 ms (protect-harness), 21 ms (guard-bash), 24 ms (only-make-check), timing included (2026-10-28) | hook wrapper timing | warn; alert |
-| NFR-H2 | fast-check (PostToolUse), per edited file | ≤ 1 s | 0.04–0.5 s; `.tsx` in apps/web 1.05 s, over budget (type-aware eslint 0.97 s alone; 2026-10-28) | fast-check timing | warn; alert |
+| NFR-H2 | fast-check (PostToolUse), per edited file | ≤ 1 s | 0.02–0.5 s (`.md` 0.08 s, was 0.37); `.tsx` in apps/web 1.05 s, over budget (type-aware eslint 0.97 s alone; 2026-10-28) | fast-check timing | warn; alert |
 | NFR-H3 | `make check`, change without shell or harness files | ≤ 10 s | 2.9 s (2026-10-28, warm; Go test cache, gen-check stamp) | `run.sh` + make wall time | warn; alert |
 | NFR-H4 | `make check`, any change | ≤ 60 s | 36 s (2026-10-28, shell change, `bats`-bound) | same | warn; alert |
 | NFR-H5 | one sensor in `make check` | ≤ 5 s, or its row in `budgets.txt` | `bats` 27.9 s (2026-10-28), `go-test` 0.37 s, `analyzer-tests` 0.37 s (Go test cache, 2026-10-28; uncached in `full`); rest ≤ 5 s | `run.sh` | warn; alert |
@@ -105,7 +105,8 @@ One slice per commit, in this order (the [loop prompt](0002-loop-prompt.md) work
   eslint on the file only, tsc stays in `make check`
 - [x] P8 — 3b35ea1 — PreToolUse hooks protect-harness 50 → 30 ms (Edit), 45 → 25 ms (Bash), guard-bash 45 → 21 ms,
   only-make-check 43 → 24 ms, fast-check stdin 40 → 22 ms; `.bin/harness` parses hook input and guard-bash commands
-- [ ] P9 (phase 3) port `check-links`
+- [x] P9 — a52802e — `make docs-links` 0.37 → 0.06 s (sensor 0.40 → 0.02 s), fast-check on a Markdown file 374 → 80 ms;
+  `.bin/harness check-links` (goldmark, GitHub slugs)
 - [ ] P10 (phase 3) port `integrity-check`; workflow builds the binary from the base branch
 - [ ] P11 (phase 2) `affected.sh`; scoped Go and web targets; full run on config changes
 
@@ -285,3 +286,13 @@ Per [ADR 0012](../../adr/0012-parsing-sensors-in-go.md): `guard-bash` and every 
   The module is protected and code-owned; its tests run as `make test-harness` (sensor `harness-tests`).
   Gap: `vuln-go` and `lint-go` cover only `apps/api`, not the nested `tools/` modules (TD-3). Selftest
   30/30. Integrity names only this slice's files; rest of check-all and integration green.
+- 2026-10-28: P9 (a52802e). `check-links.sh` forked awk/tr/sed/grep per anchor link and approximated GitHub
+  slugs in ASCII: 0.4 s for 77 links, linear in links times processes. `.bin/harness check-links` parses each
+  Markdown file once (goldmark, GFM) and caches each target's slugs: 0.02 s. Same rule ids, lines and exit
+  codes; stricter where the regexes guessed (github-slugger rules with Unicode letters and `-1`/`-2` for
+  duplicates, rendered heading text, setext headings, `~~~` and indented code, images, reference links); the
+  repo's docs pass unchanged. 3 bats cases plus both fixtures and 9 new cases as Go table tests; 5 mutants of
+  the checker all killed. Script and bats file deleted. fast-check reports both docs rules and gained a bats
+  test for the Markdown route (sandbox excludes `rules.md`, whose links leave the sandbox). Selftest 30/30
+  (both docs fixtures rejected). Integrity names only this slice's files; rest of check-all and integration
+  green.
