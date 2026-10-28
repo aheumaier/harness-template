@@ -102,8 +102,10 @@ End with `LOOP: BLOCKED <reason>` and change nothing if any of these is true:
 - Docker is down.
 
 **Stale lanes.** A `lane/<ID>` worktree whose subagent this session did not start (a new session, or after a
-crash) has no one working in it. Resume it: spawn a new subagent with the §5b brief plus "Your worktree holds
-a previous attempt's uncommitted changes. Check them against the slice, keep what is right, and finish."
+crash) has no one working in it. First check the running tasks for an agent on that slice; if one runs,
+wait for its report instead. Otherwise resume it: spawn a new subagent with the §5b brief plus "Your
+worktree holds a previous attempt's uncommitted changes. Check them against the slice, keep what is right,
+and finish."
 
 ### 2. Read
 
@@ -275,7 +277,8 @@ this brief, with the placeholders filled in:
 - **Review once.** While the make checks run, have the `code-reviewer` subagent review the lane's
   uncommitted diff (`git -C <lane> diff HEAD` plus its untracked files). When the slice adds packages,
   dependencies, containers or CI jobs, also run `architecture-reviewer`. This is the slice's only review:
-  the slice subagent never runs reviewers itself. Findings that need a fix go back with the retry (§5d); a
+  the slice subagent never runs reviewers itself. Wait for the checks and the reviews, then send every
+  finding that needs a fix and every failing check in one §5d message, so they cost one retry together; a
   finding you reject gets a Log line in §5f saying why.
 - Every new rule:
   - its `rules.md` entry passes `rules-fixture-claims` (once Q3 exists);
@@ -285,8 +288,8 @@ this brief, with the placeholders filled in:
 - The slice's exit evidence from the plan, such as the NFR measured again or the make target producing the
   claimed output.
 
-**d. Retry once.** On a failed check, send the subagent the failing command and its first error lines via
-SendMessage, then check again.
+**d. Retry once.** On a failed check or a review finding to fix, send the subagent the failing commands with
+their first error lines and the findings, all in one SendMessage, then check again (no second review).
 
 **e. Block.** If it fails a second time:
 
