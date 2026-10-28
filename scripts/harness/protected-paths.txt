@@ -35,6 +35,7 @@ scripts/git-hooks/* config
 scripts/test/*
 apps/api/tools/analyzers/* config
 apps/api/tools/harness/* config
+apps/api/internal/platform/approvaltest/* config
 .claude/hooks/* config
 .claude/*
 .github/*

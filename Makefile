@@ -60,7 +60,7 @@ db-reset: ## Drop this worktree's database volume, recreate, migrate
 	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
 
 check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=60s any: NFR-H3/H4): format, lint, arch, unit tests, secrets, gen-check
-	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links fixture-claims lint-web arch-web typecheck-web test-web
+	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links fixture-claims approved-check lint-web arch-web typecheck-web test-web
 	@$(MAKE) gen-check
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
@@ -118,13 +118,13 @@ fmt: $(GCL) ## Auto-format Go and shell code
 	@shfmt -w $(SH_FILES)
 
 lint-go: $(GCL)
-	@$(call scoped,go,./...) $(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-domain-isolation,go-structured-logging,go-sec,go-format --dir $(API) -- ../../$(GCL) run $$scope
+	@$(call scoped,go,./...) $(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-test-helpers-only-in-tests,go-domain-isolation,go-structured-logging,go-sec,go-format --dir $(API) -- ../../$(GCL) run $$scope
 
 arch-go:
 	@$(RUN) go-arch-lint go-layers --dir $(API) -- go-arch-lint check --output-color=false
 
 test-go:
-	@$(call scoped,go,./...) $(RUN) go-test go-tests-pass --dir $(API) -- go test -race $(GO_TEST_COUNT) -short $$scope
+	@$(call scoped,go,./...) $(RUN) go-test go-tests-pass,api-responses-approved --dir $(API) -- go test -race $(GO_TEST_COUNT) -short $$scope
 
 test-analyzers:
 	@$(RUN) analyzer-tests go-tests-pass --dir $(API)/tools/analyzers -- go test $(GO_TEST_COUNT) ./...
@@ -156,11 +156,21 @@ knip: ## Unused files, exports and dependencies in the JS workspace
 	@$(RUN) knip web-no-dead-code -- knip
 
 ##@ Contract (api/openapi.yaml)
-.PHONY: lint-api contract-check
+.PHONY: lint-api contract-check approve approved-check
 API_RULES := api-kebab-case-paths,api-camel-case-properties,api-operation-metadata,api-documented-errors,api-errors-problem-json
 
 lint-api: ## Spectral style + error-contract rules on the OpenAPI spec
 	@$(RUN) spectral $(API_RULES) -- spectral lint api/openapi.yaml --ruleset .spectral.yaml --fail-severity=warn --quiet
+
+approve: $(HARNESS) ## Rewrite the approved responses from the handler tests, then check them; review the diff
+	@$(RUN) approve go-tests-pass --dir $(API) -- env APPROVE_RESPONSES=1 go test -count=1 -short ./...
+	@HARNESS_SCOPE=full $(MAKE) approved-check
+
+# In make check, runs only when the spec, an approved response or a harness file changed (rules.md#harness-scope).
+approved-check: $(HARNESS) ## Every approved response (testdata/approved/*.json) is one api/openapi.yaml allows
+	@if scripts/harness/unchanged.sh api/openapi.yaml '*/testdata/approved/*'; then \
+	  echo "$@: skipped, neither the spec nor an approved response changed (make check-all runs it)"; \
+	else $(RUN) approved-check api-approved-match-contract -- $(HARNESS) approved-check .; fi
 
 contract-check: ## oasdiff breaking-change check vs merge base with BASE_REF (contract-gate)
 	@$(RUN) oasdiff api-no-breaking-change -- env BASE_REF="$(BASE_REF)" scripts/harness/contract-check.sh

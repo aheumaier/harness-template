@@ -28,12 +28,12 @@ flowchart LR
 |------|------------|
 | `api/openapi.yaml` | OpenAPI 3.1 contract. One tag per domain plus `platform`. Generator markers `harness:domain-*`. |
 | `apps/api/cmd/api` | Entry point. `main.go` creates the only root context and wires platform providers; `routes.go` registers every tag's handlers (marker `harness:domain-routes`). |
-| `apps/api/internal/platform` | Shared plumbing, imports no domain: `config` (env, fail fast), `logging` (slog JSON with request and trace IDs), `requestid` (`X-Request-Id`), `accesslog` (one line per request), `db` (pgx pool with query spans, `db.Pool`), `auth` (fail-closed stub), `telemetry` (OTel), `problem` (RFC 9457 errors), `health` (`/healthz`). |
+| `apps/api/internal/platform` | Shared plumbing, imports no domain: `config` (env, fail fast), `logging` (slog JSON with request and trace IDs), `requestid` (`X-Request-Id`), `accesslog` (one line per request), `db` (pgx pool with query spans, `db.Pool`), `auth` (fail-closed stub), `telemetry` (OTel), `problem` (RFC 9457 errors), `health` (`/healthz`); test-only: `approvaltest` (handler tests pin responses, [ADR 0022](docs/adr/0022-approved-api-responses.md)). |
 | `apps/api/internal/<domain>` | A business domain, created by `make new-domain`; see [Layers](#layers). None exist yet. |
 | `apps/api/db/migrations` | Atlas versioned migrations + `atlas.sum`. Append only. |
 | `apps/api/db/queries` | sqlc queries, one file per domain. |
 | `apps/api/tools/analyzers` | Custom go/analysis linters (`noctxroot`, `domainiso`), a nested module built into `.bin/golangci-lint-custom`. |
-| `apps/api/tools/harness` | The parsing parts of hooks and sensors ([ADR 0012](docs/adr/0012-parsing-sensors-in-go.md)): hook input, `guard-bash`, `check-links`, `integrity-check`; a nested module built into `.bin/harness`. |
+| `apps/api/tools/harness` | The parsing parts of hooks and sensors ([ADR 0012](docs/adr/0012-parsing-sensors-in-go.md)): hook input, `guard-bash`, `check-links`, `fixture-claims`, `approved-check`, `integrity-check`; a nested module built into `.bin/harness`. |
 | `apps/web` | Vite + React app. Talks to the API only through `@harness-template/api-client`. |
 | `packages/api-client` | Generated hooks and zod schemas (`src/gen/`, never edited) + hand-written `src/index.ts` (`problemOf`). |
 | `packages/domain` | Pure TypeScript domain logic shared by apps: no React, no browser APIs, no HTTP. |

@@ -26,3 +26,4 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0019](0019-inferential-sensors-are-advisory.md) | Inferential sensors are advisory; a finding class seen twice becomes a computational rule | proposed |
 | [0020](0020-test-coverage-is-a-trend.md) | Test coverage is a trend, never a gate | proposed |
 | [0021](0021-telemetry-export-over-otlp-http.md) | Telemetry leaves the process over OTLP/HTTP, one exporter per signal (amends 0002, 0018) | proposed |
+| [0022](0022-approved-api-responses.md) | Handler tests pin API responses to approved files, checked against the contract | proposed |

@@ -1,6 +1,6 @@
 # apps/api/internal
 
-- `platform/` is plumbing (config, logging, requestid, accesslog, db, auth, telemetry, problem, health). It imports no domain.
+- `platform/` is plumbing (config, logging, requestid, accesslog, db, auth, telemetry, problem, health; test-only: approvaltest, which handler tests use to pin responses). It imports no domain.
   Add to it only what every domain needs; domain logic never goes here.
 - Every other directory is a domain created by `make new-domain NAME=<name>` with `model/ store/ service/ api/`.
   Read the domain's own `AGENTS.md` before changing it.

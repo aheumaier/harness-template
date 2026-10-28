@@ -1,0 +1,13 @@
+{
+  "headers": {
+    "Content-Type": "application/problem+json",
+    "X-Request-Id": "approved-request"
+  },
+  "body": {
+    "detail": "database unreachable",
+    "instance": "urn:request-id:approved-request",
+    "status": 503,
+    "title": "Service Unavailable",
+    "type": "about:blank"
+  }
+}

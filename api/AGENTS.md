@@ -6,5 +6,8 @@
 - Paths are kebab-case, properties camelCase, errors `application/problem+json` (Spectral, `make lint-api`).
 - Breaking changes (removing or renaming paths, parameters, properties; tightening types) fail the
   contract-gate (`make contract-check`). Prefer additive changes; deprecate before removing.
+- Handler tests pin responses to `testdata/approved/<operationId>.<status>[.<case>].json` (`approvaltest.Verify`); an
+  intended change is `make approve` plus its reviewed diff, and every approved file must be a response this
+  spec allows (`make approved-check`).
 - Keep the `# harness:domain-*` marker comments: `make new-domain` inserts there.
 - Recipe: [.claude/skills/add-endpoint](../.claude/skills/add-endpoint/SKILL.md).

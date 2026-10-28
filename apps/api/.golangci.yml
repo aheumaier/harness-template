@@ -59,6 +59,14 @@ linters:
           deny:
             - pkg: net/http
               desc: "[go-http-only-in-api] net/http belongs in internal/<domain>/api, platform or cmd. Fix: keep transport concerns (status codes, headers, requests) in the api layer and pass plain Go types into the service. See docs/harness/rules.md#go-http-only-in-api"
+        # rules.md#go-test-helpers-only-in-tests (ADR 0022)
+        go-test-helpers-only-in-tests:
+          files:
+            - "$all"
+            - "!$test"
+          deny:
+            - pkg: github.com/aheumaier/harness-template/apps/api/internal/platform/approvaltest
+              desc: "[go-test-helpers-only-in-tests] approvaltest pins responses in handler tests and writes files under testdata/. Fix: import it only from a _test.go file; production code never needs it. See docs/harness/rules.md#go-test-helpers-only-in-tests"
   exclusions:
     generated: strict
     rules:

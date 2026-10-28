@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/aheumaier/harness-template/apps/api/internal/platform/approvaltest"
+	"github.com/aheumaier/harness-template/apps/api/internal/platform/requestid"
 )
 
 type pingFunc func(context.Context) error
@@ -24,11 +27,14 @@ func TestGetHealth(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			mux := http.NewServeMux()
 			Register(mux, tc.ping)
+			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+			req.Header.Set(requestid.Header, "approved-request") // a fixed ID keeps the response deterministic
 			rec := httptest.NewRecorder()
-			mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+			requestid.Middleware(mux).ServeHTTP(rec, req)
 			if rec.Code != tc.wantStatus || rec.Header().Get("Content-Type") != tc.wantContent {
 				t.Fatalf("got %d %q, want %d %q", rec.Code, rec.Header().Get("Content-Type"), tc.wantStatus, tc.wantContent)
 			}
+			approvaltest.Verify(t, "getHealth", rec)
 		})
 	}
 }
