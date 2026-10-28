@@ -99,7 +99,10 @@ PR; **–** needs none.
   the API module; golangci-lint 498 → 539 ms warm (full scope); selftest 41 → 42 fixtures
 - [x] P1.1 — 55a6915 — no stack chosen → [ADR 0017](../../adr/0017-per-worktree-observability-stack.md)
   proposed: one `grafana/otel-lgtm:0.36.0@sha256:57c04cbd…` per worktree, 0.53 GiB idle, 3.7 s to ready
-- [ ] P1.2 — – — contract + platform middleware: request ID, access log, `otelhttp` server spans, pgx tracer
+- [x] P1.2 — 4e2d8bd — a request left no trace → `X-Request-Id` on every response (declared on `/healthz`
+  200 only, TD-16), one access line and one `otelhttp` server span per request, every query a child span,
+  all carrying the request and trace ID; NFR-O1 itself is measured once `make logs` exists (P1.4);
+  [ADR 0018](../../adr/0018-http-and-db-instrumentation.md) proposed
 - [ ] P1.3 — – — OTLP exporter wired to config; metrics (RED per route)
 - [ ] P1.4 — H — `compose.yaml` profile `obs` on the worktree's port block; `make obs-up`, `make logs`,
   `make metrics`
@@ -502,6 +505,18 @@ code: `deadcode` and knip do that without false positives from entry points they
   - Ports +3..+7 of the worktree block, `127.0.0.1` only. P1.4 must widen `scripts/setup-worktree.sh` (the
     free-block probe beyond `base+2`, `reserved_ports` beyond `DB|API|WEB`), or two worktrees can collide.
   - Pyroscope ships in the image and runs unused; part of the measured 0.53 GiB.
+- **A15 — instrumentation choices (P1.2).**
+  - `otelpgx` v0.13.0 (third-party, pre-1.0) rather than an in-repo `pgx.QueryTracer`: OTel semconv names,
+    no query arguments recorded by default. `otelhttp` v0.72.0; `httpsnoop` promoted from indirect to
+    direct. ADR 0018 (proposed) amends ADR 0002's "standard library only for transport".
+  - Only the W3C TraceContext propagator. A client's `traceparent` and valid `X-Request-Id` are trusted
+    until production (SECURITY.md).
+  - An invalid incoming ID is replaced, not rejected; the problem `instance` is `urn:request-id:<id>`.
+  - `accesslog` writes `r.Pattern` onto otelhttp's request copy so the span gets the route (an otelhttp
+    internal); `TestHandler_CorrelatesResponseLogAndSpan` guards it across otelhttp bumps.
+  - **Proposed, not made** (protected or out of slice): a depguard rule keeping otelhttp, otelpgx and
+    httpsnoop inside `internal/platform`; a Spectral rule that every 2xx declares `X-Request-Id` (after
+    TD-16); the `add-endpoint` skill naming the header; the `new-domain.sh` 503 setting `instance`.
 
 ## Log
 
@@ -602,3 +617,10 @@ code: `deadcode` and knip do that without false positives from entry points they
   orchestrator: P1.2's subagent ran both reviewers and the orchestrator ran them again. No `make db-down`
   target exists, so closing a lane calls `docker compose -p <project> down -v` directly (worth a target).
   P1.2 still finishes the old way, in this worktree.
+- 2026-10-28: P1.2 integrated (4e2d8bd). The summary of the previous context claimed reviewers were
+  running; none had been started, so the orchestrator ran `code-reviewer` and `architecture-reviewer` once.
+  Findings sent back in one retry: ADR 0018 (blocking), header re-applied by the middleware instead of
+  echoed by handlers, otelhttp behind `telemetry.Middleware`, WithGroup rule + TD-18, TD-19 (globals),
+  contract-test cut, `http.StatusText`. Deferred: `telemetry.Setup` span processors, a problem helper
+  (P2.1), `/healthz` noise in logs and traces (P1.3 decides). Fold 1ec83b1 (protected harness Go, no
+  reviewer run) into the Phase 1 gate review.
