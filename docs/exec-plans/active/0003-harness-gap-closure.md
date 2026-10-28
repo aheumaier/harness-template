@@ -64,7 +64,7 @@ ADR.
 | Id | Requirement | Target | Today | Measured by | On violation |
 |----|-------------|--------|-------|-------------|--------------|
 | NFR-H8 | `pre-commit` git hook, typical commit (≤ 20 staged files) | ≤ 2 s | no hook | `timing.sh` row `pre-commit`, local only (the hook never runs in CI) | warn |
-| NFR-H9 | `repo-no-secrets` in `make check` | ≤ 5 s | not run | `run.sh`, budgets row `repo-no-secrets 5000 NFR-H9` | warn; alert. If it stays over budget, the full scan moves to `check-all` and `check` scans changed files only |
+| NFR-H9 | `repo-no-secrets` in `make check` | ≤ 5 s | 0.43 s warm, full tree (Q1) | `run.sh`, budgets row `repo-no-secrets 5000 NFR-H9` | warn; alert. If it stays over budget, the full scan moves to `check-all` and `check` scans changed files only |
 | NFR-B1 | Every domain created by `make new-domain` has a passing service test, handler test and integration test before its first edit | 100 % | 0 domains, scaffold has no tests | CI generator probe (rules.md:240) runs the generated tests | **fail** |
 | NFR-B2 | The app's critical path is covered by an e2e test that runs against this worktree's `make dev` | ≥ 1 journey (`/healthz` + web shell renders) | none | `make e2e` in `check-all` and CI | **fail** |
 | NFR-O1 | An agent in a fresh worktree can fetch the log lines of one request by its ID and a p95 latency, through `make` targets only | yes | no | integration test in `check-all`: request → `make logs REQUEST_ID=…` | **fail** |
@@ -90,8 +90,9 @@ PR; **–** needs none.
 
 - [x] Q0 — 3b112a9 — no ADR → [ADR 0015](../../adr/0015-anticipated-rules-and-nfr-classes-b-o.md) proposed:
   Phase 0 rules adopted as `team-convention`, NFR classes B and O (fail) amend ADR 0013
-- [ ] Q1 — H — Trivy: pinned, sha256-verified binary; `repo-no-secrets` in `check`; `deps-no-known-vulns` (JS
-  + every `go.mod`) in `check-all`, CI and weekly drift
+- [x] Q1 — d5cbcdd — `repo-no-secrets` not run → 0.43 s warm, full tree, in `make check`; no JS/nested-`go.mod`
+  vuln scan → `deps-no-known-vulns` (4 manifests, 0.55 s warm) in `check-all`, CI, drift; Trivy v0.76.0, atlas,
+  shellcheck sha256-pinned
 - [ ] Q2 — H — `pre-commit` git hook: secret scan + cheap per-file sensors on staged files (NFR-H8)
 - [ ] Q3 — H — doc-truth sensor `rules-fixture-claims`; then fix every claim it flags
 - [ ] Q4 — H — `go-structured-logging`: `forbidigo` (`fmt.Print*`, `log.*` outside `platform`) + `sloglint`
@@ -380,6 +381,28 @@ the feedback.
   the reviewer runs locally from the PR template checklist only.
 - **A7 — mutation tools.** `gremlins` (Go) and Stryker (TS) are maintained and pinnable in `.bin/`. Verify
   in P2.6.
+- **A8 — Trivy choices (Q1).**
+  - **Version.** v0.76.0 (2026-10-14) is the newest release ≥ 14 days old; v0.76.1 (2026-10-21) may be
+    adopted from 2026-11-04. The four sha256 pins match upstream `checksums.txt`, checked independently by
+    the orchestrator. cosign was not on PATH, so the signature check is a human TODO. Atlas pins match
+    ariga's `.sha256` files. ShellCheck publishes no checksum file, so its pins come from the GitHub asset
+    digests.
+  - **A2 held.** With `HTTP(S)_PROXY=http://127.0.0.1:9`, the clean full tree passes and a planted key is
+    found. Without the skip flags, Trivy's version check hits the proxy and is refused, which shows the
+    blackhole works. So the rule is in `make check`.
+  - **Input set.** A temp copy of `git ls-files -co --exclude-standard`, kept outside the repo. A copy under
+    `.cache/` raced eslint under `-j4` (ENOENT in `check-all`), which breaks NFR-R1. A bats case now asserts
+    the copy is outside the repo.
+  - **No waivers.** Trivy's built-in path allow-list is off (`scripts/harness/trivy-secret.yaml`); before,
+    keys in `*.md` and `*_test.go` passed. `--ignorefile ''` is set and `TRIVY_*` is unset.
+  - **Vuln DB.** Pulled from `ghcr.io/aquasecurity/trivy-db:2`, not the default `mirror.gcr.io` (a Docker Hub
+    mirror). `--include-dev-deps` is on. The scan fails closed on a manifest with no packages.
+  - **Open, for a human:**
+    - No `--ignore-unfixed` or severity floor (the plan's command as written). An advisory with no fixed
+      release turns `check-all` red with no way to follow the remediation (`go-no-known-vulns` has the same
+      exposure).
+    - `trivy-vuln` has no budgets row: no NFR covers `check-all` sensors.
+    - `actions/cache` saves only on job success, so a red run re-downloads the DB (~1.6 GB).
 
 ## Log
 
@@ -397,3 +420,10 @@ the feedback.
 - 2026-10-28: Q0 done (3b112a9). ADR 0015 proposed; ADR 0013 left unchanged (ADRs are never rewritten).
   `make check` and `make harness-selftest` (32/32) green. `make check` ran bats (34 s, over its 5 s NFR-H5
   budget, warn only) because the branch's harness commits differ from `main` (ADR 0014 fail-closed).
+- 2026-10-28: Q1 done (d5cbcdd) after one retry. The orchestrator's first `make -k check-all` failed in
+  eslint (ENOENT on Trivy's in-repo temp copy, see A8). Once the copy moved outside the repo:
+  - `make check` and `make test-integration` green;
+  - `make harness-selftest` 33/33, including `repo-secret-planted`;
+  - a planted untracked key failed with rule id and remediation, offline;
+  - in `make -k check-all`, only `harness-config-not-loosened` fails, on this slice's protected files (the
+    human gate).
