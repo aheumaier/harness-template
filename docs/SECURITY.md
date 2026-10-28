@@ -10,8 +10,11 @@ Defaults this template ships with, and what a product built on it must do before
   in the web client.
 - **No secrets in the repo.** `.env*` is gitignored; `.env.local` is generated per worktree with local-only
   credentials. Agents are denied reading `.env*` (`.claude/settings.json`).
-- **Dependency vulnerabilities:** `govulncheck` in `make check-all` and weekly drift; JS installs honour
-  pnpm's `minimumReleaseAge`.
+- **Dependency vulnerabilities:** `govulncheck` (root Go module) and Trivy (`pnpm-lock.yaml` and every
+  `go.mod`, rule `deps-no-known-vulns`) in `make check-all`, CI and weekly drift; JS installs honour
+  pnpm's `minimumReleaseAge: 1440` (24 h, `pnpm-workspace.yaml`). It is not strict: when no version that old
+  matches, pnpm installs a newer one and records it in `minimumReleaseAgeExclude`, which a PR review must
+  check.
 - **Errors** never expose internals: unexpected errors are a generic 500 problem; details go to logs.
 - **Postgres** binds to `127.0.0.1` only.
 

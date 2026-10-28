@@ -6,5 +6,6 @@
 - Domain logic without React (calculations, validation, formatting rules) goes in `packages/domain`, which
   may not import React, browser APIs or apps (dependency-cruiser).
 - Never import from another app (`apps/*`); share code through `packages/*`.
-- Tests: Vitest + Testing Library next to the component (`*.test.tsx`), run by `make check`.
+- Tests: Vitest, `node` environment, `renderToString` from `react-dom/server`, next to the component
+  (`*.test.tsx`), run by `make check`. No DOM and no Testing Library yet (exec plan 0003, P2.2).
 - `make dev` serves this app on the worktree's `WEB_PORT`.

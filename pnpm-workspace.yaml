@@ -7,6 +7,14 @@ allowBuilds:
   esbuild: true       # verifies its platform binary
   "@scarf/scarf": false # install telemetry
 
+# pnpm 12's built-in default, made explicit (pnpm.io/settings/dependency-resolution#minimumreleaseage):
+# install no version published less than 24 h ago. Setting it explicitly would also turn
+# minimumReleaseAgeStrict on, so it is pinned to the default (false): when no old-enough version matches,
+# pnpm installs a newer one and records it in minimumReleaseAgeExclude below, for review in the PR.
+# Raising the age or turning strict on is a new policy and needs its own reason.
+minimumReleaseAge: 1440
+minimumReleaseAgeStrict: false
+
 minimumReleaseAgeExclude:
   - "@tanstack/query-core@5.105.0"
   - "@tanstack/react-query@5.105.0"

@@ -56,7 +56,7 @@ db-reset: ## Drop this worktree's database volume, recreate, migrate
 	@$(WITH_ENV) docker compose --progress quiet down -v; docker compose --progress quiet up -d --wait db
 	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
 
-check: $(HARNESS) ## Fast sensors (<60s warm): format, lint, arch, unit tests, secrets, gen-check
+check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=60s any: NFR-H3/H4): format, lint, arch, unit tests, secrets, gen-check
 	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links fixture-claims lint-web arch-web typecheck-web test-web
 	@$(MAKE) gen-check
 

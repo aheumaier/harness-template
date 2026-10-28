@@ -56,18 +56,10 @@ From a comparison on 2026-10-28 (`perf/harness-nfr` @ 53ec497). ✅ present · �
 
 ## NFRs
 
-New rows. Budgets land in `scripts/harness/budgets.txt` (protected; raising one is a loosening). The table
-moves to `docs/harness/nfr.md` with 0002's (Q5) once this plan is accepted. ADR 0013 defines only latency (H,
-warn) and reliability (R, fail) NFRs; the behaviour (B) and observability (O) classes are added by the Q0
-ADR.
-
-| Id | Requirement | Target | Today | Measured by | On violation |
-|----|-------------|--------|-------|-------------|--------------|
-| NFR-H8 | `pre-commit` git hook, typical commit (≤ 20 staged files) | ≤ 2 s | 0.57 s warm, 10 staged files (Q2) | `timing.sh` row `pre-commit`, local only (the hook never runs in CI) | warn |
-| NFR-H9 | `repo-no-secrets` in `make check` | ≤ 5 s | 0.43 s warm, full tree (Q1) | `run.sh`, budgets row `repo-no-secrets 5000 NFR-H9` | warn; alert. If it stays over budget, the full scan moves to `check-all` and `check` scans changed files only |
-| NFR-B1 | Every domain created by `make new-domain` has a passing service test, handler test and integration test before its first edit | 100 % | 0 domains, scaffold has no tests | CI generator probe (rules.md:240) runs the generated tests | **fail** |
-| NFR-B2 | The app's critical path is covered by an e2e test that runs against this worktree's `make dev` | ≥ 1 journey (`/healthz` + web shell renders) | none | `make e2e` in `check-all` and CI | **fail** |
-| NFR-O1 | An agent in a fresh worktree can fetch the log lines of one request by its ID and a p95 latency, through `make` targets only | yes | no | integration test in `check-all`: request → `make logs REQUEST_ID=…` | **fail** |
+This plan's NFRs (NFR-H8, NFR-H9, NFR-B1, NFR-B2, NFR-O1) live in [docs/harness/nfr.md](../../harness/nfr.md)
+with plan 0002's (moved in Q5). Budgets land in `scripts/harness/budgets.txt` (protected; raising one is a
+loosening). ADR 0013 defines only latency (H, warn) and reliability (R, fail) NFRs; the behaviour (B) and
+observability (O) classes are added by [ADR 0015](../../adr/0015-anticipated-rules-and-nfr-classes-b-o.md).
 
 Inferential sensors get **no** blocking NFR: an LLM verdict is not reproducible, so it cannot meet NFR-R1.
 They comment, never fail (Phase 3, ADR).
@@ -299,7 +291,7 @@ the feedback.
   - a handler test (strict server + `httptest`)
   - an integration test (`-tags=integration`, real Postgres)
 
-  The CI generator probe (rules.md:240) generates a domain and runs them (NFR-B1). The scaffold's inline heredocs move to template files
+  The CI generator probe ([ci.md](../../harness/ci.md)) generates a domain and runs them (NFR-B1). The scaffold's inline heredocs move to template files
   under `scripts/templates/new-domain/` while this is touched.
 - **P2.2 — component tests.** Decide jsdom + `@testing-library/react` versus keeping `renderToString`. Rule:
   add the dependency the first time a test needs interaction or effects; until then the guide from Q5 stands.
