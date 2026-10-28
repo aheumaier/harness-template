@@ -30,9 +30,31 @@ STUB
   export BASE_REF=main
 }
 
-@test "usage error without a mode" {
+@test "usage error without a mode, or with --staged on vuln" {
   run -2 "$T"
-  has "usage: trivy.sh secret|vuln"
+  has "usage: trivy.sh secret [--staged] | vuln"
+  run -2 "$T" vuln --staged
+}
+
+@test "secret --staged: scans the index version of the staged files only, whatever the scope" {
+  echo staged >"$SANDBOX/docs/old.md"
+  echo new >"$SANDBOX/docs/new.md"
+  git -C "$SANDBOX" add docs/old.md docs/new.md
+  echo 'working tree only' >"$SANDBOX/docs/old.md" # unstaged edit: not what gets committed
+  echo untracked >"$SANDBOX/docs/untracked.md"
+  git -C "$SANDBOX" rm -q docs/gone.md
+  echo 'cat docs/old.md' >>"$SANDBOX/.bin/trivy" # the stub (written by setup, not a link) prints the content
+  HARNESS_SCOPE=full run -0 "$T" secret --staged
+  [[ "$output" == $'scanned: docs/new.md\nscanned: docs/old.md\nstaged' ]] || {
+    echo "$output" >&2
+    return 1
+  }
+}
+
+@test "secret --staged: nothing staged scans nothing" {
+  echo edit >>"$SANDBOX/docs/old.md"
+  run -0 "$T" secret --staged
+  [[ -z "$output" ]]
 }
 
 @test "fails closed without the pinned trivy in .bin" {

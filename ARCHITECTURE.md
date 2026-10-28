@@ -38,7 +38,7 @@ flowchart LR
 | `packages/api-client` | Generated hooks and zod schemas (`src/gen/`, never edited) + hand-written `src/index.ts` (`problemOf`). |
 | `packages/domain` | Pure TypeScript domain logic shared by apps: no React, no browser APIs, no HTTP. |
 | `scripts/harness` | Sensors' glue: `run.sh` (uniform failure output with remediation), `gen-check.sh`, `contract-check.sh`, `check-commits.sh`, `check-specs.sh`, `merge-base.sh`, `unchanged.sh` and `affected.sh` (what `make check` skips or scopes in scope `changed`, `HARNESS_SCOPE`, [ADR 0014](docs/adr/0014-make-check-scoped-to-the-change.md)), `timing.sh`, `budgets.txt` and `nfr-report.sh` (latency budgets, timings in `.cache/harness/`, [ADR 0013](docs/adr/0013-harness-nfr-budgets.md)), `determinism.sh`, `hook-bootstrap.sh`, `selftest.sh` + `fixtures/`. |
-| `scripts/git-hooks` | Git hooks installed by `make setup` (`core.hooksPath`): `commit-msg` checks Conventional Commits. |
+| `scripts/git-hooks` | Git hooks installed by `make setup` (`core.hooksPath`): `pre-commit` runs the secret scan and the cheap per-file sensors on the staged content, `commit-msg` checks Conventional Commits. |
 | `scripts/` | `setup-worktree.sh`, `install-tools.sh` (pinned versions in `tool-versions.env`), `new-domain.sh`, `gen-schema-doc.sh`. Shell is code: shellcheck + shfmt (`.shellcheckrc`, `.editorconfig`) and bats tests in `scripts/test/` for these scripts and `.claude/hooks/`. |
 | `docs/` | Rules, ADRs, design docs, exec plans, quality grades, generated schema doc. |
 | `specs/` | Product feature specs (`NNN-slug/`: spec, plan, tasks) written with spec-kit; created by the first `/speckit-specify`. |

@@ -71,13 +71,14 @@ fi
 make --no-print-directory tools deps
 
 # --- git hooks ----------------------------------------------------------------------------------------
-# commit-msg checks Conventional Commits locally (rules.md#git-conventional-commits). Never replaces a
-# hooks path someone else set (husky, lefthook, ...).
+# pre-commit scans the staged content for secrets and runs the cheap per-file sensors on it
+# (scripts/harness/pre-commit.sh); commit-msg checks Conventional Commits locally
+# (rules.md#git-conventional-commits). Never replaces a hooks path someone else set (husky, lefthook, ...).
 hooks="$(git config --get core.hooksPath || true)"
 if [[ -z "$hooks" || "$hooks" == scripts/git-hooks ]]; then
   git config core.hooksPath scripts/git-hooks
 else
-  log "core.hooksPath is '$hooks': not installing scripts/git-hooks (make commits still checks commit messages)"
+  log "core.hooksPath is '$hooks': not installing scripts/git-hooks (make check and make commits still run their checks)"
 fi
 
 # --- database -----------------------------------------------------------------------------------------

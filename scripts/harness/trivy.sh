@@ -2,24 +2,30 @@
 # Trivy sensors (exec plan 0003, Q1), config in trivy.yaml and scripts/harness/trivy-secret.yaml:
 #
 #   scripts/harness/trivy.sh secret   repo-no-secrets: offline, rule-based (make check)
-#   scripts/harness/trivy.sh vuln     deps-no-known-vulns: every go.mod and pnpm-lock.yaml against the vuln DB,
+#   scripts/harness/trivy.sh secret --staged
+#                                     the same scan of the staged files as they are in the index, not in the
+#                                     working tree (the pre-commit git hook, exec plan 0003 Q2)
+#   scripts/harness/trivy.sh vuln    deps-no-known-vulns: every go.mod and pnpm-lock.yaml against the vuln DB,
 #                                     fetched into .cache/trivy (make check-all, CI, drift.yml)
 #
 # Trivy walks the filesystem, not git, so both scan a temp copy of the git-known files (tracked plus untracked,
 # not ignored): never .env.local, .cache/ or node_modules. `secret` in HARNESS_SCOPE=changed copies only the
 # files changed since the merge base, and everything when a harness file changed (it can change the verdict on
-# unchanged files) or the change set cannot be computed; in any other scope everything. Prints
+# unchanged files) or the change set cannot be computed; in any other scope everything. `--staged` ignores the
+# scope and copies the index version of each staged file. Prints
 # `file:line: … [rule-id]` per finding, sorted; silent and exit 0 when clean.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT" || exit 1
 mode="${1:-}"
-case "$mode" in
-  secret) rule=repo-no-secrets ;;
-  vuln) rule=deps-no-known-vulns ;;
+staged=0
+case "$mode ${2:-}" in
+  "secret ") rule=repo-no-secrets ;;
+  "secret --staged") rule=repo-no-secrets staged=1 ;;
+  "vuln ") rule=deps-no-known-vulns ;;
   *)
-    echo "usage: trivy.sh secret|vuln" >&2
+    echo "usage: trivy.sh secret [--staged] | vuln" >&2
     exit 2
     ;;
 esac
@@ -33,7 +39,9 @@ trivy="$ROOT/.bin/trivy"
 
 files() { # NUL-separated paths to scan
   local base
-  if [[ "$mode" == secret ]] && scripts/harness/unchanged.sh trivy.yaml &&
+  if ((staged)); then # added, copied, modified, renamed or type-changed; GIT_INDEX_FILE is git commit's index
+    git diff -z --cached --name-only --no-renames --diff-filter=ACMRT --
+  elif [[ "$mode" == secret ]] && scripts/harness/unchanged.sh trivy.yaml &&
     base="$(scripts/harness/merge-base.sh 2>/dev/null)"; then
     git diff -z --name-only --no-renames "$base" -- && git ls-files -z -o --exclude-standard
   else
@@ -50,11 +58,18 @@ files >"$list" || {
   echo "git could not list the files to scan [$rule]" >&2
   exit 1
 }
-# Deleted files are in the diff; copy only paths that exist.
-while IFS= read -r -d '' f; do
-  if [[ -e "$f" ]]; then printf '%s\0' "$f"; fi # `[[ ]] && …` would fail the loop on a deleted last path
-done <"$list" |
-  tar -cf - --null -T - | tar -xf - -C "$tree" || {
+copy() {
+  if ((staged)); then # the index's blobs, never the working tree's files
+    if [[ -s "$list" ]]; then git checkout-index -z --stdin --prefix="$tree/" <"$list"; fi
+    return
+  fi
+  # Deleted files are in the diff; copy only paths that exist.
+  while IFS= read -r -d '' f; do
+    if [[ -e "$f" ]]; then printf '%s\0' "$f"; fi # `[[ ]] && …` would fail the loop on a deleted last path
+  done <"$list" |
+    tar -cf - --null -T - | tar -xf - -C "$tree"
+}
+copy || {
   echo "could not copy the files to scan [$rule]" >&2
   exit 1
 }

@@ -52,7 +52,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ### go-format
 - **Rule:** Go code is `gofmt`/`goimports` formatted (local prefix `github.com/aheumaier/harness-template`).
 - **Why:** Formatting noise hides real diffs from reviewers and agents.
-- **Sensor:** golangci-lint formatters, `make lint-go`.
+- **Sensor:** golangci-lint formatters, `make lint-go`; the `pre-commit` git hook (`scripts/harness/pre-commit.sh`) on the staged Go files (`golangci-lint fmt --diff`).
 - **Remediation:** Run `make fmt`.
 - **Fixture:** none (formatter, auto-fixable) · Status: seed
 
@@ -223,14 +223,14 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ### sh-shellcheck
 - **Rule:** Every shell script, bats file and git hook (`scripts/git-hooks/`) passes shellcheck (`.shellcheckrc`); a `# shellcheck disable=` needs a reason ([harness-suppression-reason](#harness-suppression-reason)). Vendored `.specify/` (spec-kit, [ADR 0011](../adr/0011-conventional-commits-and-spec-kit.md)) is excluded here and in `sh-format`: it is replaced on upgrade, not edited.
 - **Why:** The harness itself is shell: an unquoted variable or a failed `cd` in a sensor or hook silently turns it green or deletes the wrong path.
-- **Sensor:** shellcheck (`make lint-sh`, part of `make check`; fast-check hook per file).
+- **Sensor:** shellcheck (`make lint-sh`, part of `make check`; fast-check hook per file; `pre-commit` git hook on the staged files).
 - **Remediation:** Fix the line shellcheck names (the SCxxxx code links to https://www.shellcheck.net/wiki/SCxxxx); quote expansions, add `|| exit` after `cd`, and prefer an explicit `if` to `a && b || c`.
 - **Fixture:** `fixtures/sh-unquoted-variable` · Status: seed
 
 ### sh-format
 - **Rule:** Shell scripts and bats files are `shfmt` formatted (style in `.editorconfig`: 2 spaces, indented `case`).
 - **Why:** Formatting noise hides real diffs from reviewers and agents.
-- **Sensor:** shfmt (`make fmt-check-sh`, part of `make check`; fast-check hook per file).
+- **Sensor:** shfmt (`make fmt-check-sh`, part of `make check`; fast-check hook per file; `pre-commit` git hook on the staged files).
 - **Remediation:** Run `make fmt`.
 - **Fixture:** `fixtures/sh-unformatted` · Status: seed
 
@@ -253,9 +253,9 @@ variables are unset before the scan.
 ### repo-no-secrets
 - **Rule:** No secret (cloud keys, tokens, private keys: Trivy's built-in secret rules) in any file git knows, committed or not.
 - **Why:** Agents copy credentials from logs, env files and docs into code and fixtures; once pushed, a secret must be rotated, not just deleted.
-- **Sensor:** `trivy fs --scanners secret` offline (no DB, check, VEX or version download, no telemetry; `make secrets`, part of `make check`, and CI through `make check-all`). In `make check` it scans only the files changed since the merge base, and everything when a harness file changed ([harness-scope](#harness-scope)); budget 5 s on the full tree (`budgets.txt`, NFR-H9). Trivy's built-in rules only, with its built-in path allow-list (test files, examples, vendor dirs, every `*.md`) switched off by the protected `scripts/harness/trivy-secret.yaml`; `scripts/test/trivy.bats` pins the flags.
+- **Sensor:** `trivy fs --scanners secret` offline (no DB, check, VEX or version download, no telemetry; `make secrets`, part of `make check`, and CI through `make check-all`). In `make check` it scans only the files changed since the merge base, and everything when a harness file changed ([harness-scope](#harness-scope)); budget 5 s on the full tree (`budgets.txt`, NFR-H9). Trivy's built-in rules only, with its built-in path allow-list (test files, examples, vendor dirs, every `*.md`) switched off by the protected `scripts/harness/trivy-secret.yaml`; `scripts/test/trivy.bats` pins the flags. The `pre-commit` git hook (`scripts/harness/pre-commit.sh`, installed by `make setup`) runs the same scan on the staged files as they are in the index (`trivy.sh secret --staged`), before the commit exists; `git commit --no-verify` skips it, CI does not.
 - **Remediation:** Remove the secret from the file named (read it from the environment or a gitignored `.env.local` instead); if it was ever committed or pushed, rotate it, since history keeps it.
-- **Fixture:** `fixtures/repo-secret-planted` · Status: team-convention ([ADR 0015](../adr/0015-anticipated-rules-and-nfr-classes-b-o.md))
+- **Fixture:** `fixtures/repo-secret-planted`; `scripts/test/pre-commit.bats` · Status: team-convention ([ADR 0015](../adr/0015-anticipated-rules-and-nfr-classes-b-o.md))
 
 ### deps-no-known-vulns
 - **Rule:** No known vulnerability in the JS dependencies of `pnpm-lock.yaml` (dev dependencies included) or in the modules of any `go.mod` (`apps/api` and the nested `apps/api/tools/*` modules [go-no-known-vulns](#go-no-known-vulns) does not reach).
@@ -288,9 +288,9 @@ variables are unset before the scan.
 - **Fixture:** none (a hook, not a make target); `scripts/test/protect-harness.bats` · Status: seed
 
 ### harness-latency-budget
-- **Rule:** Every sensor and hook finishes within its budget in `scripts/harness/budgets.txt` (`default` row: 5 s, NFR-H5; PreToolUse hooks 50 ms, NFR-H1; `fast-check` 1 s, NFR-H2); the budgets are the latency NFRs of exec plan 0002 ([ADR 0013](../adr/0013-harness-nfr-budgets.md)).
+- **Rule:** Every sensor and hook finishes within its budget in `scripts/harness/budgets.txt` (`default` row: 5 s, NFR-H5; PreToolUse hooks 50 ms, NFR-H1; `fast-check` 1 s, NFR-H2; the `pre-commit` git hook 2 s, NFR-H8); the budgets are the latency NFRs of exec plans 0002 and 0003 ([ADR 0013](../adr/0013-harness-nfr-budgets.md)).
 - **Why:** Agents run `make check` after every change, so harness latency is agent throughput; it degrades a little per PR, and no single review notices.
-- **Sensor:** `scripts/harness/timing.sh`, used by `scripts/harness/run.sh` and every hook in `.claude/hooks/`, times each run, appends it to `.cache/harness/timings.jsonl` and prints `harness: sensor '<id>' took <t> s (budget <b> s, <nfr>)` (or `hook '<name>'`) when over budget. In GitHub Actions the line is also a `::warning` annotation and a job-summary entry, and `ci.yml` uploads `timings.jsonl` as the `harness-timings-check-all` artifact. Nightly, `harness-nfr.yml` computes each name's p95 over the last 7 days of those artifacts (`scripts/harness/nfr-report.sh`) and opens or comments on one `harness-nfr` issue for every p95 over budget. Hooks run in CI only inside bats tests, so their rows there do not measure real tool calls: NFR-H1 and NFR-H2 have the local warning and no trend yet. A warning only: the sensor or hook keeps its own exit status.
+- **Sensor:** `scripts/harness/timing.sh`, used by `scripts/harness/run.sh`, every hook in `.claude/hooks/` and the `pre-commit` git hook, times each run, appends it to `.cache/harness/timings.jsonl` and prints `harness: sensor '<id>' took <t> s (budget <b> s, <nfr>)` (or `hook '<name>'`) when over budget. In GitHub Actions the line is also a `::warning` annotation and a job-summary entry, and `ci.yml` uploads `timings.jsonl` as the `harness-timings-check-all` artifact. Nightly, `harness-nfr.yml` computes each name's p95 over the last 7 days of those artifacts (`scripts/harness/nfr-report.sh`) and opens or comments on one `harness-nfr` issue for every p95 over budget. Hooks run in CI only inside bats tests, so their rows there do not measure real tool calls: NFR-H1 and NFR-H2 have the local warning and no trend yet. A warning only: the sensor or hook keeps its own exit status.
 - **Remediation:** Make the sensor or hook do less (scope it to the change, use the tool's cache, skip it when its inputs did not change: exec plan 0002 phases 1–2); if the budget itself is wrong, propose a new row in `budgets.txt` in the PR description (Harness change: Y).
 - **Fixture:** none (warns, never fails; the selftest asserts a failure); `scripts/test/run.bats`, `scripts/test/timing.bats`, `scripts/test/nfr-report.bats` · Status: seed
 
@@ -348,13 +348,13 @@ In CI these run in the `pr-conventions` job of `harness-integrity.yml` (base bra
 ### docs-links-resolve
 - **Rule:** Every relative link and `#anchor` in tracked Markdown files resolves.
 - **Why:** Guides are the agent's map; a dead link silently sends it searching (or guessing) instead of reading.
-- **Sensor:** `.bin/harness check-links` (`apps/api/tools/harness/checklinks.go`; `make docs-links`, part of `make check`; fast-check hook per Markdown file).
+- **Sensor:** `.bin/harness check-links` (`apps/api/tools/harness/checklinks.go`; `make docs-links`, part of `make check`; fast-check hook per Markdown file; `pre-commit` git hook on the staged tree when a Markdown file is staged).
 - **Remediation:** Point the link at the file's current path (or heading slug), or remove it if the target is gone; when you move a doc, update every link to it in the same change.
 - **Fixture:** `fixtures/docs-broken-link` · Status: seed
 
 ### docs-claude-imports-agents
 - **Rule:** Every `AGENTS.md` has a `CLAUDE.md` in the same directory with the line `@AGENTS.md` (plus any Claude-Code-only notes).
 - **Why:** Claude Code loads `CLAUDE.md`, not `AGENTS.md`; without the import an area guide is invisible to it, while other agents read `AGENTS.md` directly. One source, two entry points.
-- **Sensor:** `.bin/harness check-links` (`apps/api/tools/harness/checklinks.go`; `make docs-links`, part of `make check`; fast-check hook per Markdown file).
+- **Sensor:** `.bin/harness check-links` (`apps/api/tools/harness/checklinks.go`; `make docs-links`, part of `make check`; fast-check hook per Markdown file; `pre-commit` git hook on the staged tree when a Markdown file is staged).
 - **Remediation:** Create `CLAUDE.md` next to the `AGENTS.md` the message names, containing the line `@AGENTS.md`; put shared guidance in `AGENTS.md`, never only in `CLAUDE.md`.
 - **Fixture:** `fixtures/docs-agents-without-claude` · Status: seed

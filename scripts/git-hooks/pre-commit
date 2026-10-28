@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Git pre-commit hook (core.hooksPath=scripts/git-hooks, set by `make setup`): checks the staged content with
+# the cheap per-file sensors and the secret scan, before the commit exists. scripts/harness/pre-commit.sh
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+exec "$ROOT/scripts/harness/pre-commit.sh"

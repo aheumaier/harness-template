@@ -10,6 +10,8 @@ protect-harness 50 NFR-H1
 guard-bash 50 NFR-H1
 only-make-check 50 NFR-H1
 fast-check 1000 NFR-H2
+# The pre-commit git hook on a typical commit, up to 20 staged files (exec plan 0003, NFR-H8). Local only.
+pre-commit 2000 NFR-H8
 # The full-tree secret scan in make check (exec plan 0003, NFR-H9).
 repo-no-secrets 5000 NFR-H9
 # make harness-determinism runs make check twice: twice the NFR-H4 budget.
