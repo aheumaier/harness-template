@@ -8,7 +8,7 @@ setup() {
   unset GITHUB_ACTIONS GITHUB_STEP_SUMMARY HARNESS_EDIT
   sandbox scripts/harness/timing.sh scripts/harness/protected-paths.txt scripts/tool-versions.env \
     .claude/hooks/protect-harness.sh .claude/hooks/guard-bash.sh .claude/hooks/only-make-check.sh \
-    .claude/hooks/fast-check.sh
+    .claude/hooks/fast-check.sh .bin/harness
   export HARNESS_BUDGETS="$SANDBOX/budgets.txt"
   printf '%s\n' 'default 600000 NFR-H5' >"$HARNESS_BUDGETS"
   TIMINGS="$SANDBOX/.cache/harness/timings.jsonl"

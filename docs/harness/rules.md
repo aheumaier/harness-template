@@ -57,9 +57,9 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Fixture:** none (formatter, auto-fixable) · Status: seed
 
 ### go-tests-pass
-- **Rule:** `go test -race` passes for the app and the analyzers.
+- **Rule:** `go test -race` passes for the app; `go test` for the analyzers and the hook parser (`apps/api/tools/harness`).
 - **Why:** Tests are the cheapest behavioural sensor; the race detector catches concurrency bugs agents rarely reason about.
-- **Sensor:** `make test-go`, `make test-analyzers` (Go test cache in `make check`, `-count=1` in `make check-all` and CI: [harness-scope](#harness-scope)).
+- **Sensor:** `make test-go`, `make test-analyzers`, `make test-harness` (Go test cache in `make check`, `-count=1` in `make check-all` and CI: [harness-scope](#harness-scope)).
 - **Remediation:** Read the first failing test above, fix the code (not the test) unless the behaviour change is intended and documented in the PR.
 - **Fixture:** none · Status: seed
 
@@ -260,7 +260,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 ### harness-files-protected
 - **Rule:** Agents do not edit harness files (`scripts/harness/protected-paths.txt`); they propose the change in the PR description. A human allows edits by starting the agent session with `HARNESS_EDIT=1`.
 - **Why:** A sensor the agent can edit is a suggestion: the cheapest fix for a red check is to change the check.
-- **Sensor:** PreToolUse hook `.claude/hooks/protect-harness.sh` (file tools exactly; shell writes heuristically) for Claude Code; `.github/CODEOWNERS` review and `harness-config-not-loosened` for every agent.
+- **Sensor:** PreToolUse hook `.claude/hooks/protect-harness.sh` (file tools exactly; shell writes heuristically) for Claude Code (like every hook, it parses its JSON input with `.bin/harness hook-input`, [ADR 0012](../adr/0012-parsing-sensors-in-go.md), and without the binary blocks everything but `make setup`); `.github/CODEOWNERS` review and `harness-config-not-loosened` for every agent.
 - **Remediation:** Do not edit the file: fix the code the sensor points at, or describe the harness change (file, diff, why) in the PR description under "Harness change".
 - **Fixture:** none (a hook, not a make target); `scripts/test/protect-harness.bats` · Status: seed
 
@@ -279,7 +279,7 @@ a temp copy of the repo and asserts its sensor fails with the expected message a
 - **Fixture:** `fixtures/harness-nondeterministic`; `scripts/test/determinism.bats` · Status: seed
 
 ### harness-scope
-- **Rule:** `make check` (scope `changed`) may skip a sensor only when none of its inputs and no harness file (`protected-paths.txt`) changed since the merge base, counting staged, unstaged and untracked files; `make check-all` and CI (scope `full`, `HARNESS_SCOPE=full`) run every sensor. Skipped today: `lint-sh`, `fmt-check-sh`, `test-sh` (inputs: `*.sh`, `*.bash`, `*.bats`, `scripts/**`), the main cost of `make check` (NFR-H3, [ADR 0013](../adr/0013-harness-nfr-budgets.md)); `gen-check` while its inputs and the generated files hash to the stamp of its last green run. Cached only in scope `changed`: Go test results (`test-go`, `test-analyzers` without `-count=1`; integration tests always `-count=1`) and the dependency-cruiser graph (`--cache node_modules/.cache/depcruise`).
+- **Rule:** `make check` (scope `changed`) may skip a sensor only when none of its inputs and no harness file (`protected-paths.txt`) changed since the merge base, counting staged, unstaged and untracked files; `make check-all` and CI (scope `full`, `HARNESS_SCOPE=full`) run every sensor. Skipped today: `lint-sh`, `fmt-check-sh`, `test-sh` (inputs: `*.sh`, `*.bash`, `*.bats`, `scripts/**`), the main cost of `make check` (NFR-H3, [ADR 0013](../adr/0013-harness-nfr-budgets.md)); `gen-check` while its inputs and the generated files hash to the stamp of its last green run. Cached only in scope `changed`: Go test results (`test-go`, `test-analyzers`, `test-harness` without `-count=1`; integration tests always `-count=1`) and the dependency-cruiser graph (`--cache node_modules/.cache/depcruise`).
 - **Why:** Agents run `make check` after every change; a sensor whose inputs did not change can only repeat its last verdict, so running it costs time and finds nothing.
 - **Sensor:** `scripts/harness/unchanged.sh` decides (`gen-check.sh --unchanged` for `gen-check`); the target prints `<target>: skipped, …` instead of running. It fails closed: no merge base (`BASE_REF`), a git error, a missing or unmatched stamp, or any scope but `changed` means run and uncached. Timing rows (`harness-latency-budget`) carry the scope.
 - **Remediation:** A skipped sensor that should have run means its trigger pathspecs miss an input: add the input to the `$(call sh_sensor,…)` pathspecs in the Makefile or to `INPUTS` in `gen-check.sh` (Harness change: Y); to run everything now, `make check-all` or `HARNESS_SCOPE=full make check`.

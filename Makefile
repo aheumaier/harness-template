@@ -20,6 +20,8 @@ WITH_ENV := [[ -f .env.local ]] || { echo "no .env.local: run make setup" >&2; e
 API  := apps/api
 GCL  := .bin/golangci-lint-custom
 ANALYZERS_SRC := $(shell find $(API)/tools/analyzers -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
+HARNESS     := .bin/harness
+HARNESS_SRC := $(shell find $(API)/tools/harness -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
 
 ##@ Workflow
 .PHONY: help setup check check-all harness-selftest harness-determinism new-domain dev db-up db-migrate db-reset
@@ -48,8 +50,8 @@ db-reset: ## Drop this worktree's database volume, recreate, migrate
 	@$(WITH_ENV) docker compose --progress quiet down -v; docker compose --progress quiet up -d --wait db
 	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
 
-check: ## Fast sensors (<60s warm): format, lint, arch, unit tests, gen-check
-	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers lint-sh fmt-check-sh test-sh lint-ci schema-doc-fresh docs-links lint-web arch-web typecheck-web test-web
+check: $(HARNESS) ## Fast sensors (<60s warm): format, lint, arch, unit tests, gen-check
+	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci schema-doc-fresh docs-links lint-web arch-web typecheck-web test-web
 	@$(MAKE) gen-check
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
@@ -59,7 +61,7 @@ check-all: check ##Everything: check + integration, contract, migration, securit
 	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go lint-migrations squawk migrations-append-only lint-api contract-check knip harness-integrity commits specs)
 	@$(MAKE) test-integration
 
-harness-selftest: ## Every fixture in scripts/harness/fixtures must be rejected by its sensor (FIXTURE=name for one)
+harness-selftest: $(HARNESS) ## Every fixture in scripts/harness/fixtures must be rejected by its sensor (FIXTURE=name for one)
 	@scripts/harness/selftest.sh $(FIXTURE)
 
 # NFR-R1, nightly in harness-nfr.yml. The selftest fixture swaps the target for one whose verdict alternates.
@@ -71,7 +73,7 @@ harness-determinism: ## Run make check twice on this tree: same exit status, fin
 
 ##@ Tools
 .PHONY: tools deps
-tools: $(GCL) ## Install pinned CLI tools into .bin
+tools: $(GCL) $(HARNESS) ## Install pinned CLI tools into .bin
 	@scripts/install-tools.sh
 
 deps: ## Install JS dependencies from the lockfile
@@ -83,8 +85,12 @@ $(GCL): $(API)/.custom-gcl.yml $(ANALYZERS_SRC) scripts/tool-versions.env
 	@cd $(API) && golangci-lint custom
 	@touch $@
 
+# The hooks' parser (ADR 0012); every hook fails closed without it.
+$(HARNESS): $(HARNESS_SRC) scripts/tool-versions.env
+	@cd $(API)/tools/harness && go build -o $(CURDIR)/$@ .
+
 ##@ Go sensors
-.PHONY: fmt lint-go arch-go test-go test-analyzers vuln-go deadcode-go
+.PHONY: fmt lint-go arch-go test-go test-analyzers test-harness vuln-go deadcode-go
 fmt: $(GCL) ## Auto-format Go and shell code
 	@cd $(API) && ../../$(GCL) fmt ./...
 	@shfmt -w $(SH_FILES)
@@ -100,6 +106,9 @@ test-go:
 
 test-analyzers:
 	@$(RUN) analyzer-tests go-tests-pass --dir $(API)/tools/analyzers -- go test $(GO_TEST_COUNT) ./...
+
+test-harness:
+	@$(RUN) harness-tests go-tests-pass --dir $(API)/tools/harness -- go test $(GO_TEST_COUNT) ./...
 
 vuln-go:
 	@$(RUN) govulncheck go-no-known-vulns --dir $(API) -- govulncheck ./...
@@ -173,7 +182,7 @@ lint-sh: ## shellcheck (.shellcheckrc) on every shell script
 fmt-check-sh: ## shfmt (style from .editorconfig) on every shell script
 	@$(call sh_sensor,$(RUN) shfmt sh-format -- shfmt -d $(SH_FILES))
 
-test-sh: ## bats tests for scripts/ and .claude/hooks/ (scripts/test)
+test-sh: $(HARNESS) ## bats tests for scripts/ and .claude/hooks/ (scripts/test)
 	@$(call sh_sensor,$(RUN) bats sh-tests-pass -- bats scripts/test)
 
 ##@ CI and harness integrity (.github/, protected harness files)

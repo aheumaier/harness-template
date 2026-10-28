@@ -13,10 +13,15 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 # shellcheck source=../../scripts/harness/timing.sh
 source "$ROOT/scripts/harness/timing.sh" 2>/dev/null && harness_time_exit hook protect-harness
 [[ "${HARNESS_EDIT:-}" == 1 ]] && exit 0
+[[ -x "$ROOT/.bin/harness" ]] || {
+  # shellcheck source=../../scripts/harness/hook-bootstrap.sh
+  source "$ROOT/scripts/harness/hook-bootstrap.sh" && harness_missing protect-harness
+  exit 2
+}
 
 block() {
   [[ -n "$1" ]] || {
-    echo "protect-harness: blocked: cannot parse the hook input (is node on PATH?)" >&2
+    echo "protect-harness: blocked: cannot parse the hook input" >&2
     exit 2
   }
   cat >&2 <<EOF
@@ -28,15 +33,9 @@ EOF
   exit 2
 }
 
-input="$(node -e 'let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
-  try {
-    const j = JSON.parse(s), t = j.tool_input ?? {};
-    const target = t.file_path ?? t.notebook_path ?? "";
-    process.stdout.write(["ok", j.cwd ?? "", j.tool_name ?? "", target, (t.command ?? "") + "\n."].join("\n"));
-  } catch {}
-})')"
-[[ "$input" == ok$'\n'*$'\n'*$'\n'*$'\n'* ]] || block ""
-input="${input#ok$'\n'}" input="${input%$'\n.'}" # the "." keeps $(...) from eating trailing newlines
+# The "." keeps $(...) from eating trailing newlines of the command.
+input="$("$ROOT/.bin/harness" hook-input cwd tool_name target command 2>/dev/null && echo .)" || block ""
+input="${input%.}"
 cwd="${input%%$'\n'*}" input="${input#*$'\n'}"
 tool="${input%%$'\n'*}" input="${input#*$'\n'}"
 target="${input%%$'\n'*}" cmd="${input#*$'\n'}"

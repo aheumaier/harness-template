@@ -20,9 +20,12 @@ RUN=scripts/harness/run.sh
 
 file="${1:-}"
 if [[ -z "$file" ]]; then
-  file="$(node -e 'let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
-    try { const i = JSON.parse(s).tool_input ?? {}; process.stdout.write(i.file_path ?? i.notebook_path ?? ""); } catch {}
-  })')"
+  [[ -x .bin/harness ]] || {
+    # shellcheck source=../../scripts/harness/hook-bootstrap.sh
+    source scripts/harness/hook-bootstrap.sh && harness_missing fast-check
+    exit 2
+  }
+  file="$(.bin/harness hook-input target 2>/dev/null)"
 fi
 [[ -n "$file" ]] || exit 0
 file="${file#"$ROOT"/}"
@@ -44,6 +47,10 @@ case "$file" in
 
   apps/api/tools/analyzers/*.go)
     check $RUN analyzer-tests go-tests-pass --dir apps/api/tools/analyzers -- go vet ./...
+    ;;
+
+  apps/api/tools/harness/*.go)
+    check $RUN harness-tests go-tests-pass --dir apps/api/tools/harness -- go vet ./...
     ;;
 
   apps/api/*.go)

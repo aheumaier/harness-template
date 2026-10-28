@@ -25,6 +25,7 @@ tsconfig*.json              @aheumaier
 /scripts/gen-schema-doc.sh  @aheumaier
 /scripts/github-branch-protection.sh  @aheumaier
 /apps/api/tools/analyzers/  @aheumaier
+/apps/api/tools/harness/  @aheumaier
 /.claude/                   @aheumaier
 /.github/                   @aheumaier
 /docs/harness/              @aheumaier
