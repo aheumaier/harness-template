@@ -114,7 +114,9 @@ PR; **–** needs none.
   through Playwright, P2.1 scaffolds Go tests); the guide from Q5 stands
 - [ ] P2.3 — H — Playwright: `make e2e` against `make dev`, one journey (NFR-B2); skill `drive-app`
 - [ ] P2.4 — H — approved-fixture snapshots of API responses (contract-shaped golden files)
-- [ ] P2.5 — H — coverage report per package (Go + Vitest) into the CI summary; trend in the drift issue
+- [x] P2.5 — f28e238 — no coverage signal → `make coverage` (Go per package + every JS workspace with a
+  `coverage` script) in a non-required PR job summary; drift lists packages whose coverage fell;
+  [ADR 0020](../../adr/0020-test-coverage-is-a-trend.md) proposed: a trend, never a gate
 - [ ] P2.6 — H — weekly mutation testing on files changed that week (Go: `gremlins`; TS: Stryker)
 - [x] P3.1 — eb61f5e — inferential sensors had no stated status →
   [ADR 0019](../../adr/0019-inferential-sensors-are-advisory.md) proposed: one top-level PR comment, never a
@@ -638,3 +640,13 @@ code: `deadcode` and knip do that without false positives from entry points they
   steps, not gates. If ADR 0019 is rejected, drop P3.1 and revisit P3.2, P3.3, P3.4 and P3.8. Noticed
   (protected): nfr.md:17 and ADR 0015:39 should link ADR 0019 (P3.2 can add it with the ci.md "Required:
   no" row); the first earned rule adds `earned` to the rules.md status legend.
+- 2026-10-28: P2.5 integrated (f28e238, rebased from lane eb9a107). Review fixed in one retry: the drift
+  job's GH_TOKEN moved into the one "Coverage baseline" step that reads the previous scheduled artifact; the
+  `coverage` workflow is `continue-on-error` and not a required check; Vitest stays on 5.0.5 with
+  `@vitest/coverage-v8` 5.0.5 (the 14-day age rule is for downloaded binaries, ADR 0016; npm has
+  `minimumReleaseAge` 24 h). Decisions: generated Go files excluded by their `DO NOT EDIT` header; a
+  workspace without a `coverage` script reports `-`, not 0 %; no threshold, budgets row or rules.md entry;
+  the awk parser is TD-27 (renumbered from the lane's TD-16, taken by P1.2). If ADR 0020 is rejected,
+  drop the drift step and keep `make coverage` as a local report. Noticed (protected): a
+  `web-coverage-no-thresholds` rule would keep Vitest thresholds out; AGENTS.md's command table could list
+  `make coverage`; the coverage workflow costs one extra Go + web test run per PR.
