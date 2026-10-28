@@ -81,8 +81,16 @@ receives the request's `context.Context`.
 - **Errors:** handlers return typed problem responses declared in the spec; unexpected errors become a 500
   problem via `problem.ResponseError`, never a stack trace.
 - **Config:** environment only, parsed once in `platform/config`; required values have no defaults.
-- **Observability:** slog JSON logs, OpenTelemetry tracing (`OTEL_TRACES_EXPORTER`, `none` locally),
-  instrumented as [ADR 0018](docs/adr/0018-http-and-db-instrumentation.md) records. At runtime every
+- **Observability:** slog JSON logs on stdout, and OpenTelemetry traces, metrics and logs, instrumented as
+  [ADR 0018](docs/adr/0018-http-and-db-instrumentation.md) records. Each signal has its exporter
+  (`OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER`, `OTEL_LOGS_EXPORTER`): `none` by default, `otlp` sends it
+  over OTLP/HTTP to `OTEL_EXPORTER_OTLP_ENDPOINT` (the worktree's stack, [ADR 0017](docs/adr/0017-per-worktree-observability-stack.md)),
+  and traces also take `stdout` ([ADR 0021](docs/adr/0021-telemetry-export-over-otlp-http.md)). The SDK reads
+  its own tuning variables; `service.name` is always `api`, whatever `OTEL_SERVICE_NAME` or
+  `OTEL_RESOURCE_ATTRIBUTES` say (see ADR 0021). The RED metrics per route are otelhttp's `http.server.request.duration`
+  histogram, labelled `http.route`, `http.request.method` and `http.response.status_code`. A route is
+  always the template without the method (`/healthz`: log `route`, span and metric `http.route`); only the
+  span name is `GET /healthz`. At runtime every
   response carries `X-Request-Id` (an incoming one is kept only if it matches the contract's pattern), but
   the contract declares it only on `/healthz` 200 so far ([TD-16](docs/exec-plans/tech-debt-tracker.md)).
   A problem carries `instance` (`urn:request-id:<id>`) when `platform/problem` writes it or when a handler

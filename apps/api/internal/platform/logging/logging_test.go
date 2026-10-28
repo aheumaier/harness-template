@@ -38,6 +38,26 @@ func TestNew_AddsCorrelationIDsFromContext(t *testing.T) {
 	}
 }
 
+func TestNew_AlsoHandlersGetSameRecordsAtSameLevel(t *testing.T) {
+	var stdout, export bytes.Buffer
+	// The export handler accepts every level, as the OTLP bridge does; New must apply LOG_LEVEL to it.
+	all := slog.NewJSONHandler(&export, &slog.HandlerOptions{Level: slog.LevelDebug})
+	log := New(&stdout, slog.LevelInfo, nil, all)
+	ctx := requestid.NewContext(t.Context(), "req-1")
+	log.DebugContext(ctx, "dropped")
+	log.InfoContext(ctx, "kept")
+
+	for name, buf := range map[string]*bytes.Buffer{"stdout": &stdout, "export": &export} {
+		var line map[string]any
+		if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
+			t.Fatalf("%s: want exactly one JSON line, got %q: %v", name, buf.String(), err)
+		}
+		if line["msg"] != "kept" || line["request_id"] != "req-1" {
+			t.Errorf("%s: got %s", name, buf.String())
+		}
+	}
+}
+
 func TestNew_NoRequestContext(t *testing.T) {
 	var buf bytes.Buffer
 	New(&buf, slog.LevelInfo).InfoContext(t.Context(), "boot")

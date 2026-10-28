@@ -10,9 +10,12 @@ import (
 	"net/http/httptest"
 	"slices"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
@@ -28,18 +31,31 @@ type pingFunc func(context.Context) error
 func (f pingFunc) Ping(ctx context.Context) error { return f(ctx) }
 
 // serve sends one request through the full middleware chain around /healthz and returns the response, the
-// single access log line and the single recorded server span.
-func serve(t *testing.T, ping pingFunc, header http.Header) (*httptest.ResponseRecorder, map[string]any, sdktrace.ReadOnlySpan) {
+// single access log line, the single recorded server span and the HTTP server duration histogram.
+func serve(t *testing.T, ping pingFunc, header http.Header) (*httptest.ResponseRecorder, map[string]any, sdktrace.ReadOnlySpan, metricdata.Histogram[float64]) {
 	t.Helper()
-	prevTP, prevProp := otel.GetTracerProvider(), otel.GetTextMapPropagator()
-	t.Cleanup(func() { otel.SetTracerProvider(prevTP); otel.SetTextMapPropagator(prevProp) })
-	shutdown, err := telemetry.Setup(t.Context(), "none") // installs the propagator main uses
+	prevTP, prevMP, prevProp, prevEH := otel.GetTracerProvider(), otel.GetMeterProvider(), otel.GetTextMapPropagator(), otel.GetErrorHandler()
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prevTP)
+		otel.SetMeterProvider(prevMP)
+		otel.SetTextMapPropagator(prevProp)
+		otel.SetErrorHandler(prevEH)
+	})
+	tel, err := telemetry.Setup(t.Context(), telemetry.Config{}, slog.New(slog.DiscardHandler)) // installs the propagator main uses
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = shutdown(context.WithoutCancel(t.Context())) })
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), time.Second)
+		defer cancel()
+		if err := tel.Shutdown(ctx); err != nil {
+			t.Error(err)
+		}
+	})
 	spans := tracetest.NewSpanRecorder()
 	otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans)))
+	metrics := sdkmetric.NewManualReader()
+	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(metrics)))
 
 	authn, err := auth.New(auth.ModeDevStub)
 	if err != nil {
@@ -49,6 +65,7 @@ func serve(t *testing.T, ping pingFunc, header http.Header) (*httptest.ResponseR
 	mux := http.NewServeMux()
 	health.Register(mux, ping)
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Host = "client-chosen.example:1234" // must not reach server.address
 	for k, v := range header {
 		req.Header[k] = v
 	}
@@ -63,7 +80,19 @@ func serve(t *testing.T, ping pingFunc, header http.Header) (*httptest.ResponseR
 	if len(ended) != 1 {
 		t.Fatalf("want 1 span, got %d", len(ended))
 	}
-	return rec, line, ended[0]
+	var rm metricdata.ResourceMetrics
+	if err := metrics.Collect(t.Context(), &rm); err != nil {
+		t.Fatal(err)
+	}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if h, ok := m.Data.(metricdata.Histogram[float64]); ok && m.Name == "http.server.request.duration" {
+				return rec, line, ended[0], h
+			}
+		}
+	}
+	t.Fatalf("no http.server.request.duration histogram in %+v", rm)
+	return nil, nil, nil, metricdata.Histogram[float64]{}
 }
 
 func TestHandler_CorrelatesResponseLogAndSpan(t *testing.T) {
@@ -76,7 +105,7 @@ func TestHandler_CorrelatesResponseLogAndSpan(t *testing.T) {
 		"503": {func(context.Context) error { return errors.New("down") }, http.StatusServiceUnavailable},
 	} {
 		t.Run(name, func(t *testing.T) {
-			rec, line, span := serve(t, tc.ping, http.Header{
+			rec, line, span, duration := serve(t, tc.ping, http.Header{
 				requestid.Header: {"req-1"},
 				"Traceparent":    {"00-" + traceID + "-b7ad6b7169203331-01"},
 			})
@@ -112,12 +141,28 @@ func TestHandler_CorrelatesResponseLogAndSpan(t *testing.T) {
 			if !slices.Contains(span.Attributes(), attribute.String("http.route", "/healthz")) {
 				t.Errorf("span lacks http.route=/healthz: %v", span.Attributes())
 			}
+
+			// RED per route template: one histogram point (count = rate, status = errors, buckets = duration).
+			if len(duration.DataPoints) != 1 || duration.DataPoints[0].Count != 1 {
+				t.Fatalf("want one data point counting 1 request, got %+v", duration.DataPoints)
+			}
+			attrs := duration.DataPoints[0].Attributes
+			for _, want := range []attribute.KeyValue{
+				attribute.String("http.route", "/healthz"),
+				attribute.String("http.request.method", "GET"),
+				attribute.Int("http.response.status_code", tc.wantStatus),
+				attribute.String("server.address", telemetry.ServiceName), // fixed, whatever Host the client sent
+			} {
+				if got, ok := attrs.Value(want.Key); !ok || got != want.Value {
+					t.Errorf("metric %s = %v, want %v", want.Key, got.String(), want.Value.String())
+				}
+			}
 		})
 	}
 }
 
 func TestHandler_ReplacesInvalidRequestID(t *testing.T) {
-	rec, line, _ := serve(t, func(context.Context) error { return nil }, http.Header{requestid.Header: {"bad id"}})
+	rec, line, _, _ := serve(t, func(context.Context) error { return nil }, http.Header{requestid.Header: {"bad id"}})
 	got := rec.Header().Get(requestid.Header)
 	if got == "bad id" || !requestid.Valid(got) || line["request_id"] != got {
 		t.Fatalf("response ID %q, logged %v", got, line["request_id"])

@@ -36,14 +36,22 @@ func run(ctx context.Context, getenv func(string) string) error {
 	if err != nil {
 		return err
 	}
-	log := logging.New(os.Stdout, cfg.LogLevel)
-	slog.SetDefault(log)
-
-	shutdownTracing, err := telemetry.Setup(ctx, cfg.TracesExporter)
+	// stdout only: the OTel SDK reports failed exports here, never back over OTLP.
+	local := logging.New(os.Stdout, cfg.LogLevel)
+	tel, err := telemetry.Setup(ctx, cfg.Telemetry, local)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = shutdownTracing(context.WithoutCancel(ctx)) }()
+	defer func() {
+		// Bounded: exports to an unreachable collector are retried until the deadline.
+		flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if err := tel.Shutdown(flushCtx); err != nil {
+			local.Error("telemetry shutdown", "err", err)
+		}
+	}()
+	log := logging.New(os.Stdout, cfg.LogLevel, tel.LogHandler)
+	slog.SetDefault(log)
 
 	authn, err := auth.New(cfg.AuthMode)
 	if err != nil {

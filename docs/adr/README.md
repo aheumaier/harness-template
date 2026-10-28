@@ -25,3 +25,4 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0018](0018-http-and-db-instrumentation.md) | HTTP and database instrumentation through otelhttp and otelpgx (amends 0002) | proposed |
 | [0019](0019-inferential-sensors-are-advisory.md) | Inferential sensors are advisory; a finding class seen twice becomes a computational rule | proposed |
 | [0020](0020-test-coverage-is-a-trend.md) | Test coverage is a trend, never a gate | proposed |
+| [0021](0021-telemetry-export-over-otlp-http.md) | Telemetry leaves the process over OTLP/HTTP, one exporter per signal (amends 0002, 0018) | proposed |

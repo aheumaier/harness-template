@@ -11,11 +11,42 @@ import (
 	"github.com/aheumaier/harness-template/apps/api/internal/platform/requestid"
 )
 
-// New returns a JSON slog logger. All logs are structured; never use fmt.Print for diagnostics.
+// New returns a JSON slog logger writing to w. All logs are structured; never use fmt.Print for diagnostics.
 // Every record logged with a request context carries request_id, trace_id and span_id, so the lines of
 // one request can be found by its X-Request-Id or its trace.
-func New(w io.Writer, level slog.Level) *slog.Logger {
-	return slog.New(contextHandler{slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level})})
+//
+// Each non-nil handler in also (the OTLP log bridge, see telemetry.Telemetry.LogHandler) receives the same
+// records, IDs included, at the same level.
+func New(w io.Writer, level slog.Level, also ...slog.Handler) *slog.Logger {
+	var h slog.Handler = slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level})
+	sinks := []slog.Handler{h}
+	for _, a := range also {
+		if a != nil {
+			sinks = append(sinks, minLevel{a, level})
+		}
+	}
+	if len(sinks) > 1 {
+		h = slog.NewMultiHandler(sinks...)
+	}
+	return slog.New(contextHandler{h})
+}
+
+// minLevel drops records below level; the OTLP bridge would otherwise accept every level.
+type minLevel struct {
+	slog.Handler
+	level slog.Level
+}
+
+func (h minLevel) Enabled(ctx context.Context, l slog.Level) bool {
+	return l >= h.level && h.Handler.Enabled(ctx, l)
+}
+
+func (h minLevel) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return minLevel{h.Handler.WithAttrs(attrs), h.level}
+}
+
+func (h minLevel) WithGroup(name string) slog.Handler {
+	return minLevel{h.Handler.WithGroup(name), h.level}
 }
 
 // contextHandler adds the correlation IDs from the record's context. Under WithGroup they land inside the
