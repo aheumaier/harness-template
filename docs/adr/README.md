@@ -37,3 +37,4 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0030](0030-one-layout-file-for-every-sensor.md) | The product layout is declared once in layout.env (amends 0002) | proposed |
 | [0031](0031-no-orphan-scripts-or-make-targets.md) | No orphan scripts or make targets; dead Go code is gated in check-all | proposed |
 | [0032](0032-rules-that-never-fire-are-a-drift-report.md) | Rules that never fire are a drift report; retirement is a human PR (amends 0013) | proposed |
+| [0035](0035-harness-files-under-github-are-named.md) | Harness files under `.github/` are named, not globbed (amends 0010) | proposed |

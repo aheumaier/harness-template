@@ -19,7 +19,9 @@ setup() { unset HARNESS_EDIT; }
 
 @test "blocks file tools on harness files, with the reason and what to do instead" {
   for p in .golangci.yml apps/api/.go-arch-lint.yml apps/web/eslint.config.js .claude/settings.json \
-    .claude/hooks/guard-bash.sh .github/workflows/ci.yml scripts/harness/run.sh AGENTS.md "$REPO/Makefile"; do
+    .claude/hooks/guard-bash.sh .github/workflows/ci.yml .github/workflows/pr-review.yml \
+    .github/actions/setup/action.yml .github/CODEOWNERS .github/pull_request_template.md \
+    scripts/harness/run.sh AGENTS.md "$REPO/Makefile"; do
     run -2 edit Edit "$p"
     has 'is a harness file'
   done
@@ -33,7 +35,8 @@ setup() { unset HARNESS_EDIT; }
 
 @test "allows file tools on product code and docs outside the harness" {
   for p in apps/api/internal/platform/x.go apps/web/src/App.tsx api/openapi.yaml docs/QUALITY.md \
-    ARCHITECTURE.md apps/api/AGENTS.md /tmp/elsewhere/AGENTS.md; do
+    ARCHITECTURE.md apps/api/AGENTS.md /tmp/elsewhere/AGENTS.md .github/workflows/deploy.yml \
+    .github/actions/x/action.yml; do
     run -0 edit Edit "$p"
   done
 }

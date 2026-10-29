@@ -37,7 +37,8 @@ ADR; this is that ADR.
   do not come along (a product keeps its own record); a protected file the product adapted on purpose (its
   `tool-versions.env`, which holds the product's own `HARNESS_UPSTREAM`; a CODEOWNERS with its own owners)
   shows "changed here too" after every upstream change to it, until the product declines it. Exec plan 0003
-  P4.9 will narrow `.github/*`, which shrinks the surface with it.
+  P4.9 narrowed `.github/*` to the harness's own files, which shrank the surface with it
+  ([ADR 0035](0035-harness-files-under-github-are-named.md)).
 - **Read-only and bounded**: the fetch is anonymous (no credential prompt, ssh in batch mode with a 15 s
   connect timeout, a transfer slower than 1 KB/s for 30 s aborts, and the whole fetch has 120 s where
   `timeout(1)` exists). `GIT_ALLOW_PROTOCOL=file:https:ssh`: `ext::` would run a command, and `git://` and

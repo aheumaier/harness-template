@@ -25,8 +25,17 @@ pnpm-workspace.yaml config
 .editorconfig config
 *.gitattributes config
 Makefile config
-.github/workflows/* config
-.github/actions/* config
+# The harness's own workflows and action, by name (each says "Harness file (protected)" on its first line): a
+# workflow or action not listed here is the product's, until a harness PR lists it here and in CODEOWNERS.
+.github/workflows/ci.yml config
+.github/workflows/contract-gate.yml config
+.github/workflows/coverage.yml config
+.github/workflows/drift.yml config
+.github/workflows/harness-integrity.yml config
+.github/workflows/harness-nfr.yml config
+.github/workflows/migration-gate.yml config
+.github/workflows/pr-review.yml config
+.github/actions/setup/* config
 .github/CODEOWNERS config
 scripts/harness/protected-paths.txt config
 scripts/tool-versions.env config
@@ -42,7 +51,7 @@ apps/api/tools/harness/* config
 apps/api/internal/platform/approvaltest/* config
 .claude/hooks/* config
 .claude/*
-.github/*
+.github/pull_request_template.md
 docs/harness/*
 # Tool references agents read as guidance (ADR 0029): third-party text, so changes get owner review.
 docs/references/*

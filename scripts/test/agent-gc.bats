@@ -19,7 +19,7 @@ setup() {
   printf '# Docs readme\n' >"$SANDBOX/docs/README.md"
   printf '# Agents\n\nSee [a](gone.md).\n' >"$SANDBOX/docs/sub/AGENTS.md"
   printf '@AGENTS.md\n\nSee [c](gone.md).\n' >"$SANDBOX/docs/sub/CLAUDE.md"
-  printf '# Gh\n\nSee [y](gone.md).\n' >"$SANDBOX/.github/notes.md"
+  printf '# Gh\n\nSee [y](gone.md).\n' >"$SANDBOX/.github/pull_request_template.md"
   # Tracked history and generated Markdown (NOT_GUIDE_RE): never agent-gc's to fix.
   mkdir -p "$SANDBOX/docs/adr" "$SANDBOX/docs/exec-plans" "$SANDBOX/docs/generated" "$SANDBOX/specs/001-x" \
     "$SANDBOX/.specify" "$SANDBOX/apps/fixtures"
@@ -81,7 +81,7 @@ reset_tree() {
     echo "✗ sensor check-links failed"
     printf '%s\n' "$G1" "$G2" "$O1"
     echo 'docs/harness/rules.md:3: fixtures/nope does not exist [rules-fixture-claims]'
-    echo '.github/notes.md: broken link (gone.md): .github/gone.md does not exist [docs-links-resolve]'
+    echo '.github/pull_request_template.md: broken link (gone.md): .github/gone.md does not exist [docs-links-resolve]'
     echo 'README.md: broken link (gone.md): gone.md does not exist [docs-links-resolve]'
     echo 'docs/sub/AGENTS.md: broken link (gone.md): docs/sub/gone.md does not exist [docs-links-resolve]'
     echo 'docs/sub/CLAUDE.md: broken link (gone.md): docs/sub/gone.md does not exist [docs-links-resolve]'
@@ -91,8 +91,8 @@ reset_tree() {
     echo '  remediation: fix the link'
   } >"$T/findings.txt"
   printf '# U\n' >"$SANDBOX/docs/untracked.md"
-  # README.md is unprotected and fixable; .github/ is protected, the agent guides and the untracked file are not
-  # agent-gc's, and other rules are not read.
+  # README.md is unprotected and fixable; the PR template is protected, the agent guides and the untracked file
+  # are not agent-gc's, and other rules are not read.
   run -0 "$S" targets "$T/findings.txt" "$T/out.txt"
   [ "$output" = "4 3 5" ]
   [ "$(cat "$T/out.txt")" = "$(printf '%s\n' "$G1" "$G2" "$O1" 'README.md: broken link (gone.md): gone.md does not exist [docs-links-resolve]')" ]

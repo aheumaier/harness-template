@@ -9,6 +9,14 @@ same target is red on your machine (with `BASE_REF=origin/main` for diff-based s
 
 ## Workflows (`.github/workflows/`)
 
+These workflows and `.github/actions/setup` are harness files, named one by one in
+[protected-paths.txt](../../scripts/harness/protected-paths.txt) and `.github/CODEOWNERS`. A product's own
+workflows and actions beside them are not: agents may edit them, and a change to them needs no
+`harness-change-approved` label ([harness-config-not-loosened](rules.md#harness-config-not-loosened),
+[ADR 0035](../adr/0035-harness-files-under-github-are-named.md)). They still need a code owner's review
+(CODEOWNERS owns `/.github/workflows/` and `/.github/actions/`), and a product job must not reuse a required
+check's name: branch protection matches checks by name, so such a job could stand in for the harness's.
+
 | Workflow | Trigger | Job (= status check) | Runs | Required |
 |----------|---------|----------------------|------|----------|
 | `ci.yml` | PR, push to main | `check-all` | `make setup && make check-all` minus `contract-check`, `harness-integrity`, `commits` and `specs` (own workflows, PR title, label waivers); needs Docker and pulls `OBS_IMAGE` (2.58 GB) for `make test-obs` on each fresh runner, no image cache ([ADR 0017](../adr/0017-per-worktree-observability-stack.md)); the only job that installs a browser: `make e2e-deps` installs the system libraries of Playwright's Chromium headless shell (unpinned apt, [ADR 0025](../adr/0025-browser-e2e-is-the-nfr-b2-sensor.md) known gap) and `make e2e` the browser itself, which `.github/actions/setup` (input `browser: "true"`) caches as `.bin/playwright` apart from the rest of `.bin`, keyed on the locked Playwright version; uploads `.cache/harness/timings.jsonl` as `harness-timings-check-all` (8 days) and shows latency-budget warnings as annotations; on failure uploads `.tmp/e2e` and `.tmp/dev` as `e2e-failure` (3 days) | yes |

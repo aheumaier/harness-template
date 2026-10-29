@@ -305,6 +305,42 @@ func TestIntegrityCheck(t *testing.T) {
 	}
 }
 
+// With the repo's real protected-paths.txt, the harness's own workflows and action are configs and a product's
+// workflow or action beside them is not (exec plan 0003 P4.9): a product CI change needs no label.
+func TestIntegrityCheckRealListSparesProductWorkflows(t *testing.T) {
+	const repo = "../../../.."
+	list, err := os.ReadFile(filepath.Join(repo, "scripts/harness/protected-paths.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	own := integrityRepo(t)
+	writeLines(t, own, "scripts/harness/protected-paths.txt", strings.Split(strings.TrimSuffix(string(list), "\n"), "\n")...)
+	files := []string{".github/workflows/ci.yml", ".github/actions/setup/action.yml",
+		".github/workflows/deploy.yml", ".github/actions/release/action.yml"}
+	for _, f := range files {
+		writeLines(t, own, f, "# a workflow", "on: push")
+	}
+	commitAll(t, own, "the real list, harness and product workflows")
+	for _, f := range files {
+		add(t, own, f, "      - run: make release")
+	}
+	// Untracked files count as added: a new product workflow passes, a new file in the harness action does not.
+	add(t, own, ".github/workflows/new.yml", "on: push")
+	add(t, own, ".github/actions/setup/extra.sh", "make release")
+	var out bytes.Buffer
+	bad, err := integrityCheck(own, own, "main", false, &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Untracked files are reported first.
+	want := ".github/actions/setup/extra.sh:1: added harness config line: make release [harness-config-not-loosened]\n" +
+		".github/actions/setup/action.yml:3: added harness config line:       - run: make release [harness-config-not-loosened]\n" +
+		".github/workflows/ci.yml:3: added harness config line:       - run: make release [harness-config-not-loosened]\n"
+	if !bad || out.String() != want {
+		t.Errorf("bad=%v, output:\n%s\nwant:\n%s", bad, out.String(), want)
+	}
+}
+
 func TestIntegrityCheckFailsClosed(t *testing.T) {
 	t.Run("BASE_REF does not resolve", func(t *testing.T) {
 		own := integrityRepo(t)

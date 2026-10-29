@@ -182,7 +182,9 @@ template changed since. Adopt by hand, in one reviewed harness PR:
    - `docs/harness/`, `docs/adr/` (format and the ADRs you keep), `docs/exec-plans/`;
    - `scripts/harness/`, `scripts/git-hooks/`, `scripts/test/`, `scripts/install-tools.sh`,
      `scripts/setup-worktree.sh`, `scripts/github-branch-protection.sh`;
-   - `.github/`, `trivy.yaml`, `.shellcheckrc` and `.editorconfig`;
+   - the workflows and action listed in [protected-paths.txt](scripts/harness/protected-paths.txt),
+     `.github/CODEOWNERS` and `.github/pull_request_template.md` (not `.github/` whole: the repo's own
+     workflows there stay its own), `trivy.yaml`, `.shellcheckrc` and `.editorconfig`;
    - every guide the template's `AGENTS.md` "Where to look" table links to: `ARCHITECTURE.md`,
      `docs/design-docs/`, `docs/QUALITY.md`, `docs/SECURITY.md`, `docs/RELIABILITY.md`, `docs/generated/` and
      the area `AGENTS.md`/`CLAUDE.md` pairs. Step 5 rewrites or prunes them; a link to a missing file turns
@@ -213,14 +215,17 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      - When target names collide (`check`, `fmt`, `gen`, `lint`), the template's recipe gets the name. Rename
        the old recipe. If it was a test or CI entry point, add it to `check-all`, and point any CI job that
        called the old name at the new one.
-   - **Harness and product overlap.** The product may itself live in `.github/` (reusable workflows,
-     composite actions), the `Makefile` or `scripts/`. Then narrow
-     [protected-paths.txt](scripts/harness/protected-paths.txt) and [CODEOWNERS](.github/CODEOWNERS) to the
-     harness's own files before the first `make harness-integrity`: `ci.yml`, `harness-*.yml`,
-     `contract-gate.yml`, `migration-gate.yml`, `drift.yml` and `.github/actions/setup`. Otherwise
-     protect-harness blocks every product edit, and
-     [harness-config-not-loosened](docs/harness/rules.md#harness-config-not-loosened) demands the
-     `harness-change-approved` label on every product PR.
+   - **Harness and product overlap.** The harness's own workflows and action are the files whose first line
+     is `# Harness file (protected)`, each named in [protected-paths.txt](scripts/harness/protected-paths.txt)
+     and [CODEOWNERS](.github/CODEOWNERS)
+     ([ADR 0035](docs/adr/0035-harness-files-under-github-are-named.md)). The product's own workflows and
+     composite actions in `.github/` stay the product's: agents may edit them, and
+     [harness-config-not-loosened](docs/harness/rules.md#harness-config-not-loosened) does not ask for the
+     `harness-change-approved` label. They still need a code owner's review, and a product job must not reuse
+     a required check's name (`check-all`, `harness-integrity`, …): branch protection matches checks by name.
+     A product workflow whose file name collides with a harness one (its own `ci.yml`) gets a new name instead
+     of a merge, or it becomes a harness file. The `Makefile` stays protected whole: a product target added to
+     it needs the label.
 4. **Rename the copied identity (human).** The copied files still carry `harness-template`,
    `github.com/aheumaier/harness-template` and `@aheumaier`. Rename them to your product's:
    ```sh
