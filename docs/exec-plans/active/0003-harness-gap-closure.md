@@ -191,7 +191,10 @@ PR; **–** needs none.
   read-only review agents (skills `review-security`, `review-data-handling`, `review-modularity`) and appends
   their findings to the drift issue, advisory; `scripts/harness/ci-agent.sh` shared with `pr-review.sh`;
   ADR 0016 and 0019 amended; TD-40 added, TD-38 extended
-- [ ] P3.4 — H — enable `agent-gc`: doc-gardening PRs for drift the computational checks found
+- [x] P3.4 — 14d7317 — done — `agent-gc` was a stub → drift.yml's agent-gc fixes the broken doc links
+  `check-links` found and opens one small PR (advisory, ADR 0019 amended), confined to its target files, no
+  protected path, AGENTS.md or CLAUDE.md; off until `AGENT_GC_ENABLED` and the `agent-gc` environment's
+  `AGENT_GC_TOKEN` are set (TD-50)
 - [ ] P3.5 — H — QUALITY.md grades per domain and layer, `Updated:` date, staleness check in drift
 - [ ] P3.6 — H — `repo-no-orphan-scripts` (unreferenced scripts and make targets); `deadcode-go` into
   `check-all`
@@ -975,3 +978,18 @@ give it a sensor. Each touches protected paths.
   check` and `make test-scaffold NAME=zzz_probe` green, and the printed undo hint left the tree clean; NFR-B2:
   `make e2e` green; coverage per package: `make coverage` printed 15 rows (Go packages and JS workspaces);
   mutation: `make mutation` then `make mutation-scores` (the table drift.yml puts in the issue) printed apps/api 61.5 % (91 mutants) and apps/web 20.0 % (15), the two packages without tests named. CI confirmation of NFR-B1/B2 waits for the human run above; Phase 2 implemented.
+- 2026-10-29: P3.4 done (14d7317). `scripts/harness/agent-gc.sh` (findings, targets, prompt, lock, baseline,
+  added-line leak screen, confinement, patch, apply, body); agent job without token or cache save (setup action
+  input `save-caches`), PR job in environment `agent-gc` with the token's own commit identity; `ci-agent.sh`
+  shares `agent_structured`, `agent_nonce`, `agent_cap`; agent-gc.bats 27 cases, including the sensor
+  candidates `ci-agent-writable-job-no-cache-save` and `ci-write-token-environment-scoped` as checks. Review:
+  architecture CHANGES (repo-secret write token → environment secret on the default branch, non-admin
+  identity; confinement over every post-agent path; post-agent code run from a writable tree; eight low),
+  code CHANGES (15: body from edited paths only, prompt policy, tests, shared helpers, base branch); all fixed
+  in one retry. Rebase onto 51523e8: setup action conflict with ADR 0025's `browser` input (the Playwright
+  cache needs both `browser` and `save-caches`), TD-43 renumbered TD-50 (G2 took TD-43..49). Noticed: whether
+  Claude Code's Edit works on a writable file in a read-only directory and whether `claude -p` writes to its
+  cwd are unverified until TD-50's dummy-key run; auto-delete of head branches covers merged PRs only (ci.md
+  says whoever closes one deletes it); agent-gc's findings source is `docs-links-resolve` only, so P3.5's
+  staleness check must join `RULES` and the prompt. Lane `check` green, `harness-selftest` 55/55, `lint-ci`
+  green, `check-all` red only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
