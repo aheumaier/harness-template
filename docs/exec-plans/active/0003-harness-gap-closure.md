@@ -151,7 +151,11 @@ PR; **–** needs none.
   `down`, `make logs REQUEST_ID=…|QUERY=…`, `make traces ID=…`, `make metrics QUERY=…`
   (`scripts/obs-query.sh`, jq pinned in `.bin/`); NFR-O1 met by hand (p95 `/healthz` 4.75 ms). Open: no
   `check-all` test for NFR-O1 yet (TD-32)
-- [ ] P1.5 — H — `make dev` writes structured logs to `.tmp/dev/*.log`; skill `query-runtime`
+- [x] P1.5 — db4b1c1 — done — NFR-O1 was met by hand only → `make test-obs` in check-all boots the API
+  with OTLP on, sends one request and reads its access line, its server span and the p95 of that API
+  process back through `make logs`/`traces`/`metrics` (rule `obs-request-queryable`); `obs-pull` is its own
+  sensor; `make dev` tees to `.tmp/dev`; skill `query-runtime`; ADR 0017 amended (stack opt-in for dev,
+  required by check-all and CI); TD-32 narrowed, TD-36/TD-37 added
 - [x] P2.1 — 6884b56 — a scaffolded domain had no tests → `new-domain.sh` generates a service test (fake
   store), a handler test (strict server + `httptest`) and an integration test, green on generation; the CI
   generator probe runs them (NFR-B1 0 → 100 %); the heredocs moved to `scripts/templates/new-domain/`
@@ -836,3 +840,19 @@ give it a sensor. Each touches protected paths.
   suppression form for `suppression-reason`; sensors `workspace-report-scripts` and
   `report-config-no-threshold`; 28 of 73 Go mutants are no coverage because integration-only code is
   uncovered under `-short`; bats 59–66 s against its 5 s budget (NFR-H5).
+- 2026-10-29: P1.5 integrated (db4b1c1, rebased from lane 48c2923 onto 99ec605; `.gitignore` and tracker
+  conflicts merged: Stryker lines then `.tmp/`, TD-37/TD-36 above TD-35). Decisions: the test boots its own
+  API (OTLP on, free port) instead of relying on `make dev`; it attaches to a running obs stack, else starts
+  and removes one; the p95 is tied to the run by `service.instance.id` and the `instance` label, so a
+  stale series cannot pass; the API is stopped with SIGTERM so the exporter flushes; `obs-pull` is a
+  separate sensor so the 2.58 GB download stays out of `obs-e2e`'s 30 s budget (its 120 s budget is a
+  guess, re-set from the first CI run); `test-obs` joins check-all's last `-k` line. Review (architecture
+  7, code 13) fixed in one retry, all accepted but the protected items below. Measured: `obs-pull` 0.1 s,
+  `obs-e2e` 13.8–14.5 s cold, 5 s attached; a missing image (`OBS_IMAGE=…:0.0.0-does-not-exist`) exits 2
+  with rule, remediation and docs. Branch recheck: check-all red only on harness-integrity and specs, so
+  its second line did not run (TD-37); `test-integration` and `test-obs` run by hand were green after
+  `make setup` re-ran on this worktree, whose env file predated the obs ports (exit 1, "no OTLP_PORT");
+  one `vuln-go` red was a DNS failure and passed on rerun. Noticed (protected): ci.yml should pull and cache `OBS_IMAGE` before
+  check-all; AGENTS.md and CLAUDE.md should name `make test-obs` and the query-runtime skill; the
+  `Makefile:79` help text; Vite loses its colours through `tee`. TD-36: share the API boot helper with
+  P2.3's `make e2e`.
