@@ -111,8 +111,8 @@ automatically.
   a failing `rule-fires.sh`, merges nothing and uploads no ledger, so the last one stays the newest; the
   issue says so.
 - Rows come from PR runs, so `rule-fires.sh` trusts none: only `timing.sh`'s exact shape, known rule ids
-  and integer counts, no row starting after the merge, no symlink. That does not make a fork PR's row
-  trustworthy: a well-formed forged row can hide a rule ([ADR 0032](../adr/0032-rules-that-never-fire-are-a-drift-report.md)).
+  and integer counts, no row starting after the merge, no symlink. `ci-timings.sh` drops fork PR runs'
+  artifacts and extracts only `timings.jsonl`; a well-formed forged row from a same-repository PR can still hide a rule ([ADR 0032](../adr/0032-rules-that-never-fire-are-a-drift-report.md)).
   The step log says how many rows were merged from how many artifacts; the issue says when new artifacts
   gave none.
 - A report, not a sensor: no rule id, in neither `make check` nor `make check-all` (it reads the clock and

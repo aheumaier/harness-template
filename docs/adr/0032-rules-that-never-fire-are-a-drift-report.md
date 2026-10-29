@@ -71,8 +71,9 @@ far shorter than a 90-day window, and the rows come from PR runs, so their conte
   pushing can be listed. The person deciding needs to know that.
 - A run that crashes before any finding (tool missing, config error) counts as a fire of every rule its
   remediation fallback prints ([TD-81](../exec-plans/tech-debt-tracker.md)).
-- Shape validation does not make rows from fork PRs trustworthy: a well-formed forged row with a count above
-  0 can hide a rule from the report for 90 days. The report errs toward listing too few rules, never toward
+- `ci-timings.sh` drops artifacts of fork PR runs and extracts only `timings.jsonl`. Shape validation does
+  not make the remaining rows trustworthy: a same-repository PR can still write a well-formed forged row with
+  a count above 0 and hide a rule from the report for 90 days. The report errs toward listing too few rules, never toward
   retiring one; the person deciding can check the rule's sensor runs before keeping it.
 - When no scheduled drift run happens for longer than the timings retention, rows in between are lost; the
   report says so. A week whose ledger or timings could not be read is skipped, and its rows are merged the

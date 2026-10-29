@@ -40,7 +40,8 @@ case "${1-}" in
     mkdir -p "$dir"
     since=$(($(date -u +%s) - $3 * 86400))
     if ! ids="$(gh api --paginate "repos/{owner}/{repo}/actions/artifacts?name=$name&per_page=100" \
-      --jq ".artifacts[] | select(.expired | not) | select((.created_at | fromdateiso8601) >= $since) | .id")"; then
+      --jq ".artifacts[] | select(.expired | not) | select((.created_at | fromdateiso8601) >= $since) |
+        select(.workflow_run.head_repository_id == .workflow_run.repository_id) | .id")"; then
       echo "ci-timings: listing the $name artifacts failed" >&2
       exit 1
     fi
@@ -48,8 +49,10 @@ case "${1-}" in
     for id in $ids; do
       [[ "$id" =~ ^[0-9]+$ ]] || continue
       total=$((total + 1))
-      if gh api "repos/{owner}/{repo}/actions/artifacts/$id/zip" >"$dir/$id.zip" &&
-        unzip -q -o "$dir/$id.zip" -d "$dir/$id"; then
+      # Fork PR runs are dropped above, and only timings.jsonl's bytes leave the archive (-p): never
+      # another member, a path outside $dir or a symlink.
+      if gh api "repos/{owner}/{repo}/actions/artifacts/$id/zip" >"$dir/$id.zip" && mkdir -p "$dir/$id" &&
+        unzip -p "$dir/$id.zip" timings.jsonl >"$dir/$id/timings.jsonl"; then
         ok=$((ok + 1))
       else
         echo "ci-timings: downloading artifact $id failed" >&2

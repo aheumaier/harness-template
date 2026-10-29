@@ -366,7 +366,7 @@ jobs:
           else
             [[ "$RULE_FIRES_STATE" == found ]] ||
               printf '### Rule fires: no ledger from an earlier scheduled run; tracking starts today, so no rule is listed for 90 days\n\n' >>"$report"
-            [[ -n "$(find "$RULE_FIRES_TIMINGS" -name timings.jsonl)" ]] ||
+            [[ -n "$(find "$RULE_FIRES_TIMINGS" -type f -name timings.jsonl)" ]] ||
               printf '### Rule fires: no ci.yml timings (harness-timings-check-all) from the last %s days to merge\n\n' "$RULE_FIRES_RETENTION" >>"$report"
             if out="$(scripts/harness/rule-fires.sh "$RULE_FIRES_LEDGER" "$fires_out" "$RULE_FIRES_RETENTION" "$RULE_FIRES_TIMINGS" 2>"$RUNNER_TEMP/rule-fires.log")"; then
               cat "$RUNNER_TEMP/rule-fires.log"

@@ -55,7 +55,27 @@ artifact() {
   [ "$(cat "$D/102/timings.jsonl")" = '{"row":2}' ]
   [ "$(grep -c 'artifacts?name=harness-timings-check-all' "$S/log")" -eq 1 ]
   grep -q 'select(.expired | not)' "$S/log"
+  grep -q 'head_repository_id == .workflow_run.repository_id' "$S/log"
   [ -z "$(find "$D" -name '*.zip')" ]
+}
+
+@test "download: extracts timings.jsonl only, never another member or a symlink" {
+  artifact 101 '{"row":1}'
+  printf 'x\n' >"$S/src/101/run.sh"
+  ln -s /etc/passwd "$S/src/101/link"
+  (cd "$S/src/101" && zip -q -y "$S/101.zip" run.sh link)
+  run -0 "$C" download "$D" 8
+  [ "$(ls "$D/101")" = timings.jsonl ]
+  [ "$(cat "$D/101/timings.jsonl")" = '{"row":1}' ]
+}
+
+@test "download: an artifact without timings.jsonl fails, counted" {
+  mkdir -p "$S/src/104"
+  printf 'x\n' >"$S/src/104/other.txt"
+  (cd "$S/src/104" && zip -q "$S/104.zip" other.txt)
+  printf '%s\n' 104 >>"$S/ids"
+  run -1 "$C" download "$D" 8
+  has 'downloading artifact 104 failed'
 }
 
 @test "download: a failed list or download fails, counted, so the caller can say so" {
