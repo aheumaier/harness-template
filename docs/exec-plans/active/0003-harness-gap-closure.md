@@ -200,7 +200,9 @@ PR; **–** needs none.
 - [x] P4.1 — 20c1021 — done — core belief 3 called size and complexity style →
   [ADR 0024](../../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md) proposed: limits as maintainability
   sensors; core belief 3 amended
-- [ ] P4.2 — H — Go: `funlen`, `cyclop`/`gocognit`, file length; TS: `max-lines`, `complexity`, `max-params`
+- [x] P4.2 — f49fc8d — done — no lint bounded function length, complexity, parameters or file length →
+  golangci (`funlen`, `gocognit`, revive limits) and ESLint (`max-lines-per-function`, `complexity`, `max-params`,
+  `max-lines`) enforce them; rules `code-*` with 8 fixtures; `harness-selftest` 47 → 55
 - [ ] P4.3 — H — template version marker (`.harness-version`) + `make harness-sync-check` against upstream
 - [ ] P4.4 — H — per-rule fire counts in `timings.jsonl`; drift issue lists rules that never fired in 90 days
 - [ ] P4.5 — – — `docs/references/*-llms.txt` for oapi-codegen, sqlc, orval, Atlas (pinned versions)
@@ -937,3 +939,15 @@ give it a sensor. Each touches protected paths.
   a protected path, not a rule). Noticed: AGENTS.md/CLAUDE.md rows for `make e2e` and `drive-app`; bats suite
   ~80 s. Lane `check` green, `harness-selftest` 47/47, `lint-ci` green, `check-all` red only on
   harness-integrity and specs, `test-integration`, `test-obs` and `e2e` green. CI not run (actionlint only).
+- 2026-10-29: P4.2 integrated (f49fc8d, rebased from the lane onto 075dcfb with no conflict). Size and
+  complexity limits per ADR 0024: Go `funlen`, `gocognit`, revive `argument-limit` and `file-length-limit`;
+  TS `max-lines-per-function`, `complexity`, `max-params`, `max-lines`; tests and Playwright journeys exempt
+  from the per-function limits, not from file length; thresholds just above the worst non-test value at
+  1b7aa0f, re-verified at 0bd8958. Rules `code-function-length`, `code-complexity`, `code-parameters`,
+  `code-file-length`, one Go and one web fixture each. `run.sh` maps lint finding lines to their rule
+  (`finding_pattern`, `web-lint` the ESLint catch-all; `go-sec`, `go-structured-logging`, `go-format` mapped
+  too); `run.bats` table-driven, 13 cases. Review: code 8 findings, 6 fixed in one retry; fast-check.sh
+  SIZE_RULES Noticed (protected `.claude/**`), one informational. Noticed: integrity counts every new fixture
+  line as a loosened config line; check-all's second recipe line skipped after a first-line red (TD-37); bats
+  ~85-90 s (NFR-H5). Lane `check` green, `harness-selftest` 55/55, `check-all` red only on harness-integrity
+  (specs green since PR #4 merged), `test-integration`, `test-obs` and `e2e` green.
