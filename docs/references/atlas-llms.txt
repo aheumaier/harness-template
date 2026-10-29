@@ -1,0 +1,86 @@
+# Atlas
+
+> Upstream reference for the Atlas CLI (community edition) at the version this repository pins, trimmed to
+> what an agent needs here: versioned PostgreSQL migrations in `apps/api/db/migrations`.
+
+Version: v1.3.0
+Pin: scripts/tool-versions.env ATLAS_VERSION
+License: Apache-2.0 (Ariga and the Atlas authors; LICENSE at v1.3.0); excerpts adapted and trimmed, not the upstream text
+Source: https://github.com/ariga/atlas/blob/v1.3.0/README.md
+Source: https://github.com/ariga/atlas/blob/v1.3.0/cmd/atlas/internal/cmdapi/migrate.go
+
+The tag has no docs folder; command behaviour below is from the CLI's own help text (`migrate.go`). The
+full docs (atlasgo.io) track the latest release, not this pin. When the pin moves, take this file again
+from upstream at the new tag and update Version and Source in the same change
+(rules.md#docs-references-pinned). Where upstream text conflicts with this repository's rules (AGENTS.md,
+docs/harness/rules.md) or with the section below, the repository wins.
+
+## How this repository uses it
+
+- Project file: apps/api/atlas.hcl (one env, `local`). Parts that are not obvious:
+  - `variable "url"` defaults to `getenv("DATABASE_URL")`: the make targets load this worktree's database
+    URL; never read `.env.local` yourself.
+  - The `lint` block makes the `destructive` and `incompatible` analyzers fail the lint instead of warning
+    (rules.md#db-no-destructive-migration, rules.md#db-backward-compatible-migration).
+  - `dev = "docker://postgres/17/dev"` is a throwaway container Atlas starts per command to replay and
+    analyze migrations, so Docker must be running for lint, diff and schema inspect.
+- Every command runs from `apps/api` with `--env local`; make wraps the ones that need the database URL.
+
+| Need | Run |
+|------|-----|
+| new empty migration | `cd apps/api && atlas migrate new <name> --env local` (or the add-migration skill) |
+| rehash after editing a migration file | `make gen` (runs `atlas migrate hash --env local`) |
+| apply pending migrations to this worktree's DB | `make db-migrate` (`make db-reset` recreates the DB first) |
+| lint migrations | `make lint-migrations` (`atlas migrate lint --env local --git-base "$(BASE_REF)"`) |
+| schema doc | `make gen-schema-doc` (scripts/gen-schema-doc.sh, which runs `atlas schema inspect` against the dev container) |
+
+## Migration directory
+
+- Files are `<UTC timestamp 14 digits>_<name>.sql` (`20261027000000_init.sql`), applied in version order.
+- `atlas.sum` holds an integrity hash of the directory (first line) and of each file. Any edit, addition or
+  removal without `atlas migrate hash` makes `apply` abort and `validate` report a mismatch. Editing a
+  migration that is already applied anywhere is never right here (rules.md#db-append-only-migrations).
+- File directives go in the header comment block at the top of the file:
+  - `-- atlas:txmode none`: run this file outside a transaction. Needed for `CREATE INDEX CONCURRENTLY`
+    (rules.md#db-safe-locking). Only `none` and `file` are allowed per file; `all` is a global mode only.
+    One txmode directive per file.
+
+## migrate commands (v1.3.0 help text)
+
+- `migrate apply [flags] [amount]`: applies pending files in order; `amount` caps how many. Aborts if the
+  directory and `atlas.sum` disagree, or if the database's revision history does not match the directory.
+  Flags: `--url`, `--dir`, `--dry-run` (print, execute nothing), `--tx-mode none|file|all` (default
+  `file`: one transaction per file), `--exec-order linear|linear-skip|non-linear` (default `linear`),
+  `--baseline <version>` (start after an existing schema's version), `--allow-dirty` (start on a
+  non-empty database), `--revisions-schema`, `--lock-timeout`. History is kept in the
+  `atlas_schema_revisions` table.
+- `migrate new [flags] [name]`: creates an empty file with the configured formatter; `--edit` opens it.
+- `migrate diff [flags] [name]`: replays the directory on the dev database, compares it with `--to`
+  (HCL, SQL, a database or an ORM schema) and writes the difference as a new file. Requires `--to` and
+  `--dev-url`. This repo writes migrations by hand from `migrate new`, so `diff` is not part of the flow.
+- `migrate hash`: recomputes `atlas.sum`; use after any manual change in the directory (`--force` is
+  deprecated and unnecessary).
+- `migrate lint [flags]`: runs the analyzers on changed files using the dev database. Choose the changed
+  set with `--git-base <branch>` (files added since the base branch; what `make lint-migrations` uses) or
+  `--latest N` (the last N files). `--format '{{ json .Files }}'` for machine output. Requires `--dev-url`
+  (from the env here). Analyzers flag destructive changes (drop table or column), backward-incompatible
+  changes (rename), data-dependent changes (adding a non-nullable column without default, a unique index
+  on existing data) and locking or table-rewrite risks; the `lint` block in `atlas.hcl` decides which ones
+  fail.
+- `migrate status`: compares the connected database with the directory (applied, pending, current version).
+- `migrate validate`: checks `atlas.sum`; with `--dev-url` also executes the files to check the SQL.
+- `migrate set [version]`: marks all files up to `version` as applied in the revision table, after a
+  manual change to a managed database. Not for normal work.
+- `migrate import --from "file://<dir>?format=<tool>" --to file://<dir>`: converts another migration
+  tool's directory (e.g. `format=liquibase`) to Atlas format.
+
+## Gotchas
+
+- `--env local` resolves `url`, `dev` and `migration.dir` from `atlas.hcl`; a flag on the command line
+  overrides the env value.
+- The dev database is a container Atlas starts and removes per command: Docker must be running for
+  `lint`, `diff`, `validate --dev-url` and `schema inspect --dev-url docker://...`.
+- Atlas lint and squawk run together on migrations (`make lint-migrations squawk`); a file that passes Atlas
+  can still fail squawk (missing `lock_timeout`, non-concurrent index), see `apps/api/db/AGENTS.md`.
+- Upstream supports only the two most recent minor CLI versions; raise the pin deliberately and re-run
+  `make check-all`.

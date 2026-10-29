@@ -36,6 +36,7 @@ tsconfig*.json              @aheumaier
 /.claude/                   @aheumaier
 /.github/                   @aheumaier
 /docs/harness/              @aheumaier
+/docs/references/           @aheumaier
 /.specify/                  @aheumaier
 /AGENTS.md                  @aheumaier
 /CLAUDE.md                  @aheumaier

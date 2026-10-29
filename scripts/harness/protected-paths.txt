@@ -44,6 +44,8 @@ apps/api/internal/platform/approvaltest/* config
 .claude/*
 .github/*
 docs/harness/*
+# Tool references agents read as guidance (ADR 0029): third-party text, so changes get owner review.
+docs/references/*
 # spec-kit (ADR 0011): vendored code, and the inputs that change what every speckit-* skill does
 # (extension hooks, presets), and the constitution every /speckit-plan checks against (a guide, like AGENTS.md).
 .specify/memory/*

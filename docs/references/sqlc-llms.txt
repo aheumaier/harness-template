@@ -1,0 +1,107 @@
+# sqlc
+
+> Upstream reference for sqlc at the version this repository pins, trimmed to what an agent needs here:
+> PostgreSQL queries in `apps/api/db/queries/<domain>.sql` compiled to pgx/v5 Go code in
+> `apps/api/internal/<domain>/store/`.
+
+Version: v1.31.1
+Pin: scripts/tool-versions.env SQLC_VERSION
+License: MIT (Copyright (c) 2024 Riza, Inc.; LICENSE at v1.31.1); excerpts adapted and trimmed, not the upstream text
+Source: https://github.com/sqlc-dev/sqlc/blob/v1.31.1/docs/reference/config.md
+Source: https://github.com/sqlc-dev/sqlc/blob/v1.31.1/docs/reference/query-annotations.md
+Source: https://github.com/sqlc-dev/sqlc/blob/v1.31.1/docs/reference/macros.md
+Source: https://github.com/sqlc-dev/sqlc/blob/v1.31.1/docs/howto/named_parameters.md
+
+When the pin moves, take this file again from upstream at the new tag and update Version and Source in the
+same change (rules.md#docs-references-pinned). Where upstream text conflicts with this repository's rules
+(AGENTS.md, docs/harness/rules.md) or with the section below, the repository wins.
+
+## How this repository uses it
+
+- Config: apps/api/sqlc.yaml (`version: "2"`), one `sql:` entry per domain appended by `make new-domain`
+  from scripts/templates/new-domain/sqlc.yaml.tmpl. Options in that entry that are not obvious:
+  - `schema: db/migrations` points sqlc at the Atlas migration files, so queries are type-checked against
+    the real schema and `make gen` needs no database.
+  - `sql_package: pgx/v5` generates code for pgx/v5 (`pgtype.*` for nullable columns, `pgx.ErrNoRows`),
+    not `database/sql`.
+- `make gen` runs `sqlc generate` (only once an entry exists). The `store/` package is generated: never
+  edit it; change the query or the migration and regenerate. A new column needs a new migration first
+  (golden principle 3), then `make gen`.
+
+## Query annotations (`-- name: <GoName> :<kind>`)
+
+| Kind | Generated method returns | Notes |
+|------|--------------------------|-------|
+| `:exec` | `error` | |
+| `:execresult` | `sql.Result, error` | with pgx/v5 the command tag (`pgconn.CommandTag`) |
+| `:execrows` | `int64, error` | rows affected |
+| `:execlastid` | `int64, error` | the driver's last insert id; PostgreSQL has none: use `RETURNING id` + `:one` |
+| `:one` | `<Row>, error` | no row: the driver's no-rows error (`pgx.ErrNoRows`); map it to a typed not-found error in the service; the api layer maps that to the declared 404 problem response |
+| `:many` | `[]<Row>, error` | nil slice when empty unless `emit_empty_slices: true` |
+| `:batchexec`, `:batchmany`, `:batchone` | a batch object (`Exec`/`Query`/`QueryRow` with a callback, `Close`) | PostgreSQL with pgx/v4 or pgx/v5 only |
+| `:copyfrom` | `int64, error` | bulk insert via COPY; pgx only for Postgres |
+
+`SELECT *` and `RETURNING *` expand to the table's columns; a query returning exactly a table's columns
+reuses the model struct, otherwise sqlc generates `<Name>Row`.
+
+## Parameters (macros)
+
+- Positional `$1`, `$2` get names from the column they are compared with; when sqlc lacks context it
+  generates `Column1`, `Column2`. Name them instead:
+  - `sqlc.arg(name)` or the shortcut `@name` → field `Name` in `<Query>Params`.
+  - `sqlc.narg(name)` forces a nullable parameter (no `@` form). Typical partial update:
+
+    ```sql
+    -- name: UpdateAuthor :one
+    UPDATE author
+    SET name = coalesce(sqlc.narg('name'), name),
+        bio  = coalesce(sqlc.narg('bio'), bio)
+    WHERE id = sqlc.arg('id')
+    RETURNING *;
+    ```
+
+  - Cast to pin the Go type: `@set_name::bool`, `sqlc.arg(name)::text`.
+- `sqlc.embed(table)` in a select list embeds that table's model struct in the row
+  (`SELECT sqlc.embed(students), sqlc.embed(test_scores) FROM ... JOIN ...`).
+- `sqlc.slice(name)` is for drivers that cannot bind a slice to `IN` (MySQL, SQLite). With PostgreSQL bind
+  an array instead: `WHERE id = ANY(@ids::bigint[])` → `[]int64` parameter.
+- More than `query_parameter_limit` parameters (default 1) produce a `<Query>Params` struct; `0` always
+  emits the struct.
+
+## `gen.go` options worth knowing (defaults in parentheses)
+
+- `emit_pointers_for_null_types` (false): nullable columns as `*string` instead of `pgtype.Text` /
+  `sql.NullString`. Postgres with pgx/v4 or pgx/v5, and SQLite.
+- `emit_pointers_for_null_enum_types` (new in v1.31): overrides the above for nullable enum columns;
+  set `false` to keep the pre-v1.31 `Null<Enum>` wrapper when upgrading.
+- `emit_interface` (false): a `Querier` interface, handy for service-layer fakes.
+- `emit_json_tags` (false) and `json_tags_case_style` (`none`; `camel`, `pascal`, `snake`). The API layer
+  maps store rows to generated API models, so JSON tags on store types are rarely needed.
+- `emit_empty_slices` (false): `:many` returns `[]T{}` instead of nil.
+- `emit_result_struct_pointers`, `emit_params_struct_pointers` (false).
+- `emit_methods_with_db_argument` (false): methods take a `DBTX` argument instead of storing it on
+  `*Queries`. Without it use `queries.WithTx(tx)` for transactions.
+- `emit_enum_valid_method`, `emit_all_enum_values` (false).
+- `omit_unused_structs` (false): skip table and enum structs no query in the package uses.
+- `rename`: `{column_or_struct: GoName}` for generated names.
+- `overrides`: replace a Go type, by database type or by column:
+
+  ```yaml
+  overrides:
+    - db_type: "pg_catalog.timestamptz"   # or column: "<table>.<column>"
+      nullable: true
+      go_type:
+        import: "gopkg.in/guregu/null.v4"
+        package: "null"
+        type: "Time"
+  ```
+
+  The same `rename` and `overrides` can be set once for every entry under a top-level `overrides: go:`.
+
+## Per-`sql` entry options
+
+- `strict_function_checks` (false): error if a called SQL function does not exist.
+- `strict_order_by` (true): error on an ambiguous `ORDER BY` column.
+- `database` / `analyzer`: connect to a live database for analysis; not used here (the schema comes from
+  the migration files, so `make gen` needs no database).
+- `rules` + `sqlc vet`: custom query lint rules; not used here.

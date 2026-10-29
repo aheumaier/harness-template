@@ -11,3 +11,5 @@
   spec allows (`make approved-check`).
 - Keep the `# harness:domain-*` marker comments: `make new-domain` inserts there.
 - Recipe: [.claude/skills/add-endpoint](../.claude/skills/add-endpoint/SKILL.md).
+- Generator docs at the pinned version: [oapi-codegen-llms.txt](../docs/references/oapi-codegen-llms.txt)
+  (the strict server decodes but does not validate against the schema).

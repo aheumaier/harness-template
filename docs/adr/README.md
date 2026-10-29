@@ -33,3 +33,4 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0026](0026-template-sync-is-a-drift-report.md) | Template sync is a weekly drift report that never applies anything | proposed |
 | [0027](0027-token-clones-are-a-maintainability-sensor.md) | Token clones are a maintainability sensor (extends 0024) | proposed |
 | [0028](0028-quality-grades-per-domain-and-layer.md) | Quality grades are kept per domain and layer; check-all gates their shape, the weekly drift run their age | proposed |
+| [0029](0029-tool-references-follow-the-pin.md) | Tool references are taken from upstream at the pinned version and follow the pin | proposed |

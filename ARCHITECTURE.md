@@ -41,6 +41,7 @@ flowchart LR
 | `scripts/git-hooks` | Git hooks installed by `make setup` (`core.hooksPath`): `pre-commit` runs the secret scan and the cheap per-file sensors on the staged content, `commit-msg` checks Conventional Commits. |
 | `scripts/` | `setup-worktree.sh`, `install-tools.sh` (pinned versions in `tool-versions.env`), `new-domain.sh` (its templates in `templates/new-domain/`), `gen-schema-doc.sh`, `obs-query.sh` (`make logs`, `metrics`, `traces`). Shell is code: shellcheck + shfmt (`.shellcheckrc`, `.editorconfig`) and bats tests in `scripts/test/` for these scripts and `.claude/hooks/`. |
 | `docs/` | Rules, ADRs, design docs, exec plans, quality grades, generated schema doc. |
+| `docs/references/` | `<tool>-llms.txt`: upstream docs for oapi-codegen, sqlc, orval and Atlas taken at the pinned version, header checked against the pin (`make references-pinned`, [ADR 0029](docs/adr/0029-tool-references-follow-the-pin.md)). |
 | `specs/` | Product feature specs (`NNN-slug/`: spec, plan, tasks) written with spec-kit; created by the first `/speckit-specify`. |
 | `.specify/` | Vendored spec-kit 1.1.3 (scripts, templates; never edited) and our `memory/constitution.md` ([ADR 0011](docs/adr/0011-conventional-commits-and-spec-kit.md)). |
 | `.claude/` | Claude Code settings, hooks, subagents and skills. `.github/`: CI gates. |

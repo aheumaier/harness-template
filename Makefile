@@ -81,7 +81,7 @@ db-reset: ## Drop this worktree's database volume (and the obs stack), recreate,
 	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
 
 check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=60s any: NFR-H3/H4): format, lint, arch, unit tests, secrets, gen-check
-	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links fixture-claims approved-check lint-web arch-web typecheck-web test-web
+	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned fixture-claims approved-check lint-web arch-web typecheck-web test-web
 	@$(MAKE) gen-check
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
@@ -348,9 +348,12 @@ specs: ## spec-kit specs/ are well formed; feat changes to apps/ or api/ come wi
 	@$(RUN) specs specs-structure,specs-required-for-features -- env BASE_REF="$(BASE_REF)" scripts/harness/check-specs.sh
 
 ##@ Docs
-.PHONY: docs-links docs-quality-shape docs-quality fixture-claims
+.PHONY: docs-links references-pinned docs-quality-shape docs-quality fixture-claims
 docs-links: $(HARNESS) ## Relative links and anchors in Markdown resolve; every AGENTS.md has a CLAUDE.md importing it
 	@$(RUN) check-links docs-links-resolve,docs-claude-imports-agents -- $(HARNESS) check-links .
+
+references-pinned: $(HARNESS) ## Every docs/references/*-llms.txt names the tool version the repo pins
+	@$(RUN) references-pinned docs-references-pinned -- $(HARNESS) references-pinned .
 
 # Deterministic (reads no clock): in check-all and the CI generator probe (ADR 0028).
 docs-quality-shape: $(HARNESS) ## docs/QUALITY.md has one well-formed row per domain, graded per layer
