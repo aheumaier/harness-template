@@ -59,6 +59,67 @@ setup() { unset HARNESS_EDIT; }
   HARNESS_EDIT=1 run -0 bash_cmd 'echo x >> Makefile'
 }
 
+@test "guards every worktree of the repo with this checkout's list: a sibling lane, a nested agent worktree" {
+  sandbox .claude/hooks/protect-harness.sh .bin/harness scripts/harness/protected-paths.txt scripts/harness/timing.sh
+  local lane="$BATS_TEST_TMPDIR/lane" other="$BATS_TEST_TMPDIR/other"
+  git -C "$SANDBOX" add -A && git -C "$SANDBOX" -c user.name=t -c user.email=t@localhost commit -qm x
+  git -C "$SANDBOX" worktree add -q -b lane "$lane"
+  git -C "$SANDBOX" worktree add -q -b agent "$SANDBOX/.claude/worktrees/agent"
+  git init -q "$other"
+  : >"$lane/scripts/harness/protected-paths.txt" # a worktree cannot loosen its own copy
+  for p in "$lane/Makefile" "$lane/.claude/settings.json" "$SANDBOX/.claude/worktrees/agent/AGENTS.md"; do
+    REPO="$SANDBOX" run -2 edit Edit "$p"
+    has 'is a harness file'
+  done
+  for p in "$lane/apps/api/x.go" "$SANDBOX/.claude/worktrees/agent/apps/api/x.go" "$other/Makefile"; do
+    REPO="$SANDBOX" run -0 edit Edit "$p"
+  done
+  REPO="$SANDBOX" run -2 bash_cmd "echo x >> $lane/AGENTS.md"
+  git init -q "$BATS_TEST_TMPDIR/lane2" # shares the lane's prefix, is no worktree
+  REPO="$SANDBOX" run -0 edit Edit "$BATS_TEST_TMPDIR/lane2/Makefile"
+  # A session rooted in the nested agent worktree guards the main checkout too.
+  REPO="$SANDBOX/.claude/worktrees/agent" run -2 edit Edit "$SANDBOX/Makefile"
+  has 'is a harness file'
+}
+
+@test "a worktree registered inside this checkout does not hide its harness files" {
+  sandbox .claude/hooks/protect-harness.sh .bin/harness scripts/harness/protected-paths.txt scripts/harness/timing.sh
+  git -C "$SANDBOX" add -A && git -C "$SANDBOX" -c user.name=t -c user.email=t@localhost commit -qm x
+  git -C "$SANDBOX" worktree add -q -b fake "$BATS_TEST_TMPDIR/fake"
+  # Repoint the fake worktree's admin entry at scripts/, so git lists $SANDBOX/scripts as a worktree.
+  echo "$SANDBOX/scripts/.git" >"$SANDBOX/.git/worktrees/fake/gitdir"
+  echo "gitdir: $SANDBOX/.git/worktrees/fake" >"$SANDBOX/scripts/.git"
+  run git -C "$SANDBOX" worktree list
+  has "$SANDBOX/scripts"
+  REPO="$SANDBOX" run -2 edit Edit scripts/harness/run.sh
+  has 'is a harness file'
+  REPO="$SANDBOX" run -2 edit Edit "$SANDBOX/scripts/harness/protected-paths.txt"
+  has 'is a harness file'
+}
+
+@test "moving this checkout's .git away does not unprotect it" {
+  sandbox .claude/hooks/protect-harness.sh .bin/harness scripts/harness/protected-paths.txt scripts/harness/timing.sh
+  mv "$SANDBOX/.git" "$SANDBOX/.git.x"
+  for p in AGENTS.md .claude/settings.json; do
+    REPO="$SANDBOX" run -2 edit Edit "$p"
+    has 'is a harness file'
+  done
+  REPO="$SANDBOX" run -0 edit Edit apps/api/x.go
+}
+
+@test "fails closed when git cannot list the worktrees a path needs" {
+  sandbox .claude/hooks/protect-harness.sh .bin/harness scripts/harness/protected-paths.txt scripts/harness/timing.sh
+  git -C "$SANDBOX" add -A && git -C "$SANDBOX" -c user.name=t -c user.email=t@localhost commit -qm x
+  git -C "$SANDBOX" worktree add -q -b lane "$BATS_TEST_TMPDIR/lane"
+  mkdir "$BATS_TEST_TMPDIR/nogit" && printf '#!/bin/sh\nexit 1\n' >"$BATS_TEST_TMPDIR/nogit/git"
+  chmod +x "$BATS_TEST_TMPDIR/nogit/git"
+  PATH="$BATS_TEST_TMPDIR/nogit:$PATH" REPO="$SANDBOX" run -2 edit Edit "$BATS_TEST_TMPDIR/lane/apps/x.go"
+  has 'cannot list the worktrees'
+  # Paths in this checkout or in no repository need no list.
+  PATH="$BATS_TEST_TMPDIR/nogit:$PATH" REPO="$SANDBOX" run -0 edit Edit apps/x.go
+  PATH="$BATS_TEST_TMPDIR/nogit:$PATH" REPO="$SANDBOX" run -0 edit Edit "$BATS_TEST_TMPDIR/nogit/x"
+}
+
 @test "fails closed on unparseable input" {
   run -2 "$REPO/.claude/hooks/protect-harness.sh" <<<'not json'
   has 'cannot parse'
