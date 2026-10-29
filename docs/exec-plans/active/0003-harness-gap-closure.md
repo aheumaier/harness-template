@@ -204,7 +204,9 @@ PR; **–** needs none.
 - [x] P3.7 — 8e4f77b — done — no clone detection → `repo-no-clones`: golangci `dupl` threshold 26 per package
   in `make check` (lint-go), `jscpd` 5.4.1 `minTokens` 16 over `apps/` and `packages/` in `check-all`; thresholds
   measured after cheap fixes with a scaffolded domain, no baseline (ADR 0027; per-package blind spot TD-52)
-- [ ] P3.8 — H — `reuse-reviewer` agent: does the diff re-implement something that exists?
+- [x] P3.8 — ddd125f — done — no reviewer asked whether a diff re-implements existing code →
+  `.claude/agents/reuse-reviewer.md` (Read, Grep, Glob), called from CLAUDE.md when a change adds code or
+  files; findings name the existing location and a `<kind>:<capability>` class for ADR 0019's ratchet
 - [x] P4.1 — 20c1021 — done — core belief 3 called size and complexity style →
   [ADR 0024](../../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md) proposed: limits as maintainability
   sensors; core belief 3 amended
@@ -1115,3 +1117,15 @@ give it a sensor. Each touches protected paths.
   `rootSensors` map, quality-rows kept apart), ADR index, ci.md and tracker. Lane `check` green,
   `harness-selftest` 69/69, `orphans`, `deadcode-go`, `references-pinned` and `lint-ci` green, `check-all` red
   only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
+- 2026-10-29: P3.8 done (ddd125f). `reuse-reviewer` reviews the diff only (`review-modularity` covers the
+  tree), skips what `dupl`/`jscpd` (within one Go package; across packages is in scope, TD-52), deadcode,
+  knip, orphans and the layer linters catch, generated code, fixtures and the new-domain scaffold, and
+  reports only with an existing repo `path:line` or `<module>@<version> <pkg>.<Symbol>` the new code may use
+  under the layer rule. It names globs and directories, never one script or target, so it keeps no
+  orphan alive. Advisory (ADR 0019): no rule, fixture or budget row. Review: code CHANGES (10: location
+  format, class granularity, clone scope, scaffold skip, `make help` wording, search list, injection
+  defence, rule ids, unverifiable pinned API, CLAUDE.md trigger); all fixed in one retry. Noticed: the
+  loop prompt's §5c does not call reuse-reviewer yet (protected, human hand-off); protect-harness takes
+  its root from the session's project dir, so lane worktrees are unguarded (as guard-bash). Lane `check`
+  green, `harness-selftest` 67/67, `orphans` and `docs-links` green, `check-all` red only on
+  harness-integrity.
