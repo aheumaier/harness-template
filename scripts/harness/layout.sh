@@ -8,19 +8,29 @@
 #   source scripts/harness/layout.sh || exit 2     # in a script
 #   scripts/harness/layout.sh --print [<file>]     # validated KEY=value lines (Makefile, CI's $GITHUB_ENV)
 #
-# Sourced, it sets API_DIR, SPEC, MIGRATIONS_DIR, QUERIES_DIR, API_CLIENT_DIR and LAYER_GLOB as strings;
+# STACK, the sensor groups this product has (ADR 0033), is optional: a layout.env without it (one written before
+# the key existed, such as a base branch's copy that migrations-append-only.sh reads) has all three, go:db:web.
+# The environment may override it for one run: HARNESS_STACK=go,db (`,` or `:` separated) replaces it in both
+# forms. Either way it must name each of go, db and web at most once, and go always; harness_stack_has <group>
+# tests it.
+#
+# Sourced, it sets API_DIR, SPEC, MIGRATIONS_DIR, QUERIES_DIR, API_CLIENT_DIR, LAYER_GLOB and STACK as strings;
 # WEB_GLOBS, GENERATED_GLOBS and PRODUCT_GLOBS as arrays (the `:`-separated entries); WEB_DIRS (each WEB_GLOBS
 # entry without its `/*`); API_PREFIX, the prefix of a repo path inside API_DIR ("" for API_DIR=., else
 # "$API_DIR/"); and DOMAINS_DIR, the repo path of the domains' parent (API_PREFIX + LAYER_GLOB without `/*/*`).
 # Both forms fail closed (return 1, exit 2) with `<file>:<line>: <message> [harness-layout-valid]` on stderr
-# when the file is missing, a line is not KEY=value, a key is unknown, repeated or missing, or a value is empty,
-# holds a character outside [A-Za-z0-9_./*@+-] or an empty list entry.
+# when the file is missing, a line is not KEY=value, a key is unknown, repeated or missing (STACK aside), or a
+# value is empty,
+# holds a character outside [A-Za-z0-9_./*@+-] or an empty list entry, or when STACK (after HARNESS_STACK) is
+# not a valid stack.
 
-HARNESS_LAYOUT_KEYS='API_DIR SPEC MIGRATIONS_DIR QUERIES_DIR API_CLIENT_DIR WEB_GLOBS GENERATED_GLOBS PRODUCT_GLOBS LAYER_GLOB'
+HARNESS_LAYOUT_KEYS='API_DIR SPEC MIGRATIONS_DIR QUERIES_DIR API_CLIENT_DIR WEB_GLOBS GENERATED_GLOBS PRODUCT_GLOBS LAYER_GLOB STACK'
+HARNESS_STACK_GROUPS='go db web'
+HARNESS_STACK_DEFAULT='go:db:web'
 
 # harness_layout_parse sets each key as a plain string; nothing else.
 harness_layout_parse() { # <layout.env>
-  local file="$1" line key value n=0 seen=' ' bad=''
+  local file="$1" line key value n=0 seen=' ' bad='' stack_line=''
   local re='^([A-Z_]+)=([A-Za-z0-9_./*@+-]+(:[A-Za-z0-9_./*@+-]+)*)$'
   [[ -r "$file" ]] || {
     echo "$file: missing or unreadable; restore scripts/harness/layout.env [harness-layout-valid]" >&2
@@ -40,17 +50,53 @@ harness_layout_parse() { # <layout.env>
       bad+="$file:$n: $key set twice [harness-layout-valid]"$'\n'
     else
       seen+="$key "
+      [[ "$key" != STACK ]] || stack_line=$n
       printf -v "$key" '%s' "$value"
     fi
   done <"$file"
   for key in $HARNESS_LAYOUT_KEYS; do
-    [[ "$seen" == *" $key "* ]] || bad+="$file: missing $key [harness-layout-valid]"$'\n'
+    [[ "$seen" == *" $key "* || "$key" == STACK ]] || bad+="$file: missing $key [harness-layout-valid]"$'\n'
   done
   if [[ -n "$bad" ]]; then
     printf '%s' "$bad" >&2
     return 1
   fi
+  if [[ -z "$stack_line" ]]; then
+    STACK="$HARNESS_STACK_DEFAULT"
+    harness_stack_apply "$file: STACK unset, so $STACK"
+  else
+    harness_stack_apply "$file:$stack_line: STACK=$STACK"
+  fi
 }
+
+# harness_stack_apply replaces STACK with HARNESS_STACK when that is set (`,` read as `:`), then validates it:
+# each finding on stderr, prefixed with where (the STACK line), return 1 when there is one.
+harness_stack_apply() { # <where>
+  local where="$1" group seen=' ' bad=''
+  if [[ -n "${HARNESS_STACK+set}" ]]; then
+    STACK="${HARNESS_STACK//,/:}" where="HARNESS_STACK=$HARNESS_STACK"
+  fi
+  if [[ ! "$STACK" =~ ^[a-z]+(:[a-z]+)*$ ]]; then
+    echo "$where: not a list of groups such as go:db:web (HARNESS_STACK may use , instead of :) [harness-layout-valid]" >&2
+    return 1
+  fi
+  for group in ${STACK//:/ }; do
+    if [[ " $HARNESS_STACK_GROUPS " != *" $group "* ]]; then
+      bad+="$where: unknown group $group (known: $HARNESS_STACK_GROUPS) [harness-layout-valid]"$'\n'
+    elif [[ "$seen" == *" $group "* ]]; then
+      bad+="$where: $group named twice [harness-layout-valid]"$'\n'
+    fi
+    seen+="$group "
+  done
+  [[ "$seen" == *" go "* ]] || bad+="$where: no go (every stack has the Go API and the harness) [harness-layout-valid]"$'\n'
+  [[ -z "$bad" ]] || {
+    printf '%s' "$bad" >&2
+    return 1
+  }
+}
+
+# harness_stack_has <group>: STACK names group (db, web; go always).
+harness_stack_has() { [[ ":$STACK:" == *":$1:"* ]]; }
 
 # harness_layout_load parses, then splits the lists and derives the prefixes.
 harness_layout_load() { # <layout.env>

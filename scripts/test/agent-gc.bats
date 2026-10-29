@@ -43,9 +43,6 @@ setup() {
 # lock makes the sandbox read-only: give it back to bats' cleanup whatever the test did.
 teardown() { chmod -R u+w "$SANDBOX" 2>/dev/null || true; }
 
-# edit <file> <sed-expr>: edits a sandbox file in place (portable sed -i).
-edit() { sed -i.bak "$2" "$SANDBOX/$1" && rm -f "$SANDBOX/$1.bak"; }
-
 # base: a clean baseline at $T/base.txt, dated after every sandbox file and before any later write (so the
 # `find -newer` part of confined does not depend on the clock's resolution). agent-gc.sh is hardlinked to the
 # real file: owned first, so its date is the sandbox's own.

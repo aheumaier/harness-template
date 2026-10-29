@@ -46,8 +46,7 @@ move_dir() { # <mv|copy>
   else
     cp -R "$MIG" "$SANDBOX/apps/api/db/schema"
   fi
-  sed -i.bak 's|^MIGRATIONS_DIR=.*|MIGRATIONS_DIR=apps/api/db/schema|' "$SANDBOX/scripts/harness/layout.env"
-  rm "$SANDBOX/scripts/harness/layout.env.bak"
+  edit scripts/harness/layout.env 's|^MIGRATIONS_DIR=.*|MIGRATIONS_DIR=apps/api/db/schema|'
   git -C "$SANDBOX" add -A
 }
 
@@ -65,6 +64,17 @@ move_dir() { # <mv|copy>
 
 @test "flags an edit left in the base's MIGRATIONS_DIR after the layout points elsewhere" {
   move_dir copy
+  printf '%s\n' '-- edited' >>"$MIG/1_a.sql"
+  check -1
+  has 'apps/api/db/migrations/1_a.sql: migration on main was modified [db-append-only-migrations]'
+}
+
+@test "reads a base layout.env written before STACK (9 keys) and still flags an edit (ADR 0033)" {
+  local env="$SANDBOX/scripts/harness/layout.env"
+  cp "$env" "$BATS_TEST_TMPDIR/head.env"
+  edit scripts/harness/layout.env '/^STACK=/d'
+  git -C "$SANDBOX" -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false commit -qam "no STACK"
+  cp "$BATS_TEST_TMPDIR/head.env" "$env"
   printf '%s\n' '-- edited' >>"$MIG/1_a.sql"
   check -1
   has 'apps/api/db/migrations/1_a.sql: migration on main was modified [db-append-only-migrations]'

@@ -117,6 +117,10 @@ else
 fi
 
 # --- database -----------------------------------------------------------------------------------------
+if ! harness_stack_has db; then
+  log "STACK=$STACK has no db: not starting Postgres"
+  exit 0
+fi
 if [[ "${SKIP_DB:-0}" == 1 ]]; then
   log "SKIP_DB=1: not starting Postgres"
   exit 0

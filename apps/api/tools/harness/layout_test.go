@@ -19,19 +19,31 @@ var templateLayout = []string{
 	"GENERATED_GLOBS=*.gen.go:apps/api/internal/*/store/*:packages/api-client/src/gen/*:docs/generated/*",
 	"PRODUCT_GLOBS=apps/*:api/*",
 	"LAYER_GLOB=internal/*/*",
+	"STACK=go:db:web",
 }
 
-// withLayout is templateLayout with key set to value ("" drops the key).
-func withLayout(key, value string) []string {
+// noHarnessStack keeps the environment's HARNESS_STACK (a run of make check with a smaller stack) out of a test.
+func noHarnessStack(t *testing.T) {
+	t.Helper()
+	t.Setenv("HARNESS_STACK", "") // restores the value after the test
+	os.Unsetenv("HARNESS_STACK")
+}
+
+// withLayout is templateLayout with each key, value pair of kv set ("" drops the key).
+func withLayout(kv ...string) []string {
+	set := map[string]string{}
+	for i := 0; i+1 < len(kv); i += 2 {
+		set[kv[i]] = kv[i+1]
+	}
 	var out []string
 	for _, l := range templateLayout {
-		if strings.HasPrefix(l, key+"=") {
-			if value != "" {
-				out = append(out, key+"="+value)
-			}
-			continue
+		k, _, _ := strings.Cut(l, "=")
+		switch v, ok := set[k]; {
+		case !ok:
+			out = append(out, l)
+		case v != "":
+			out = append(out, k+"="+v)
 		}
-		out = append(out, l)
 	}
 	return out
 }
@@ -53,6 +65,7 @@ func layoutTree(t *testing.T, lines []string) string {
 }
 
 func TestLayoutCheck(t *testing.T) {
+	noHarnessStack(t)
 	const at = layoutFile + ":"
 	tests := []struct {
 		name  string
@@ -62,9 +75,9 @@ func TestLayoutCheck(t *testing.T) {
 		{"the template's layout passes", templateLayout, nil},
 		{"malformed, unknown, repeated and missing keys", append(withLayout("SPEC", ""),
 			`SPEC="api/openapi.yaml"`, "LAYOUT_GLOB=x", "API_DIR=apps/api"), []string{
-			at + "11: not KEY=value (no spaces, quotes, $ or empty list entries) [harness-layout-valid]",
-			at + "12: unknown key LAYOUT_GLOB (known: " + strings.Join(layoutKeys, " ") + ") [harness-layout-valid]",
-			at + "13: API_DIR set twice [harness-layout-valid]",
+			at + "12: not KEY=value (no spaces, quotes, $ or empty list entries) [harness-layout-valid]",
+			at + "13: unknown key LAYOUT_GLOB (known: " + strings.Join(layoutKeys, " ") + ") [harness-layout-valid]",
+			at + "14: API_DIR set twice [harness-layout-valid]",
 			layoutFile + ": missing SPEC [harness-layout-valid]",
 		}},
 		{"a list with an empty entry", withLayout("PRODUCT_GLOBS", "apps/*:"), []string{
@@ -97,6 +110,11 @@ func TestLayoutCheck(t *testing.T) {
 		{"a LAYER_GLOB that matches no package (fixtures do not count)", withLayout("LAYER_GLOB", "domains/*/*"), []string{
 			at + "11: LAYER_GLOB=domains/*/*: matches no package (no directory apps/api/domains/*/* with a .go file): the domain-isolation analyzer would check nothing [harness-layout-valid]",
 		}},
+		{"a STACK without go, with a repeated and an unknown group", withLayout("STACK", "db:db:ui"), []string{
+			at + "12: STACK=db:db:ui: db named twice [harness-layout-valid]",
+			at + "12: STACK=db:db:ui: unknown group ui (known: go db web) [harness-layout-valid]",
+			at + "12: STACK=db:db:ui: no go (every stack has the Go API and the harness) [harness-layout-valid]",
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -116,7 +134,160 @@ func TestLayoutCheck(t *testing.T) {
 	}
 }
 
+func TestLayoutStack(t *testing.T) {
+	// Paths of the db and web groups that do not exist, as in a product without them.
+	lines := withLayout("MIGRATIONS_DIR", "nope", "API_CLIENT_DIR", "nope", "QUERIES_DIR", "nope/queries", "WEB_GLOBS", "web/*")
+	const at = layoutFile + ":"
+	for _, tt := range []struct {
+		env  string
+		want []string
+	}{
+		{"go", nil},
+		{"go,db", []string{
+			at + "5: MIGRATIONS_DIR=nope: no such directory [harness-layout-valid]",
+			at + "6: QUERIES_DIR=nope/queries: neither it nor its parent directory exists [harness-layout-valid]",
+		}},
+		{"go:web", []string{
+			at + "7: API_CLIENT_DIR=nope: no such directory [harness-layout-valid]",
+			at + "8: WEB_GLOBS=web/*: web/* is not <existing directory>/* [harness-layout-valid]",
+		}},
+		{"", []string{"HARNESS_STACK=: not a list of groups such as go:db:web (HARNESS_STACK may use , instead of :) [harness-layout-valid]"}},
+		{"go,web,go", []string{"HARNESS_STACK=go,web,go: go named twice [harness-layout-valid]"}},
+	} {
+		t.Run(tt.env, func(t *testing.T) {
+			t.Setenv("HARNESS_STACK", tt.env)
+			var out bytes.Buffer
+			bad, err := layoutCheck(layoutTree(t, lines), &out)
+			want := strings.Join(append(tt.want, ""), "\n")
+			if len(tt.want) == 0 {
+				want = ""
+			}
+			if err != nil || bad != (len(tt.want) > 0) || out.String() != want {
+				t.Errorf("bad=%v err=%v, output:\n%s\nwant:\n%s", bad, err, out.String(), want)
+			}
+		})
+	}
+	t.Run("loadLayout sees the override", func(t *testing.T) {
+		t.Setenv("HARNESS_STACK", "go,db")
+		l, err := loadLayout(layoutTree(t, templateLayout))
+		if err != nil || l.get("STACK") != "go:db" || !l.has("db") || l.has("web") {
+			t.Errorf("STACK=%q err=%v", l.get("STACK"), err)
+		}
+	})
+}
+
+// TestLayoutStackDefault: a layout.env written before STACK existed (a base ref, an older product) reads as
+// go:db:web; a STACK that is present but invalid still fails closed (TestLayoutCheck, TestStackVectors).
+func TestLayoutStackDefault(t *testing.T) {
+	noHarnessStack(t)
+	root := layoutTree(t, withLayout("STACK", ""))
+	l, err := loadLayout(root)
+	if err != nil || l.get("STACK") != "go:db:web" || !l.has("db") || !l.has("web") {
+		t.Errorf("STACK=%q err=%v", l.get("STACK"), err)
+	}
+	var out bytes.Buffer
+	if bad, err := layoutCheck(root, &out); bad || err != nil {
+		t.Errorf("bad=%v err=%v: %s", bad, err, out.String())
+	}
+}
+
+// TestLayoutStackHides: a stack that leaves out a group whose git-known files are still in the tree is a
+// finding at the STACK line (or HARNESS_STACK), so narrowing the stack never silently drops sensors.
+func TestLayoutStackHides(t *testing.T) {
+	noHarnessStack(t)
+	hides := func(at, group, found string) string {
+		return at + ": leaves out " + group + ", but " + found + " exists: add " + group +
+			" to STACK or delete its directories (do not narrow HARNESS_STACK on a full tree) [harness-layout-valid]"
+	}
+	base := map[string][]string{
+		"apps/api/go.mod":                   {"module example.com/api"},
+		"apps/api/internal/health/api/h.go": {"package api"},
+		"apps/api/db/migrations/atlas.sum":  {"h1:"},
+		"api/openapi.yaml":                  {"openapi: 3.1.0"},
+		"apps/web/README.md":                {"# web"},
+		"packages/README.md":                {"# packages"},
+		// Fixtures are not the product's code.
+		"scripts/harness/fixtures/x/files/apps/api/db/migrations/1.sql": {""},
+	}
+	for _, tt := range []struct {
+		name  string
+		stack string // layout.env's STACK (line 12)
+		env   string // HARNESS_STACK, "-" for unset
+		add   map[string][]string
+		want  []string
+	}{
+		{"a go-only tree passes", "go", "-", nil, nil},
+		{"a migration and a web workspace under STACK=go", "go", "-", map[string][]string{
+			"apps/api/db/migrations/1_init.sql": {""},
+			"apps/web/package.json":             {"{}"},
+		}, []string{
+			hides(layoutFile+":12: STACK=go", "db", "apps/api/db/migrations/1_init.sql"),
+			hides(layoutFile+":12: STACK=go", "web", "apps/web/package.json"),
+		}},
+		{"a query file is db code", "go:web", "-", map[string][]string{
+			"apps/api/db/queries/users.sql":    {""},
+			"packages/api-client/package.json": {"{}"},
+		}, []string{hides(layoutFile+":12: STACK=go:web", "db", "apps/api/db/queries/users.sql")}},
+		{"API_CLIENT_DIR without a package.json is web code", "go:db", "-", map[string][]string{
+			"packages/api-client/src/index.ts": {""},
+		}, []string{hides(layoutFile+":12: STACK=go:db", "web", "packages/api-client")}},
+		{"HARNESS_STACK narrows a full tree", "go:db:web", "go", map[string][]string{
+			"apps/api/db/migrations/1_init.sql": {""},
+			"apps/web/package.json":             {"{}"},
+			"packages/api-client/package.json":  {"{}"},
+		}, []string{
+			hides("HARNESS_STACK=go", "db", "apps/api/db/migrations/1_init.sql"),
+			hides("HARNESS_STACK=go", "web", "apps/web/package.json"),
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			files := maps.Clone(base)
+			maps.Copy(files, tt.add)
+			files[layoutFile] = append([]string{"# layout", ""}, withLayout("STACK", tt.stack)...)
+			root := linkRepo(t, files)
+			gitT(t, root, "add", "-A")
+			if tt.env != "-" {
+				t.Setenv("HARNESS_STACK", tt.env)
+			}
+			var out bytes.Buffer
+			bad, err := layoutCheck(root, &out)
+			want := strings.Join(append(tt.want, ""), "\n")
+			if len(tt.want) == 0 {
+				want = ""
+			}
+			if err != nil || bad != (len(tt.want) > 0) || out.String() != want {
+				t.Errorf("bad=%v err=%v, output:\n%s\nwant:\n%s", bad, err, out.String(), want)
+			}
+		})
+	}
+}
+
+// TestStackVectors runs the STACK vectors layout.bats shares, so layout.go and layout.sh agree (ADR 0033).
+func TestStackVectors(t *testing.T) {
+	noHarnessStack(t)
+	b, err := os.ReadFile("testdata/stack-vectors.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, line := range strings.Split(string(b), "\n") {
+		value, want, ok := strings.Cut(line, " ")
+		if !ok || strings.HasPrefix(line, "#") {
+			continue
+		}
+		n++
+		l := layout{values: map[string]string{"STACK": value}, lines: map[string]int{"STACK": 1}}
+		if problems := l.applyStack(); (len(problems) == 0) != (want == "accept") {
+			t.Errorf("STACK=%s: problems %q; want %s", value, problems, want)
+		}
+	}
+	if n == 0 {
+		t.Fatal("no vectors in testdata/stack-vectors.txt")
+	}
+}
+
 func TestLayoutRootModule(t *testing.T) {
+	noHarnessStack(t)
 	// API_DIR=. puts the module at the repo root: paths are joined without a "./" prefix.
 	root := linkRepo(t, map[string][]string{
 		layoutFile:                   withLayout("API_DIR", "."),
@@ -142,6 +313,7 @@ func TestLayoutRootModule(t *testing.T) {
 }
 
 func TestLayoutCheckExitCodes(t *testing.T) {
+	noHarnessStack(t)
 	ok := layoutTree(t, templateLayout)
 	bad := layoutTree(t, withLayout("LAYER_GLOB", "domains/*/*"))
 	for _, tt := range []struct {
@@ -161,6 +333,7 @@ func TestLayoutCheckExitCodes(t *testing.T) {
 }
 
 func TestLoadLayoutFailsClosed(t *testing.T) {
+	noHarnessStack(t)
 	root := linkRepo(t, map[string][]string{layoutFile: withLayout("SPEC", "")})
 	if _, err := loadLayout(root); err == nil || err.Error() != layoutFile+": missing SPEC (run make layout-check)" {
 		t.Errorf("err = %v", err)
@@ -168,6 +341,7 @@ func TestLoadLayoutFailsClosed(t *testing.T) {
 }
 
 func TestLayoutCheckPlatformIsNoDomain(t *testing.T) {
+	noHarnessStack(t)
 	// domainiso skips <layer dir>/platform and every flat <layer dir>/<pkg>. A platform-only tree is the
 	// template before its first domain, so it passes; a flat package beside it is a layout domainiso cannot see.
 	files := map[string][]string{

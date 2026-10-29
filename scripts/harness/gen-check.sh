@@ -27,9 +27,10 @@ hashes() {
   done || true
 }
 snapshot() { git ls-files -co --exclude-standard -- "${GENERATED[@]}" | sort | hashes; }
-stamp() {
+stamp() { # the effective STACK too: a HARNESS_STACK run of make gen leaves generators out (ADR 0033)
   {
-    git ls-files -co --exclude-standard -- "${INPUTS[@]}" | sort | hashes &&
+    echo "STACK=$STACK" &&
+      git ls-files -co --exclude-standard -- "${INPUTS[@]}" | sort | hashes &&
       snapshot
   } | shasum -a 256
 }

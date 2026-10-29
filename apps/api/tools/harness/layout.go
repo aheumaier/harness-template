@@ -5,11 +5,19 @@ package main
 // it is parsed here with layout.sh's rules: `KEY=value` lines, `#` comments, every known key exactly once, no
 // unknown key, a plain value (no spaces, quotes or `$`), lists separated by single `:` (no empty entry).
 //
+// STACK, the sensor groups the product has (ADR 0033), is optional (go:db:web without it, as in a layout.env
+// written before the key existed) and replaced by the environment's HARNESS_STACK when that is set (`,` read as
+// `:`); it names each of go, db and web at most once, and go always. Without db, layout-check leaves
+// MIGRATIONS_DIR and QUERIES_DIR unchecked; without web, API_CLIENT_DIR and WEB_GLOBS. A stack must match the
+// tree: a group left out while its git-known files exist (a *.sql in MIGRATIONS_DIR or a file in QUERIES_DIR; a
+// package.json in a WEB_GLOBS workspace or an API_CLIENT_DIR) is a finding, so a narrowed stack never silently
+// drops sensors whose code is still there.
+//
 // layout-check (harness-layout-valid, make layout-check in make check) prints one line per finding:
 //
 //	scripts/harness/layout.env[:<line>]: <message> [harness-layout-valid]
 //
-// for a malformed line, a missing, unknown or repeated key, API_DIR without a go.mod, SPEC that is not a file,
+// for a malformed line, a missing, unknown or repeated key, a STACK that is invalid or leaves out a group the tree has, API_DIR without a go.mod, SPEC that is not a file,
 // MIGRATIONS_DIR or API_CLIENT_DIR that is not a directory (QUERIES_DIR: nor its parent), a WEB_GLOBS entry
 // that is not `<existing dir>/*`, and a LAYER_GLOB that is not `<dir>[/<dir>…]/*/*`-shaped (literal segments,
 // then exactly two `*` segments: domain and layer, as the analyzer reads them), matches no `<dir>/*/*`
@@ -34,20 +42,28 @@ import (
 const layoutFile = "scripts/harness/layout.env"
 
 var (
-	layoutKeys   = []string{"API_DIR", "SPEC", "MIGRATIONS_DIR", "QUERIES_DIR", "API_CLIENT_DIR", "WEB_GLOBS", "GENERATED_GLOBS", "PRODUCT_GLOBS", "LAYER_GLOB"}
+	layoutKeys   = []string{"API_DIR", "SPEC", "MIGRATIONS_DIR", "QUERIES_DIR", "API_CLIENT_DIR", "WEB_GLOBS", "GENERATED_GLOBS", "PRODUCT_GLOBS", "LAYER_GLOB", "STACK"}
+	stackGroups  = []string{"go", "db", "web"}
+	defaultStack = "go:db:web" // a layout.env without STACK
+	stackRE      = regexp.MustCompile(`^[a-z]+(?::[a-z]+)*$`)
 	layoutLineRE = regexp.MustCompile(`^([A-Z_]+)=([A-Za-z0-9_./*@+-]+(?::[A-Za-z0-9_./*@+-]+)*)$`)
 	layoutSkipRE = regexp.MustCompile(`^[[:space:]]*(#|$)`)
 )
 
-// layout is a parsed layout.env: each key's value and line; lists are split with list.
+// layout is a parsed layout.env: each key's value and line; lists are split with list. stackAt names where the
+// effective STACK came from, for findings: "<layoutFile>:<line>: STACK=<value>" or "HARNESS_STACK=<value>".
 type layout struct {
-	values map[string]string
-	lines  map[string]int
+	values  map[string]string
+	lines   map[string]int
+	stackAt string
 }
 
 func (l layout) get(key string) string { return l.values[key] }
 
 func (l layout) list(key string) []string { return strings.Split(l.values[key], ":") }
+
+// has reports whether STACK names group.
+func (l layout) has(group string) bool { return slices.Contains(l.list("STACK"), group) }
 
 // apiPath joins API_DIR and a path inside it, as a repo-relative path ("." joins to the path itself).
 func (l layout) apiPath(p string) string { return path.Join(l.get("API_DIR"), p) }
@@ -84,11 +100,47 @@ func parseLayout(root string) (layout, []string, error) {
 		}
 	}
 	for _, k := range layoutKeys {
-		if l.lines[k] == 0 {
+		if l.lines[k] == 0 && k != "STACK" {
 			problems = append(problems, fmt.Sprintf("%s: missing %s", layoutFile, k))
 		}
 	}
+	if len(problems) == 0 {
+		problems = l.applyStack()
+	}
 	return l, problems, sc.Err()
+}
+
+// applyStack defaults a missing STACK, replaces it with HARNESS_STACK when that is set, then validates it
+// (layout.sh's harness_layout_parse and harness_stack_apply).
+func (l *layout) applyStack() []string {
+	if l.lines["STACK"] == 0 {
+		l.values["STACK"] = defaultStack
+		l.stackAt = fmt.Sprintf("%s: STACK unset, so %s", layoutFile, defaultStack)
+	} else {
+		l.stackAt = fmt.Sprintf("%s:%d: STACK=%s", layoutFile, l.lines["STACK"], l.get("STACK"))
+	}
+	if env, ok := os.LookupEnv("HARNESS_STACK"); ok {
+		l.values["STACK"], l.stackAt = strings.ReplaceAll(env, ",", ":"), "HARNESS_STACK="+env
+	}
+	where := l.stackAt
+	if !stackRE.MatchString(l.get("STACK")) {
+		return []string{where + ": not a list of groups such as go:db:web (HARNESS_STACK may use , instead of :)"}
+	}
+	var problems []string
+	seen := map[string]bool{}
+	for _, g := range l.list("STACK") {
+		switch {
+		case !slices.Contains(stackGroups, g):
+			problems = append(problems, fmt.Sprintf("%s: unknown group %s (known: %s)", where, g, strings.Join(stackGroups, " ")))
+		case seen[g]:
+			problems = append(problems, fmt.Sprintf("%s: %s named twice", where, g))
+		}
+		seen[g] = true
+	}
+	if !seen["go"] {
+		problems = append(problems, where+": no go (every stack has the Go API and the harness)")
+	}
+	return problems
 }
 
 // loadLayout is parseLayout for the sensors that only read the layout: any problem is an error (exit 2).
@@ -136,20 +188,30 @@ func (l layout) problems(root string) ([]string, error) {
 	if !isFile(l.get("SPEC")) {
 		report("SPEC", "no such file (the OpenAPI contract)")
 	}
-	for _, k := range []string{"MIGRATIONS_DIR", "API_CLIENT_DIR"} {
-		if !isDir(l.get(k)) {
-			report(k, "no such directory")
+	if l.has("db") {
+		if !isDir(l.get("MIGRATIONS_DIR")) {
+			report("MIGRATIONS_DIR", "no such directory")
+		}
+		// The first domain's queries create QUERIES_DIR (make new-domain): until then only its parent exists.
+		if !isDir(path.Dir(l.get("QUERIES_DIR"))) {
+			report("QUERIES_DIR", "neither it nor its parent directory exists")
 		}
 	}
-	// The first domain's queries create QUERIES_DIR (make new-domain): until then only its parent exists.
-	if !isDir(path.Dir(l.get("QUERIES_DIR"))) {
-		report("QUERIES_DIR", "neither it nor its parent directory exists")
-	}
-	for _, e := range l.list("WEB_GLOBS") {
-		if dir, ok := strings.CutSuffix(e, "/*"); !ok || !isDir(dir) {
-			report("WEB_GLOBS", "%s is not <existing directory>/*", e)
+	if l.has("web") {
+		if !isDir(l.get("API_CLIENT_DIR")) {
+			report("API_CLIENT_DIR", "no such directory")
+		}
+		for _, e := range l.list("WEB_GLOBS") {
+			if dir, ok := strings.CutSuffix(e, "/*"); !ok || !isDir(dir) {
+				report("WEB_GLOBS", "%s is not <existing directory>/*", e)
+			}
 		}
 	}
+	hidden, err := l.hiddenGroups(root, isDir)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, hidden...)
 	segs, err := layerSegments(l.get("LAYER_GLOB"))
 	if err != nil {
 		report("LAYER_GLOB", "%v", err)
@@ -164,6 +226,41 @@ func (l layout) problems(root string) ([]string, error) {
 	}
 	for _, dir := range flat {
 		report("LAYER_GLOB", "%s is a package with no layer (expected %s/<domain>/<layer>): the domain-isolation analyzer skips it", dir, path.Dir(dir))
+	}
+	return out, nil
+}
+
+// hiddenGroups reports each group the stack leaves out while the tree still has its code: its sensors would leave
+// make check and make check-all without a trace.
+func (l layout) hiddenGroups(root string, isDir func(string) bool) ([]string, error) {
+	var out []string
+	hide := func(group, found string) {
+		out = append(out, fmt.Sprintf("%s: leaves out %s, but %s exists: add %s to STACK or delete its directories (do not narrow HARNESS_STACK on a full tree)", l.stackAt, group, found, group))
+	}
+	if !l.has("db") {
+		files, err := gitFiles(root, ":(glob)"+l.get("MIGRATIONS_DIR")+"/*.sql", l.get("QUERIES_DIR")+"/*")
+		if err != nil {
+			return nil, err
+		}
+		if len(files) > 0 {
+			hide("db", files[0])
+		}
+	}
+	if !l.has("web") {
+		var specs []string
+		for _, e := range l.list("WEB_GLOBS") {
+			specs = append(specs, ":(glob)"+e+"/package.json")
+		}
+		files, err := gitFiles(root, specs...)
+		if err != nil {
+			return nil, err
+		}
+		switch {
+		case len(files) > 0:
+			hide("web", files[0])
+		case isDir(l.get("API_CLIENT_DIR")):
+			hide("web", l.get("API_CLIENT_DIR"))
+		}
 	}
 	return out, nil
 }

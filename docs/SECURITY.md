@@ -14,7 +14,7 @@ Defaults this template ships with, and what a product built on it must do before
   git-known files (in `make check` the changed ones, in CI all of them), and the `pre-commit` git hook (installed by `make setup`) scans the
   staged files before a commit exists.
 - **Downloaded tools are verified:** each binary `scripts/install-tools.sh` downloads (Trivy, Atlas,
-  ShellCheck, jq, and Claude Code for CI only via `install-tools.sh claude`) is checked against a sha256
+  ShellCheck, jq, spectral, squawk, bats, and Claude Code for CI only via `install-tools.sh claude`) is checked against a sha256
   pinned per OS/arch in `scripts/tool-versions.env` and not installed on a mismatch or a missing pin;
   scanners and CI agents run only as these release binaries, never as GitHub Actions, npm packages or
   container images ([ADR 0016](adr/0016-tool-supply-chain.md)).
@@ -26,7 +26,9 @@ Defaults this template ships with, and what a product built on it must do before
   MCP tool; a verbatim screen of its output is a backstop, not the control
   ([ci.md](harness/ci.md#pr-review), [ADR 0019](adr/0019-inferential-sensors-are-advisory.md)).
 - **Dependency vulnerabilities:** `govulncheck` (root Go module) and Trivy (`pnpm-lock.yaml` and every
-  `go.mod`, rule `deps-no-known-vulns`) in `make check-all`, CI and weekly drift; JS installs honour
+  `go.mod`, rule `deps-no-known-vulns`) in `make check-all`, CI and weekly drift. What the spectral (a
+  Node runtime and its npm tree), squawk and bats downloads bundle is in no lockfile and not scanned; their
+  bumps need the provenance note ([ADR 0033](adr/0033-stack-profiles.md), tracker TD-86). JS installs honour
   pnpm's `minimumReleaseAge: 1440` (24 h, `pnpm-workspace.yaml`). It is not strict: when no version that old
   matches, pnpm installs a newer one and records it in `minimumReleaseAgeExclude`, which a PR review must
   check.

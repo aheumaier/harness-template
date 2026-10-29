@@ -2,6 +2,7 @@
 # scripts/install-tools.sh claude: the CI-only Claude Code install (exec plan 0003 P3.2, ADR 0016) fails closed
 # on a missing pin or a checksum mismatch. A stub curl serves fake bytes: no network.
 # scripts/install-tools.sh browsers: make e2e's on-demand browser install (ADR 0025), against a stub playwright.
+# scripts/install-tools.sh (make tools): the stack picks the tools (ADR 0033), against stub go, curl and npm.
 bats_require_minimum_version 1.5.0
 load helpers
 
@@ -110,4 +111,58 @@ EOF
   run -1 env PLAYWRIGHT_BROWSERS_PATH="$BATS_TEST_TMPDIR/browsers" "$I" browsers
   has 'run make deps first'
   [ ! -e "$BATS_TEST_TMPDIR/browsers" ]
+}
+
+# stack_stubs: every go-group tool stamped at its pin in the sandbox's .bin, and stub go and npm that log.
+stack_stubs() {
+  local name var
+  mkdir -p "$SANDBOX/.bin"
+  while read -r name var; do
+    printf '#!/bin/sh\n' >"$SANDBOX/.bin/$name"
+    chmod +x "$SANDBOX/.bin/$name"
+    sed -n "s/^$var=//p" "$V" >"$SANDBOX/.bin/.$name.version"
+  done <<'TOOLS'
+golangci-lint GOLANGCI_LINT_VERSION
+go-arch-lint GO_ARCH_LINT_VERSION
+govulncheck GOVULNCHECK_VERSION
+deadcode DEADCODE_VERSION
+oapi-codegen OAPI_CODEGEN_VERSION
+oasdiff OASDIFF_VERSION
+shfmt SHFMT_VERSION
+actionlint ACTIONLINT_VERSION
+gremlins GREMLINS_VERSION
+shellcheck SHELLCHECK_VERSION
+trivy TRIVY_VERSION
+jq JQ_VERSION
+spectral SPECTRAL_VERSION
+bats BATS_VERSION
+TOOLS
+  printf '#!/usr/bin/env bash\necho "go $*" >>"$BATS_TEST_TMPDIR/tools.log"\n' >"$STUB/go"
+  printf '#!/usr/bin/env bash\necho "npm $*" >>"$BATS_TEST_TMPDIR/tools.log"\n' >"$STUB/npm"
+  chmod +x "$STUB/go" "$STUB/npm"
+}
+
+@test "stack go: installs no db or web tool (sqlc, atlas, squawk, pnpm)" {
+  stack_stubs
+  HARNESS_STACK=go run -0 "$I"
+  [ ! -e "$BATS_TEST_TMPDIR/tools.log" ]
+  [ ! -e "$BATS_TEST_TMPDIR/curl.log" ]
+}
+
+@test "stack go,db: installs sqlc and atlas, no pnpm" {
+  stack_stubs
+  HARNESS_STACK=go,db run -1 "$I" # the stub curl's bytes fail atlas's sha256 pin
+  grep -q '^go install github.com/sqlc-dev/sqlc/cmd/sqlc@' "$BATS_TEST_TMPDIR/tools.log"
+  grep -q '^https://release.ariga.io/atlas/atlas-community-' "$BATS_TEST_TMPDIR/curl.log"
+  has 'sha256 mismatch for atlas'
+  run -1 grep -q '^npm ' "$BATS_TEST_TMPDIR/tools.log"
+}
+
+@test "stack go,web: installs pnpm with npm and checks package.json's packageManager, no db tool" {
+  stack_stubs
+  HARNESS_STACK=go,web run -1 "$I" # the sandbox has no package.json
+  grep -q '^npm install .* pnpm@' "$BATS_TEST_TMPDIR/tools.log"
+  has 'package.json packageManager must be pnpm@'
+  run -1 grep -q 'sqlc' "$BATS_TEST_TMPDIR/tools.log"
+  [ ! -e "$BATS_TEST_TMPDIR/curl.log" ]
 }

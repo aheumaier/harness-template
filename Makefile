@@ -8,12 +8,22 @@ MAKEFLAGS += --no-print-directory
 include scripts/tool-versions.env
 # Where the code lives (API_DIR, SPEC, ...), one file for every sensor (ADR 0030); its lists separate entries
 # with `:`. Read through the validating parser, never included as make syntax: layout.sh prints only its known
-# keys with plain values, one KEY=value word each, or nothing and its findings on stderr.
-LAYOUT := $(shell scripts/harness/layout.sh --print)
+# keys with plain values, one KEY=value word each, or nothing and its findings on stderr. HARNESS_STACK, from the
+# environment or the command line, overrides its STACK (ADR 0033); make 3.81's $(shell) sees only the former.
+LAYOUT := $(shell $(if $(filter command line,$(origin HARNESS_STACK)),HARNESS_STACK='$(HARNESS_STACK)') scripts/harness/layout.sh --print)
 ifeq ($(LAYOUT),)
-$(error scripts/harness/layout.env is missing or invalid (see above): fix it, then run make layout-check [harness-layout-valid])
+$(error scripts/harness/layout.env or HARNESS_STACK is missing or invalid (see above): fix it, then run make layout-check [harness-layout-valid])
 endif
 $(foreach kv,$(LAYOUT),$(eval $(kv)))
+# The sensor groups (ADR 0033): go is every target not listed here and always runs; a db or web target leaves
+# check, check-all, gen and make harness-selftest when STACK lacks its group. e2e needs both (make dev starts
+# Postgres and the web app). `$(call stack_has,<group>)` is non-empty when STACK names it; `$(call
+# stacked,<targets>)` drops the targets STACK leaves out; check says once on stderr which ones.
+DB_TARGETS  := schema-doc-fresh lint-migrations squawk migrations-append-only test-integration test-obs e2e gen-sqlc gen-atlas-sum
+WEB_TARGETS := lint-web arch-web typecheck-web test-web knip clones-web e2e gen-api-client
+stack_has    = $(filter $(1),$(subst :, ,$(STACK)))
+STACK_OFF   := $(strip $(if $(call stack_has,db),,$(DB_TARGETS)) $(if $(call stack_has,web),,$(WEB_TARGETS)))
+stacked      = $(filter-out $(STACK_OFF),$(1))
 export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 export OBS_IMAGE # compose.yaml interpolates the obs service even when its profile is off
 export PATH := $(CURDIR)/.bin:$(CURDIR)/node_modules/.bin:$(PATH)
@@ -92,16 +102,18 @@ db-reset: ## Drop this worktree's database volume (and the obs stack), recreate,
 	@$(WITH_ENV) cd $(API_DIR) && atlas migrate apply --env local >/dev/null
 
 check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=60s any: NFR-H3/H4): format, lint, arch, unit tests, secrets, gen-check
-	@$(MAKE) -k -j4 layout-check lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned fixture-claims approved-check lint-web arch-web typecheck-web test-web
+	@$(if $(STACK_OFF),echo "STACK=$(STACK) leaves out: $(sort $(STACK_OFF)) (ADR 0033)" >&2,true)
+	@$(MAKE) -k -j4 $(call stacked,layout-check lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned fixture-claims approved-check lint-web arch-web typecheck-web test-web)
 	@$(MAKE) gen-check
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
 CHECK_ALL_SKIP ?=
 check-all: export HARNESS_SCOPE := full
 check-all: check ## Everything: check + integration, contract, migration, security, dead code, orphan scripts, clones, e2e
-	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go vuln-deps lint-migrations squawk migrations-append-only lint-api contract-check knip deadcode-go clones-web docs-quality-shape harness-integrity orphans commits specs)
-	@$(MAKE) -k test-integration test-obs e2e
+	@$(MAKE) -k -j4 $(call stacked,$(filter-out $(CHECK_ALL_SKIP),vuln-go vuln-deps lint-migrations squawk migrations-append-only lint-api contract-check knip deadcode-go clones-web docs-quality-shape harness-integrity orphans commits specs))
+	@$(if $(call stacked,test-integration test-obs e2e),$(MAKE) -k $(call stacked,test-integration test-obs e2e),true)
 
+# A fixture whose target or STACK= tag STACK leaves out is skipped (selftest.sh asks make for STACK_OFF).
 harness-selftest: $(HARNESS) ## Every fixture in scripts/harness/fixtures must be rejected by its sensor (FIXTURE=name for one)
 	@scripts/harness/selftest.sh $(FIXTURE)
 
@@ -195,8 +207,8 @@ review-prompt: ## Prompt of a scheduled review, as drift.yml sends it: make revi
 tools: $(GCL) $(HARNESS) ## Install pinned CLI tools into .bin
 	@scripts/install-tools.sh
 
-deps: ## Install JS dependencies from the lockfile (make e2e installs its browser itself)
-	@pnpm install --frozen-lockfile --silent
+deps: ## Install JS dependencies from the lockfile (make e2e installs its browser itself); none without web in STACK
+	@$(if $(call stack_has,web),pnpm install --frozen-lockfile --silent,true)
 
 $(GCL): $(API_DIR)/.custom-gcl.yml $(ANALYZERS_SRC) scripts/tool-versions.env
 	@scripts/install-tools.sh
@@ -391,7 +403,7 @@ fixture-claims: $(HARNESS) ## Every rules.md Fixture line names fixtures that ex
 
 ##@ Generation
 .PHONY: gen gen-check gen-sqlc gen-atlas-sum gen-oapi gen-api-client
-gen: gen-oapi gen-api-client gen-sqlc gen-atlas-sum ## Regenerate all generated code (then commit it)
+gen: $(call stacked,gen-oapi gen-api-client gen-sqlc gen-atlas-sum) ## Regenerate all generated code (then commit it)
 
 gen-oapi: # one strict server per OpenAPI tag: every $(DOMAINS_DIR)/**/oapi-codegen.yaml
 	@for cfg in $$(find $(DOMAINS_DIR) -name oapi-codegen.yaml | sort); do \

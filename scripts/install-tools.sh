@@ -55,12 +55,15 @@ os=$(uname -s | tr '[:upper:]' '[:lower:]')
 arch=$(uname -m)
 [[ $arch == x86_64 ]] && arch=amd64
 [[ $arch == aarch64 ]] && arch=arm64
+# Spellings some releases use: x64 for amd64 (claude, spectral, squawk), macos for darwin (jq, spectral).
+x64=$arch && [[ $x64 == amd64 ]] && x64=x64
+macos=$os && [[ $macos == darwin ]] && macos=macos
 
 sha256() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
 
-download() { # name url: fetch into $BIN/.dl-<name>, verify against <NAME>_SHA256_<OS>_<ARCH> or fail closed
-  local name=$1 url=$2 var want got
-  var="$(echo "${name}_SHA256_${os}_${arch}" | tr '[:lower:]' '[:upper:]')"
+download() { # name url [var]: fetch into $BIN/.dl-<name>, verify against var (default <NAME>_SHA256_<OS>_<ARCH>) or fail closed
+  local name=$1 url=$2 var="${3-}" want got
+  [[ -n "$var" ]] || var="$(echo "${name}_SHA256_${os}_${arch}" | tr '[:lower:]' '[:upper:]')"
   want="${!var:-}"
   [[ -n "$want" ]] || {
     echo "no sha256 pin $var in scripts/tool-versions.env for $name on ${os}/${arch}" >&2
@@ -84,14 +87,23 @@ download() { # name url: fetch into $BIN/.dl-<name>, verify against <NAME>_SHA25
   }
 }
 
+install_release() { # name version url: a single binary downloaded (and verified) into $BIN/<name>, stamped
+  local name=$1 ver=$2
+  stamp_ok "$name" "$ver" && return 0
+  echo "installing $name $ver" >&2
+  download "$name" "$3"
+  mv "$BIN/.dl-$name" "$BIN/$name"
+  chmod +x "$BIN/$name"
+  stamp "$name" "$ver"
+}
+
 # Claude Code, for the CI reviewer only (.github/workflows/pr-review.yml, exec plan 0003 P3.2): installed by
 # `install-tools.sh claude` alone, never by `make tools`, which every worktree runs. Its pins match the
-# release's manifest.json. Its platform names say x64 where the other tools say amd64.
+# release's manifest.json. Its download is claude_code (its pins' name), its binary claude.
 if [[ "${1:-}" == claude ]]; then
   if ! stamp_ok claude "$CLAUDE_CODE_VERSION"; then
     echo "installing claude $CLAUDE_CODE_VERSION" >&2
-    a=$arch && [[ $a == amd64 ]] && a=x64
-    download claude_code "https://downloads.claude.ai/claude-code-releases/${CLAUDE_CODE_VERSION}/${os}-${a}/claude"
+    download claude_code "https://downloads.claude.ai/claude-code-releases/${CLAUDE_CODE_VERSION}/${os}-${x64}/claude"
     mv "$BIN/.dl-claude_code" "$BIN/claude"
     chmod +x "$BIN/claude"
     stamp claude "$CLAUDE_CODE_VERSION"
@@ -99,24 +111,24 @@ if [[ "${1:-}" == claude ]]; then
   exit 0
 fi
 
+# The stack (layout.env's STACK, or HARNESS_STACK; ADR 0033) picks the tools: go's always, db's and web's only
+# with that group.
+# shellcheck source=harness/layout.sh
+source "$ROOT/scripts/harness/layout.sh" || exit 2
+
 goinstall golangci-lint github.com/golangci/golangci-lint/v2/cmd/golangci-lint@"$GOLANGCI_LINT_VERSION"
 goinstall go-arch-lint github.com/fe3dback/go-arch-lint@"$GO_ARCH_LINT_VERSION"
 goinstall govulncheck golang.org/x/vuln/cmd/govulncheck@"$GOVULNCHECK_VERSION"
 goinstall deadcode golang.org/x/tools/cmd/deadcode@"$DEADCODE_VERSION"
-goinstall sqlc github.com/sqlc-dev/sqlc/cmd/sqlc@"$SQLC_VERSION"
+! harness_stack_has db || goinstall sqlc github.com/sqlc-dev/sqlc/cmd/sqlc@"$SQLC_VERSION"
 goinstall oapi-codegen github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@"$OAPI_CODEGEN_VERSION"
 goinstall oasdiff github.com/oasdiff/oasdiff@"$OASDIFF_VERSION"
 goinstall shfmt mvdan.cc/sh/v3/cmd/shfmt@"$SHFMT_VERSION"
 goinstall actionlint github.com/rhysd/actionlint/cmd/actionlint@"$ACTIONLINT_VERSION"
 goinstall gremlins github.com/go-gremlins/gremlins/cmd/gremlins@"$GREMLINS_VERSION"
 
-if ! stamp_ok atlas "$ATLAS_VERSION"; then
-  echo "installing atlas (community edition) $ATLAS_VERSION" >&2
-  download atlas "https://release.ariga.io/atlas/atlas-community-${os}-${arch}-${ATLAS_VERSION}"
-  mv "$BIN/.dl-atlas" "$BIN/atlas"
-  chmod +x "$BIN/atlas"
-  stamp atlas "$ATLAS_VERSION"
-fi
+# Atlas community edition.
+! harness_stack_has db || install_release atlas "$ATLAS_VERSION" "https://release.ariga.io/atlas/atlas-community-${os}-${arch}-${ATLAS_VERSION}"
 
 if ! stamp_ok shellcheck "$SHELLCHECK_VERSION"; then
   echo "installing shellcheck $SHELLCHECK_VERSION" >&2
@@ -139,15 +151,24 @@ if ! stamp_ok trivy "$TRIVY_VERSION"; then
   stamp trivy "$TRIVY_VERSION"
 fi
 
-if ! stamp_ok jq "$JQ_VERSION"; then
-  echo "installing jq $JQ_VERSION" >&2
-  o=$os && [[ $o == darwin ]] && o=macos
-  download jq "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-${o}-${arch}"
-  mv "$BIN/.dl-jq" "$BIN/jq"
-  chmod +x "$BIN/jq"
-  stamp jq "$JQ_VERSION"
+install_release jq "$JQ_VERSION" "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-${macos}-${arch}"
+# Standalone builds: no Node needed.
+install_release spectral "$SPECTRAL_VERSION" "https://github.com/stoplightio/spectral/releases/download/${SPECTRAL_VERSION}/spectral-${macos}-${x64}"
+! harness_stack_has db || install_release squawk "$SQUAWK_VERSION" "https://github.com/sbdchd/squawk/releases/download/${SQUAWK_VERSION}/squawk-${os}-${x64}"
+
+# bats is a bash program: the npm tarball's package/ goes to .bin/.bats, .bin/bats links its entry point.
+if ! stamp_ok bats "$BATS_VERSION"; then
+  echo "installing bats $BATS_VERSION" >&2
+  download bats "https://registry.npmjs.org/bats/-/bats-${BATS_VERSION}.tgz" BATS_SHA256
+  rm -rf "$BIN/.bats"
+  mkdir -p "$BIN/.bats"
+  tar -xzf "$BIN/.dl-bats" -C "$BIN/.bats" --strip-components=1 package
+  rm -f "$BIN/.dl-bats"
+  ln -sf .bats/bin/bats "$BIN/bats"
+  stamp bats "$BATS_VERSION"
 fi
 
+harness_stack_has web || exit 0
 # pnpm >=11 ships a native binary via optionalDependencies; older pnpm's self-switching cannot install it,
 # so pin it here. Must equal "packageManager" in package.json.
 if ! stamp_ok pnpm "$PNPM_VERSION"; then

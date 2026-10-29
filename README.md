@@ -34,9 +34,13 @@ Steps that need a human are marked **(human)**.
 
 - Any Go install. `GOTOOLCHAIN` pins the real toolchain from
   [scripts/tool-versions.env](scripts/tool-versions.env).
-- Node ≥ 24 with npm. pnpm is installed into `.bin/`.
-- Docker running. Use `SKIP_DB=1` to skip Postgres.
+- Node ≥ 24 with npm. pnpm is installed into `.bin/`. Only the `web` group of `STACK` needs them.
+- Docker running, for Postgres. Use `SKIP_DB=1` to skip it once, or leave `db` out of `STACK`.
 - `git`, `make` (macOS make 3.81 is fine), `curl`, `tar`, `shasum` or `sha256sum`, `lsof`.
+
+`STACK` in [scripts/harness/layout.env](scripts/harness/layout.env) lists the sensor groups the product has,
+`go:db:web` here; `HARNESS_STACK=go,db` overrides it for one run
+([ADR 0033](docs/adr/0033-stack-profiles.md)).
 
 Never install a tool globally. `make setup` puts every pinned, checksum-verified tool into `.bin/`.
 
@@ -128,8 +132,7 @@ The harness has three kinds of parts:
   - the guide layout and `AGENTS.md`/`CLAUDE.md` pairs;
   - the rules.md format (rule, why, sensor, remediation, fixture);
   - in `scripts/harness/`: `run.sh`, `unchanged.sh`, `determinism.sh`, `check-commits.sh`, `timing.sh`,
-    `nfr-report.sh`, `merge-base.sh`, `trivy.sh`, `hook-bootstrap.sh`, `sync-check.sh`, and `selftest.sh` except its
-    `node_modules` copy and its `atlas migrate hash` call;
+    `nfr-report.sh`, `merge-base.sh`, `trivy.sh`, `hook-bootstrap.sh`, `sync-check.sh`, and `selftest.sh`;
   - in `.claude/hooks/`: `protect-harness.sh`, `guard-bash.sh` and `only-make-check.sh`;
   - the Go harness tool in `<API_DIR>/tools/harness/` (integrity-check's excludes come from `GENERATED_GLOBS`);
   - the shape of CI and CODEOWNERS, ADRs and exec plans.
@@ -161,6 +164,8 @@ template changed since. Adopt by hand, in one reviewed harness PR:
    - `make deps` runs `pnpm install --frozen-lockfile`, which needs a `pnpm-lock.yaml`;
    - [setup-worktree.sh](scripts/setup-worktree.sh) starts a compose `db` service and runs
      `cd apps/api && atlas migrate apply`.
+
+   A `STACK` without `web` (step 5) drops the first two, one without `db` the third.
 
    So build the parser alone; it needs only Go:
    1. Copy `scripts/tool-versions.env`, [scripts/harness/layout.env](scripts/harness/layout.env) and
@@ -263,7 +268,9 @@ template changed since. Adopt by hand, in one reviewed harness PR:
    - Add an `AGENTS.md` (plus a `CLAUDE.md` containing `@AGENTS.md`) per area that has its own rules.
    - Write the real layout into [scripts/harness/layout.env](scripts/harness/layout.env) first: where the Go
      module (`API_DIR`, `.` for the repo root), the contract, migrations, queries, generated client, JS
-     workspaces, generated code and product code live, and the domain layers' path (`LAYER_GLOB`). The scripts
+     workspaces, generated code and product code live, the domain layers' path (`LAYER_GLOB`), and which sensor groups
+     the product has (`STACK`: `go`, plus `db` for Postgres migrations and queries, `web` for the JS
+     workspaces; [ADR 0033](docs/adr/0033-stack-profiles.md)). The scripts
      in `scripts/harness/`, the Makefile, `.bin/harness`, the domainiso analyzer and the CI workflows read it
      ([ADR 0030](docs/adr/0030-one-layout-file-for-every-sensor.md)), so this one file re-points them.
      `make layout-check` (in `make check`, [harness-layout-valid](docs/harness/rules.md#harness-layout-valid))
@@ -290,15 +297,15 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      | [.go-arch-lint.yml](apps/api/.go-arch-lint.yml) | its components, `internal/*/model/**` to `internal/*/api/**` | `ignoreNotFoundComponents: true`, so go-layers passes with zero matches |
      | [atlas.hcl](apps/api/atlas.hcl) | `dir = "file://db/migrations"`, relative to `API_DIR` | `atlas migrate` reads an empty or wrong directory; set it to `MIGRATIONS_DIR` as seen from `API_DIR` |
      | [sqlc.yaml](apps/api/sqlc.yaml) | one entry per domain, schema from `db/migrations`, output `internal/<domain>/store` | `make gen-sqlc` generates nothing or into the template layout |
-     | [orval.config.ts](packages/api-client/orval.config.ts) | `input: { target: '../../api/openapi.yaml' }`, relative to `API_CLIENT_DIR` | the client generates from a missing contract |
+     | `orval.config.ts` in `API_CLIENT_DIR` | `input: { target: '../../api/openapi.yaml' }`, relative to `API_CLIENT_DIR` | the client generates from a missing contract |
      | [eslint.config.mjs](eslint.config.mjs) | ignores `packages/api-client/src/gen/**` and `apps/api/**`; React rules on `apps/web/**` | your generated client and Go module get linted; your web app misses the hooks rules |
      | [.dependency-cruiser.cjs](.dependency-cruiser.cjs) | the web layers (`packages/domain`, `packages/api-client`, apps) | web-layers judges the wrong files; record your layering decision in an ADR |
      | [jscpd.json](scripts/harness/jscpd.json) | ignores `**/packages/api-client/src/gen/**` | your generated client counts as duplicated code |
      | [pnpm-workspace.yaml](pnpm-workspace.yaml), [knip.json](knip.json) | the workspaces `apps/web`, `packages/*`; knip's ignores | `pnpm install` and knip miss your workspaces; keep them in step with `WEB_GLOBS` |
      | The web app `apps/web` (tracker TD-46) | the `dev`, `e2e` and `e2e-deps` Makefile targets; Playwright in [install-tools.sh](scripts/install-tools.sh) (`browsers`) and the setup action's `Locked Playwright version` step; the hints in `coverage.sh` and `mutation.sh` | `make dev` and `make e2e` fail; with input `browser`, CI's `check-all` job fails in setup |
-     | [action.yml](.github/actions/setup/action.yml) | the pnpm store path and the `Install JS dependencies` step (`make deps`) | every CI job fails in setup without a root `package.json` and lockfile |
-     | [install-tools.sh](scripts/install-tools.sh) | installs pnpm and exits 1 unless the root `package.json` pins `packageManager` | `make setup` aborts before the other tools land; see step 6 on why a root `package.json` stays |
-     | [setup-worktree.sh](scripts/setup-worktree.sh) | `make tools deps`, compose `db`, `atlas migrate apply` in `apps/api` | `make setup` fails in `pnpm install` without a lockfile; `SKIP_DB=1` skips only the db part |
+     | [action.yml](.github/actions/setup/action.yml) | the `Install JS dependencies` step (`make deps`, a no-op without `web` in `STACK`); node is set up in every job | with `web`, every CI job fails in setup without a root `package.json` and lockfile |
+     | [install-tools.sh](scripts/install-tools.sh) | with `web` in `STACK`: installs pnpm and exits 1 unless the root `package.json` pins `packageManager` | `make setup` aborts after the other tools land; leave `web` out of `STACK` if you have no JS workspaces |
+     | [setup-worktree.sh](scripts/setup-worktree.sh) | `make tools deps`, with `db` in `STACK` compose `db` and `atlas migrate apply` in `API_DIR` | `make setup` fails in `pnpm install` without a lockfile (with `web`) or without Docker (with `db`) |
      | `make new-domain`: [new-domain.sh](scripts/new-domain.sh) and `scripts/templates/new-domain/*` | `apps/api/internal/<name>`, `apps/api/db/queries`, `apps/api/db/migrations`, `apps/api/cmd/api/routes.go`, `apps/api/sqlc.yaml` | it writes the template layout, and CI's `make new-domain` probe job fails; rewrite it for your layout or drop the probe and the skill (tracker TD-67) |
      | `scripts/test/*.bats`, for example [affected.bats](scripts/test/affected.bats) | template paths in the test cases | they keep testing the template layout; update each with the script it tests |
 6. **Keep, adapt or drop each rule in [rules.md](docs/harness/rules.md).**
@@ -318,16 +325,19 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      | Set | Rules | `make` targets | Tools |
      |-----|-------|----------------|-------|
      | web | `web-*` (7) | `lint-web`, `arch-web`, `typecheck-web`, `test-web`, `knip`, `gen-api-client` | eslint, dependency-cruiser, turbo, knip, typescript from `package.json` |
-     | db | `db-*` (5) | `lint-migrations`, `squawk`, `migrations-append-only`, `schema-doc-fresh`, `gen-schema-doc`, `gen-sqlc`, `gen-atlas-sum`, Postgres in `test-integration` | atlas, sqlc; squawk from `package.json` |
-     | api | `api-*` (6) | `lint-api`, `contract-check`, `gen-oapi` | oasdiff, oapi-codegen; spectral from `package.json` |
+     | db | `db-*` (5) | `lint-migrations`, `squawk`, `migrations-append-only`, `schema-doc-fresh`, `gen-schema-doc`, `gen-sqlc`, `gen-atlas-sum`, Postgres in `test-integration` | atlas, sqlc, squawk |
+     | api | `api-*` (6) | `lint-api`, `contract-check`, `gen-oapi` | oasdiff, oapi-codegen, spectral |
 
-     `schema-doc-fresh` sits in the fast `check` list, not only in `check-all`. Dropping the web set does not
-     drop pnpm: the root `package.json` also provides bats, squawk and spectral, and `test-sh`
-     ([sh-tests-pass](docs/harness/rules.md#sh-tests-pass), in `make check`) runs the harness's own bats tests.
-     Keep a root `package.json` with `packageManager` and the dev dependencies the remaining sets need (at
-     least `bats`), or install those tools another way and take `deps` out of `setup-worktree.sh`'s
-     `make tools deps` call and out of `action.yml` (the pnpm store and cache steps and the
-     `Install JS dependencies` step) as well.
+     The web and db sets are `STACK` groups ([ADR 0033](docs/adr/0033-stack-profiles.md)): leaving one out
+     of `STACK` in `layout.env` already drops its targets from `check`, `check-all` and `gen`, its tools from
+     `make tools` (pnpm and `make deps` with web, Postgres in `make setup` with db) and its fixtures from
+     `make harness-selftest`, so the Makefile, `gen-check.sh`, `install-tools.sh` and the fixtures stay as
+     they are. Still remove the dropped rules' rules.md entries, and the links to the directories you deleted:
+     `make docs-links` and `make references-pinned` name them (in the template: the `apps/web/` and
+     `apps/api/db/` area links in `AGENTS.md`, the orval link in `AGENTS.md` and
+     `docs/references/orval-llms.txt`, whose pin file is `packages/api-client/package.json`). The api set is
+     part of `go` and drops by hand as above. bats, squawk and spectral are pinned in `tool-versions.env`, so
+     no set needs a root `package.json` but web.
    - A rule you keep must still reject its fixture. Port fixtures to your layout until these are green:
      ```sh
      make harness-selftest
@@ -336,8 +346,8 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      `make harness-selftest` cannot be green until the dropped fixtures are gone. It asserts each fixture's
      `EXPECT` pattern, and a fixture for a missing `apps/web` fails for the wrong reason.
 7. **Run `make setup && make check`.** Expect `make setup` to need steps 5–6 first, because of the
-   `install-tools.sh`, `make deps` and `setup-worktree.sh` assumptions in step 2. Without Postgres, run
-   `SKIP_DB=1 make setup`. Then run `make check` and expect red. Don't loosen a sensor to get green
+   `install-tools.sh`, `make deps` and `setup-worktree.sh` assumptions in step 2. Without Postgres, leave
+   `db` out of `STACK` (or run `SKIP_DB=1 make setup` once). Then run `make check` and expect red. Don't loosen a sensor to get green
    ([golden principle 4](AGENTS.md#golden-principles)):
    - Fix what is cheap.
    - Give an unavoidable exception an inline suppression with `reason: … (rule: <id>)`.

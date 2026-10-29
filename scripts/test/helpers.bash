@@ -8,6 +8,8 @@ export PATH="$REPO/.bin:$REPO/node_modules/.bin:$PATH"
 export HARNESS_BUDGETS=/dev/null
 # Timing rows default to scope "changed"; make check-all and the nightly double run export HARNESS_SCOPE=full.
 unset HARNESS_SCOPE
+# A run's stack override (ADR 0033) would re-point the scripts under test: they read their sandbox's layout.env.
+unset HARNESS_STACK
 
 # has <text>: $output (from bats `run`) contains text. A function, not a bare [[ ]]: bash 3.2 (macOS) does
 # not fail a test on a false [[ ]] that is not the last command.
@@ -41,6 +43,10 @@ sandbox() {
   done
   git -C "$SANDBOX" init -q
 }
+
+# edit <file> <sed-expr>: edits a sandbox file in place (portable sed -i). A sandboxed executable is a hardlink:
+# call `own` on it first.
+edit() { sed -i.bak "$2" "$SANDBOX/$1" && rm -f "$SANDBOX/$1.bak"; }
 
 # own <path...>: replaces sandboxed files with private copies (same content and mode), breaking the hardlink
 # to the real file before a test writes to them.

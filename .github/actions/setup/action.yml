@@ -49,7 +49,7 @@ runs:
         path: |
           .bin
           !.bin/playwright
-        key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', format('{0}/.custom-gcl.yml', env.API_DIR), format('{0}/tools/analyzers/**', env.API_DIR), format('{0}/tools/harness/**', env.API_DIR)) }}
+        key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', format('{0}/.custom-gcl.yml', env.API_DIR), format('{0}/tools/analyzers/**', env.API_DIR), format('{0}/tools/harness/**', env.API_DIR), 'scripts/harness/layout.env') }}
 
     - name: Restore pinned tools (.bin), saving nothing
       id: bin-restore
@@ -59,7 +59,7 @@ runs:
         path: |
           .bin
           !.bin/playwright
-        key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', format('{0}/.custom-gcl.yml', env.API_DIR), format('{0}/tools/analyzers/**', env.API_DIR), format('{0}/tools/harness/**', env.API_DIR)) }}
+        key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', format('{0}/.custom-gcl.yml', env.API_DIR), format('{0}/tools/analyzers/**', env.API_DIR), format('{0}/tools/harness/**', env.API_DIR), 'scripts/harness/layout.env') }}
 
     - name: Install pinned tools
       shell: bash
@@ -70,10 +70,11 @@ runs:
         # otherwise make `make` rebuild it.
         if [[ "$BIN_CACHE_HIT" == true ]]; then touch .bin/golangci-lint-custom; fi
         make tools
-        echo "PNPM_STORE=$(.bin/pnpm store path)" >>"$GITHUB_ENV"
+        # A stack without web installs no pnpm (STACK, exported from layout.env above; ADR 0033): no store to cache.
+        if [[ ":$STACK:" == *":web:"* ]]; then echo "PNPM_STORE=$(.bin/pnpm store path)" >>"$GITHUB_ENV"; fi
 
     - name: Cache pnpm store
-      if: inputs.deps == 'true' && inputs.save-caches == 'true'
+      if: inputs.deps == 'true' && inputs.save-caches == 'true' && env.PNPM_STORE != ''
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ env.PNPM_STORE }}

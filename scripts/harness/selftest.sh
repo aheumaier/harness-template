@@ -11,8 +11,12 @@
 #   fixture.conf  RULE (rules.md id), TARGET (make target = the sensor), EXPECT (ERE the tool output must
 #                 match), NEEDS_DOCKER=1 (optional), SCOPE=changed|full (optional HARNESS_SCOPE of the run,
 #                 default the caller's: a scoped sensor's fixture sets changed, so CI's full scope does not
-#                 bypass the affected set it tests)
+#                 bypass the affected set it tests), STACK=web|db|... (optional: the groups of layout.env's STACK
+#                 the fixture needs beyond its TARGET's, e.g. an apply.sh that edits apps/web)
 # and asserts `make TARGET` fails, its output matches EXPECT, and run.sh printed RULE's remediation.
+# A fixture whose TARGET is in the Makefile's STACK_OFF (sensors of the groups STACK leaves out) or whose STACK
+# names such a group is skipped (ADR 0033); a STACK naming an unknown group is a bad fixture.conf, and a skip
+# under the full stack is a failure.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -23,6 +27,14 @@ source scripts/tool-versions.env
 # shellcheck source=layout.sh
 source scripts/harness/layout.sh || exit 2
 export GOTOOLCHAIN="$GO_TOOLCHAIN" PATH="$ROOT/.bin:$ROOT/node_modules/.bin:$PATH"
+# The targets STACK leaves out, from the Makefile itself (make 3.81 has no --eval: a second makefile on stdin).
+STACK_OFF="$(printf 'selftest-stack-off:\n\t@echo %s\n' "\$(STACK_OFF)" |
+  make -s --no-print-directory -C "$ROOT" -f Makefile -f - selftest-stack-off)" || {
+  echo "harness-selftest: could not read STACK_OFF from the Makefile" >&2
+  exit 2
+}
+full_stack=1
+for group in $HARNESS_STACK_GROUPS; do harness_stack_has "$group" || full_stack=0; done
 
 names=("$@")
 if ((${#names[@]} == 0)); then
@@ -39,11 +51,17 @@ git ls-files -co --exclude-standard | while read -r f; do [[ -e "$f" ]] && print
   tar -cf - --null -T - | tar -xf - -C "$work"
 ln -s "$ROOT/node_modules" "$work/node_modules"
 ln -s "$ROOT/.bin" "$work/.bin"
-for ws in "${WEB_DIRS[@]}"; do # pnpm workspace links are relative: copy them
-  for nm in "$ws"/*/node_modules; do
-    [[ -d "$nm" ]] && cp -R "$nm" "$work/$nm"
+if harness_stack_has web; then # pnpm workspace links are relative: copy them
+  for ws in "${WEB_DIRS[@]}"; do
+    for nm in "$ws"/*/node_modules; do
+      [[ -d "$nm" ]] && cp -R "$nm" "$work/$nm"
+    done
   done
-done
+fi
+# The copy's layout.env carries the effective stack and its runs drop HARNESS_STACK (below), so a fixture that
+# edits STACK is not overridden by the caller's HARNESS_STACK.
+sed -i.bak '/^STACK=/d' "$work/scripts/harness/layout.env" && rm "$work/scripts/harness/layout.env.bak"
+echo "STACK=$STACK" >>"$work/scripts/harness/layout.env"
 g() { git -C "$work" -c core.hooksPath=/dev/null -c user.name=harness-selftest -c user.email=selftest@localhost "$@"; }
 g init -q -b main
 printf '/node_modules\n/.bin\n' >>"$work/.git/info/exclude"
@@ -55,7 +73,7 @@ overlay() { # dir: copy a fixture overlay into the copy
   cp -R "$1/." "$work/"
 }
 commit() { # message: rehash migrations if touched, then commit (must change something)
-  if [[ -n "$(g status --porcelain -- "$MIGRATIONS_DIR")" ]]; then
+  if harness_stack_has db && [[ -n "$(g status --porcelain -- "$MIGRATIONS_DIR")" ]]; then
     (cd "$work/$API_DIR" && atlas migrate hash --env local) || return 1
   fi
   [[ -n "$(g status --porcelain)" ]] || {
@@ -75,18 +93,36 @@ for name in "${names[@]}"; do
     fail=$((fail + 1))
     continue
   }
-  RULE='' TARGET='' EXPECT='' NEEDS_DOCKER=0 SCOPE=''
+  RULE='' TARGET='' EXPECT='' NEEDS_DOCKER=0 SCOPE='' STACK_NEEDS=''
   # Parsed, not sourced: only these keys, values optionally single- or double-quoted.
   while IFS='=' read -r key val; do
     val="${val#[\'\"]}"
     val="${val%[\'\"]}"
-    case "$key" in RULE) RULE="$val" ;; TARGET) TARGET="$val" ;; EXPECT) EXPECT="$val" ;; NEEDS_DOCKER) NEEDS_DOCKER="$val" ;; SCOPE) SCOPE="$val" ;; esac
-  done < <(grep -E '^(RULE|TARGET|EXPECT|NEEDS_DOCKER|SCOPE)=' "$dir/fixture.conf")
-  [[ "$TARGET" =~ ^[a-z0-9-]+$ && -n "$RULE" && -n "$EXPECT" && "$SCOPE" =~ ^(changed|full)?$ ]] || {
-    echo "✗ $name: bad fixture.conf" >&2
+    case "$key" in RULE) RULE="$val" ;; TARGET) TARGET="$val" ;; EXPECT) EXPECT="$val" ;; NEEDS_DOCKER) NEEDS_DOCKER="$val" ;; SCOPE) SCOPE="$val" ;; STACK) STACK_NEEDS="$val" ;; esac
+  done < <(grep -E '^(RULE|TARGET|EXPECT|NEEDS_DOCKER|SCOPE|STACK)=' "$dir/fixture.conf")
+  bad=''
+  [[ "$TARGET" =~ ^[a-z0-9-]+$ && -n "$RULE" && -n "$EXPECT" && "$SCOPE" =~ ^(changed|full)?$ &&
+    "$STACK_NEEDS" =~ ^([a-z]+(:[a-z]+)*)?$ ]] || bad=' '
+  for group in ${STACK_NEEDS//:/ }; do
+    [[ " $HARNESS_STACK_GROUPS " == *" $group "* ]] || bad=" (STACK: unknown group $group; known: $HARNESS_STACK_GROUPS)"
+  done
+  if [[ -n "$bad" ]]; then
+    echo "✗ $name: bad fixture.conf${bad% }" >&2
     fail=$((fail + 1))
     continue
-  }
+  fi
+  off=''
+  [[ " $STACK_OFF " != *" $TARGET "* ]] || off="$TARGET"
+  for group in ${STACK_NEEDS//:/ }; do harness_stack_has "$group" || off="$group"; done
+  if [[ -n "$off" && "$full_stack" == 1 ]]; then
+    echo "✗ $name: skipped for $off under the full STACK=$STACK (the Makefile's STACK_OFF and selftest.sh disagree)" >&2
+    fail=$((fail + 1))
+    continue
+  elif [[ -n "$off" ]]; then
+    echo "- $name: skipped (STACK=$STACK leaves out $off)"
+    skip=$((skip + 1))
+    continue
+  fi
   if [[ "$NEEDS_DOCKER" == 1 ]] && ! docker_ok; then
     if [[ "${SELFTEST_SKIP_DOCKER:-0}" == 1 ]]; then
       echo "- $name: skipped (no Docker)"
@@ -114,7 +150,8 @@ for name in "${names[@]}"; do
   }
 
   status=0
-  env ${SCOPE:+"HARNESS_SCOPE=$SCOPE"} make -C "$work" --no-print-directory "$TARGET" BASE_REF=main >"$out" 2>&1 || status=$?
+  # A fresh make in the copy: no HARNESS_STACK, and no command-line variables of the caller's make (MAKEFLAGS).
+  env -u HARNESS_STACK -u MAKEFLAGS -u MFLAGS -u MAKELEVEL ${SCOPE:+"HARNESS_SCOPE=$SCOPE"} make -C "$work" --no-print-directory "$TARGET" BASE_REF=main >"$out" 2>&1 || status=$?
 
   problems=()
   ((status != 0)) || problems+=("make $TARGET passed; expected it to fail")
