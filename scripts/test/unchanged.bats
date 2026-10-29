@@ -69,7 +69,7 @@ commit() {
 @test "make check-all exports HARNESS_SCOPE=full to make check, which then runs uncached; make check alone does not" {
   # Real Makefile, recipes of check and check-all replaced (make 3.81 has no --eval).
   printf '%s\n' "include $REPO/Makefile" \
-    'check: ; @echo "scope=$$HARNESS_SCOPE. count=$(GO_TEST_COUNT). dc=$(DEPCRUISE_CACHE). turbo=$(TURBO_FORCE)."' 'check-all: ; @true' >"$BATS_TEST_TMPDIR/scope.mk"
+    'check: ; @echo "scope=$${HARNESS_SCOPE-}. count=$(GO_TEST_COUNT). dc=$(DEPCRUISE_CACHE). turbo=$(TURBO_FORCE)."' 'check-all: ; @true' >"$BATS_TEST_TMPDIR/scope.mk"
   run -0 make -C "$REPO" -f "$BATS_TEST_TMPDIR/scope.mk" check-all
   has 'scope=full. count=-count=1. dc=. turbo=--force.'
   run -0 make -C "$REPO" -f "$BATS_TEST_TMPDIR/scope.mk" check
@@ -81,7 +81,7 @@ commit() {
 }
 
 @test "make harness-determinism runs in scope full, as the nightly run does" {
-  printf '%s\n' "include $REPO/Makefile" 'harness-determinism: ; @echo "scope=$$HARNESS_SCOPE."' >"$BATS_TEST_TMPDIR/det.mk"
+  printf '%s\n' "include $REPO/Makefile" 'harness-determinism: ; @echo "scope=$${HARNESS_SCOPE-}."' >"$BATS_TEST_TMPDIR/det.mk"
   run -0 make -C "$REPO" -f "$BATS_TEST_TMPDIR/det.mk" harness-determinism
   has 'scope=full.'
 }
