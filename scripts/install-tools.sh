@@ -11,6 +11,32 @@ export GOBIN="$BIN" GOTOOLCHAIN="$GO_TOOLCHAIN" GOFLAGS=-mod=mod
 stamp_ok() { [[ -x "$BIN/$1" && "$(cat "$BIN/.$1.version" 2>/dev/null)" == "$2" ]]; }
 stamp() { echo "$2" >"$BIN/.$1.version"; }
 
+# `install-tools.sh browsers` (make deps, after pnpm install): the Chromium headless shell for make e2e, into
+# .bin/playwright (PLAYWRIGHT_BROWSERS_PATH in the Makefile), never the user's cache. Its build is pinned by the
+# lockfile's @playwright/test (apps/web), so it needs node_modules. The version stamp lives inside the directory,
+# which CI caches apart from the rest of .bin, keyed on that version (.github/actions/setup).
+if [[ "${1:-}" == browsers ]]; then
+  pw="$ROOT/apps/web/node_modules/.bin/playwright"
+  [[ -x "$pw" ]] || {
+    echo "no $pw: run make deps first (Playwright's browser build comes from the lockfile)" >&2
+    exit 1
+  }
+  ver="$("$pw" --version)" # "Version 1.64.1"
+  ver="${ver##* }"
+  [[ "$(cat "$BIN/playwright/.version" 2>/dev/null)" == "$ver" ]] && exit 0
+  echo "installing playwright chromium headless shell $ver" >&2
+  # No sha256 pin for the browser (ADR 0016, known gap; TD-42), so at least the environment must not redirect
+  # its download or swap its build: drop every override Playwright reads, also in npm's config spellings.
+  for v in DOWNLOAD_HOST CHROMIUM_DOWNLOAD_HOST FIREFOX_DOWNLOAD_HOST WEBKIT_DOWNLOAD_HOST HOST_PLATFORM_OVERRIDE; do
+    lower="$(echo "playwright_$v" | tr '[:upper:]' '[:lower:]')"
+    unset "PLAYWRIGHT_$v" "npm_config_$lower" "npm_package_config_$lower"
+  done
+  rm -rf "$BIN/playwright"
+  PLAYWRIGHT_BROWSERS_PATH="$BIN/playwright" "$pw" install --only-shell chromium >/dev/null
+  echo "$ver" >"$BIN/playwright/.version"
+  exit 0
+fi
+
 goinstall() { # name module@version
   local name=$1 pkg=$2 ver=${2##*@}
   stamp_ok "$name" "$ver" && return 0

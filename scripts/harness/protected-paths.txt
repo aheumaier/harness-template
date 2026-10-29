@@ -11,6 +11,8 @@
 *.dependency-cruiser.* config
 *eslint.config.* config
 *stryker.config.* config
+*playwright.config.* config
+apps/web/e2e/global-setup.ts config
 *.spectral.yaml config
 *atlas.hcl config
 *.squawk.toml config

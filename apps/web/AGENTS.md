@@ -8,6 +8,10 @@
 - Never import from another app (`apps/*`); share code through `packages/*`.
 - Tests: Vitest, `node` environment, `renderToString` from `react-dom/server`, next to the component
   (`*.test.tsx`), run by `make check`. No DOM and no Testing Library yet (exec plan 0003, P2.2).
+- Browser journeys: Playwright, one file per user path in `e2e/*.e2e.ts` (never `*.test.ts` or `*.spec.ts`,
+  which Vitest collects), run by `make e2e` against this worktree's `make dev` and by `make check-all`
+  ([web-e2e-journeys](../../docs/harness/rules.md#web-e2e-journeys)). How to run, debug and write them:
+  the [drive-app](../../.claude/skills/drive-app/SKILL.md) skill.
 - Coverage: `make coverage` runs each workspace's `coverage` script (here `vitest run --coverage`). Any
   workspace (`apps/*`, `packages/*`) with a `test` script needs one, and it must accept the
   `--coverage.provider`, `--coverage.reporter` and `--coverage.reportsDirectory` flags and write an

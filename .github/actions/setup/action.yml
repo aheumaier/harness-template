@@ -29,7 +29,10 @@ runs:
       id: bin
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: .bin
+        # Playwright's browser follows the lockfile, not these inputs: it has its own cache below.
+        path: |
+          .bin
+          !.bin/playwright
         key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', 'apps/api/.custom-gcl.yml', 'apps/api/tools/analyzers/**', 'apps/api/tools/harness/**') }}
 
     - name: Install pinned tools
@@ -50,6 +53,29 @@ runs:
         path: ${{ env.PNPM_STORE }}
         key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
         restore-keys: pnpm-${{ runner.os }}-
+
+    # make deps installs the browser of the locked Playwright here (scripts/install-tools.sh browsers). The pin is
+    # exact, so apps/web/package.json names the locked version (--frozen-lockfile fails otherwise); a restored
+    # older browser fails its version stamp and is replaced.
+    - name: Locked Playwright version
+      id: playwright
+      if: inputs.deps == 'true'
+      shell: bash
+      run: |
+        v="$(node -p 'require("./apps/web/package.json").devDependencies["@playwright/test"]')"
+        [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+          echo "::error::apps/web/package.json must pin @playwright/test to an exact version, got '$v'"
+          exit 1
+        }
+        echo "version=$v" >>"$GITHUB_OUTPUT"
+
+    - name: Cache Playwright's browser (.bin/playwright)
+      if: inputs.deps == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .bin/playwright
+        key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+        restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-
 
     - name: Install JS dependencies
       if: inputs.deps == 'true'

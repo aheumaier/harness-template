@@ -109,6 +109,9 @@ receives the request's `context.Context`.
   `make check-all`) proves one request can be read back this way (NFR-O1). `make dev` always writes each
   run's output to `.tmp/dev/api.log` (JSON lines) and `.tmp/dev/web.log`, the only log without the stack; the
   [query-runtime](.claude/skills/query-runtime/SKILL.md) skill maps runtime questions to these.
+  `make e2e` (in `make check-all`) drives the web app in headless Chromium (Playwright,
+  `apps/web/e2e/`) against `make dev`, attaching to a running one or starting it (`check-all` always
+  starts its own; NFR-B2); see the [drive-app](.claude/skills/drive-app/SKILL.md) skill.
 - **Generated code** is committed; `make gen-check` fails if it is stale or hand-edited.
 
 ## Invariants worth knowing

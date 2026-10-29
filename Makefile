@@ -9,6 +9,8 @@ include scripts/tool-versions.env
 export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 export OBS_IMAGE # compose.yaml interpolates the obs service even when its profile is off
 export PATH := $(CURDIR)/.bin:$(CURDIR)/node_modules/.bin:$(PATH)
+# Playwright's browsers (make e2e) live in .bin like every tool, installed by make deps (scripts/install-tools.sh).
+export PLAYWRIGHT_BROWSERS_PATH := $(CURDIR)/.bin/playwright
 
 RUN  := scripts/harness/run.sh
 # Tool caches only in make check (scope `changed`, also when unset); any other scope, as in make check-all
@@ -54,6 +56,11 @@ dev: db-up ## Run API + web for this worktree (Ctrl-C stops both), output also i
 	    off="no obs stack on :$$OTLP_PORT (make obs-up, then restart make dev)"; fi; \
 	  if [[ -n "$$off" ]]; then echo "telemetry off: $$off"; \
 	    export OTEL_TRACES_EXPORTER=none OTEL_METRICS_EXPORTER=none OTEL_LOGS_EXPORTER=none; fi; \
+	  for p in "$$API_PORT" "$$WEB_PORT"; do \
+	    if (: <"/dev/tcp/localhost/$$p") 2>/dev/null; then \
+	      echo "make dev: port $$p is already in use, likely by this worktree's running make dev; not starting, so" \
+	        ".tmp/dev/api.log and .tmp/dev/web.log keep its output. Read them, or stop it first." >&2; exit 1; fi; \
+	  done; \
 	  trap 'kill 0' EXIT; mkdir -p .tmp/dev; \
 	  echo "api http://$$HTTP_ADDR  web http://localhost:$$WEB_PORT  logs .tmp/dev/api.log .tmp/dev/web.log"; \
 	  (cd $(API) && go run ./cmd/api) 2>&1 | tee .tmp/dev/api.log & \
@@ -77,9 +84,9 @@ check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
 CHECK_ALL_SKIP ?=
 check-all: export HARNESS_SCOPE := full
-check-all: check ##Everything: check + integration, contract, migration, security, dead code
+check-all: check ##Everything: check + integration, contract, migration, security, dead code, e2e
 	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go vuln-deps lint-migrations squawk migrations-append-only lint-api contract-check knip harness-integrity commits specs)
-	@$(MAKE) -k test-integration test-obs
+	@$(MAKE) -k test-integration test-obs e2e
 
 harness-selftest: $(HARNESS) ## Every fixture in scripts/harness/fixtures must be rejected by its sensor (FIXTURE=name for one)
 	@scripts/harness/selftest.sh $(FIXTURE)
@@ -124,6 +131,17 @@ test-obs: ## One request's access line, trace and p95 latency through make logs,
 	@$(WITH_ENV) $(RUN) obs-pull obs-request-queryable -- scripts/harness/obs-e2e.sh pull
 	@$(WITH_ENV) $(RUN) obs-e2e obs-request-queryable -- env MAKE="$(MAKE)" scripts/harness/obs-e2e.sh
 
+##@ Behaviour: browser journeys against this worktree's make dev (exec plan 0003 P2.3, NFR-B2)
+.PHONY: e2e
+# Playwright (apps/web/playwright.config.ts) attaches to a running make dev, else starts one and stops it after;
+# in make check-all (HARNESS_SCOPE=full) it always starts its own and fails while another make dev runs.
+# E2E_GREP (a title regex; not GREP, which a shell may already export): make exports it, and the recipe's shell
+# reads it as "$E2E_GREP", so make never splices it in.
+# Failure artifacts (screenshot, trace) go to .tmp/e2e; make dev's own output to .tmp/dev/{api,web}.log.
+e2e: ## Browser journeys (Playwright) against make dev, started if not running: make e2e [E2E_GREP=<title regex>] (`$$` for `$`; Docker)
+	@$(WITH_ENV) $(RUN) e2e web-e2e-journeys --dir apps/web -- env MAKE="$(MAKE)" \
+	  node_modules/.bin/playwright test $${E2E_GREP:+--grep "$$E2E_GREP"}
+
 ##@ Reports
 .PHONY: coverage coverage-fell mutation
 # A trend, never a gate (ADR 0020): not in check or check-all; coverage.yml puts it in its job summary,
@@ -153,8 +171,9 @@ review-prompt: ## Prompt of a scheduled review, as drift.yml sends it: make revi
 tools: $(GCL) $(HARNESS) ## Install pinned CLI tools into .bin
 	@scripts/install-tools.sh
 
-deps: ## Install JS dependencies from the lockfile
+deps: ## Install JS dependencies from the lockfile, and the browser of its Playwright into .bin
 	@pnpm install --frozen-lockfile --silent
+	@scripts/install-tools.sh browsers
 
 $(GCL): $(API)/.custom-gcl.yml $(ANALYZERS_SRC) scripts/tool-versions.env
 	@scripts/install-tools.sh

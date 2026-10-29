@@ -9,6 +9,8 @@
 .dependency-cruiser.*       @aheumaier
 eslint.config.*             @aheumaier
 stryker.config.*            @aheumaier
+playwright.config.*         @aheumaier
+/apps/web/e2e/global-setup.ts  @aheumaier
 .spectral.yaml              @aheumaier
 atlas.hcl                   @aheumaier
 .squawk.toml                @aheumaier

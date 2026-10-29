@@ -22,3 +22,7 @@ determinism 120000 NFR-H4
 # log line, a span and a metric; 15 s measured, warm.
 obs-pull 120000 NFR-H7
 obs-e2e 30000 NFR-H7
+# make e2e in check-all (exec plan 0003 P2.3, proves NFR-B2; its time counts against check-all's NFR-H7).
+# Playwright starting make dev itself, Go build cache warm: 5.4 s; attached to a running make dev: 1.1 s.
+# A cold Go build cache compiles the API first.
+e2e 30000 NFR-H7

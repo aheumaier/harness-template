@@ -31,6 +31,9 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - run: make setup
+      # The system libraries of Playwright's Chromium headless shell for make e2e (unpinned apt via sudo: ADR 0016
+      # known gap, TD-42); the browser itself is in .bin/playwright.
+      - run: apps/web/node_modules/.bin/playwright install-deps chromium-headless-shell
       # The Trivy vulnerability DB for deps-no-known-vulns (make vuln-deps), refreshed once a day.
       - id: today
         run: echo "date=$(date -u +%Y-%m-%d)" >>"$GITHUB_OUTPUT"
@@ -52,6 +55,17 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 8
+      # A failed make e2e: its screenshot, page snapshot and trace (.tmp/e2e) and make dev's output (.tmp/dev),
+      # which the web-e2e-journeys remediation names.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: e2e-failure
+          path: |
+            .tmp/e2e
+            .tmp/dev
+          if-no-files-found: ignore
+          retention-days: 3
 
   harness-selftest:
     runs-on: ubuntu-24.04
