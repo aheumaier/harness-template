@@ -3,7 +3,7 @@
 # agent per review each week and appends its findings to the drift issue. Advisory (ADR 0019): no rule id, no
 # required check, never in make check or check-all. This script holds the parts that need no model, so they
 # are tested (scripts/test/scheduled-review.bats) and can be dry-run locally. It shares the CI agent contract
-# of pr-review.sh (scripts/harness/ci-agent.sh): frontmatter, preamble guard, settings, leak screen, result.
+# of pr-review.sh (scripts/harness/ci-agent.sh): frontmatter, preamble guard, settings, leak screen, result, cap.
 #
 #   scheduled-review.sh prompt <review>        (make review-prompt REVIEW=<review>)
 #       the agent's prompt on stdout: a fixed CI preamble, then the body of .claude/skills/review-<review>/SKILL.md
@@ -86,26 +86,17 @@ schema() {
 
 result() {
   local code=$1 out=$2 err=$3 findings=$4
-  if agent_ok "$code" "$out" "$err"; then
-    # The CLI puts schema-validated output in structured_output and leaves it out when there is none: a
-    # success without it is a broken schema, flag or CLI, never "no findings".
-    jq -e '.structured_output | type == "object" and (.findings | type == "array")' "$out" >/dev/null ||
-      die "the agent succeeded (exit 0) without structured output holding a findings array: check --json-schema and the Claude Code pin"
-    jq '.structured_output' "$out" >"$findings"
-    echo findings
-    return
-  fi
-  # A notice only for a cap or an API error; any other ending is harness breakage.
-  jq -e '.is_error == true or (.subtype | type == "string" and startswith("error_"))' "$out" >/dev/null ||
-    die "the agent ended without success, a cap or an error ($(agent_stopped "$code" "$out" "$err" | sed 's/^skip: the agent stopped //'))"
-  agent_stopped "$code" "$out" "$err"
+  # A notice (the skip line) only for a cap or an API error; any other ending is harness breakage.
+  agent_structured findings "$code" "$out" "$err" || return 0
+  jq '.structured_output' "$out" >"$findings"
+  echo findings
 }
 
 render() {
   review_name "$1"
-  local review="$1" file="$2" max=${MAX_SECTION_BYTES:-16000} total kept body fence
+  local review="$1" file="$2" max total kept body fence
   [[ -f "$file" ]] || die "missing findings file $file"
-  [[ $max =~ ^[1-9][0-9]*$ ]] || die "MAX_SECTION_BYTES must be a positive integer, got '$max'"
+  max=$(agent_cap MAX_SECTION_BYTES 16000)
   jq -e '(type == "object") and (.findings | type == "array")' "$file" >/dev/null 2>&1 ||
     die "$file is not JSON with a findings array"
   # Valid: an object with a non-empty file and an integer line >= 1. Kept to the schema's 15.

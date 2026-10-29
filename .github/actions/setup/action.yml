@@ -9,6 +9,12 @@ inputs:
   browser:
     description: Restore the cache of make e2e's browser (.bin/playwright), for the one job that runs e2e (ADR 0025).
     default: "false"
+  save-caches:
+    description: >-
+      Save the caches this job fills. "false" for a job that runs code after an agent edited its checkout
+      (drift.yml agent-gc): it restores .bin only and saves nothing, so no later job restores what this job
+      wrote. Go's module cache and the pnpm and Playwright caches are skipped.
+    default: "true"
 runs:
   using: composite
   steps:
@@ -19,6 +25,7 @@ runs:
     - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: apps/api/go.mod
+        cache: ${{ inputs.save-caches == 'true' }}
         cache-dependency-path: |
           apps/api/go.sum
           apps/api/tools/analyzers/go.sum
@@ -30,6 +37,7 @@ runs:
 
     - name: Cache pinned tools (.bin)
       id: bin
+      if: inputs.save-caches == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         # Playwright's browser follows the lockfile, not these inputs: it has its own cache below.
@@ -38,10 +46,20 @@ runs:
           !.bin/playwright
         key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', 'apps/api/.custom-gcl.yml', 'apps/api/tools/analyzers/**', 'apps/api/tools/harness/**') }}
 
+    - name: Restore pinned tools (.bin), saving nothing
+      id: bin-restore
+      if: inputs.save-caches != 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          .bin
+          !.bin/playwright
+        key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', 'apps/api/.custom-gcl.yml', 'apps/api/tools/analyzers/**', 'apps/api/tools/harness/**') }}
+
     - name: Install pinned tools
       shell: bash
       env:
-        BIN_CACHE_HIT: ${{ steps.bin.outputs.cache-hit }}
+        BIN_CACHE_HIT: ${{ steps.bin.outputs.cache-hit || steps.bin-restore.outputs.cache-hit }}
       run: |
         # The key covers every input of the custom golangci-lint build; a fresh checkout's mtimes would
         # otherwise make `make` rebuild it.
@@ -50,7 +68,7 @@ runs:
         echo "PNPM_STORE=$(.bin/pnpm store path)" >>"$GITHUB_ENV"
 
     - name: Cache pnpm store
-      if: inputs.deps == 'true'
+      if: inputs.deps == 'true' && inputs.save-caches == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ env.PNPM_STORE }}
@@ -74,7 +92,7 @@ runs:
         echo "version=$v" >>"$GITHUB_OUTPUT"
 
     - name: Cache Playwright's browser (.bin/playwright)
-      if: inputs.browser == 'true'
+      if: inputs.browser == 'true' && inputs.save-caches == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: .bin/playwright

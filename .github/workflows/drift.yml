@@ -2,7 +2,8 @@
 # dead code, known vulnerabilities in dependencies, a stale schema doc, dead doc links, test coverage that
 # fell since the last run, mutants that survived in the week's changes, and the advisory findings of three
 # read-only review agents (security, data handling, modularity; ci.md#scheduled-reviews). Findings go to one
-# open issue labelled `drift` (created, or commented on).
+# open issue labelled `drift` (created, or commented on). When enabled, agent-gc proposes fixes for the doc
+# check's broken links as a small PR (ci.md#agent-gc).
 #
 # Scheduled reviews (exec plan 0003 P3.3), an inferential sensor (docs/adr/0019-inferential-sensors-are-advisory.md):
 # never a required check, and a finding never turns a job red. They share pr-review.yml's CI agent contract
@@ -16,7 +17,10 @@
 # can drop it. So ANTHROPIC_API_KEY must be a dedicated Anthropic workspace key with a hard spend limit, used
 # for nothing else (pr-review.yml's key has the same trust). Optional hardening: an `environment:` on the
 # reviews job whose deployment branches are the default branch only, holding the key as an environment
-# secret, so GitHub itself withholds it from any other branch.
+# secret, so GitHub itself withholds it from any other branch. The agent-gc write token is an environment
+# secret limited to the default branch, held by a non-admin identity outside every branch-protection bypass
+# and without Workflows or Administration permission; write collaborators are trusted with the key, not with
+# this token.
 #
 # The repository is untrusted input to an agent that holds the key (prompt injection, secret exfiltration).
 # Safe against repository content only while all of these hold (scripts/test/scheduled-review.bats checks them):
@@ -34,7 +38,24 @@
 #   - only the matrix entry, booleans, the default branch name, the agent's exit code and the caps below reach
 #     `run:` blocks, via env; no `${{ }}` inside a `run:` block.
 #
-# Cost cap per review (ADR 0019: raising one is a harness-config change): the REVIEW_* values below.
+# agent-gc (exec plan 0003 P3.4, ci.md#agent-gc), the doc gardener, shares that contract and those caps, with
+# these differences (scripts/test/agent-gc.bats checks them):
+#   - its agent has Edit too, allowed by its --settings file on the target files alone (tracked docs outside
+#     scripts/harness/protected-paths.txt, no AGENTS.md or CLAUDE.md, that `harness check-links` flagged;
+#     `agent-gc.sh settings`), with Write still denied. Before it runs, the tree must be clean and the checkout
+#     is made read-only, .git included, except the target files (`agent-gc.sh baseline` and `lock`).
+#   - its job saves no cache (setup `save-caches: "false"`) and keeps every file it writes under $RUNNER_TEMP,
+#     so nothing the agent touched reaches another job but the checked patch.
+#   - after the agent, whatever its outcome (success, cap, timeout, withheld), `agent-gc.sh confined` turns the
+#     job red when the tree holds anything but edits of target files, ignored files and .git included; the leak
+#     screen reads the lines the edit adds; `agent-gc.sh patch` proposes nothing when the edit is over the
+#     REVIEW_GC_* caps or the check still fails on an edited file.
+#   - the agent-gc-pr job, which holds AGENT_GC_TOKEN and runs no agent, checks the patch again (`agent-gc.sh
+#     apply`), pushes only an `agent-gc/<run id>` branch and opens a PR with a fixed body. The PR goes through
+#     the same required checks and code-owner review as any other (ADR 0019).
+#
+# Cost cap per review and per agent-gc run (ADR 0019: raising one is a harness-config change): the REVIEW_*
+# values below.
 name: drift
 
 on:
@@ -55,6 +76,9 @@ env:
   REVIEW_MAX_TURNS: "40"
   REVIEW_MAX_BUDGET_USD: "3.00"
   REVIEW_MAX_MINUTES: "15"
+  # agent-gc: the four caps above per run, and these: the files it may edit and the lines it may change.
+  REVIEW_GC_MAX_FILES: "5"
+  REVIEW_GC_MAX_CHANGED_LINES: "40"
 
 jobs:
   # The `secrets` context is not allowed in a job's `if:`, hence a job that tests it and holds nothing else.
@@ -339,14 +363,211 @@ jobs:
             gh issue create --title "Drift: weekly sweep found issues" --label drift --body-file "$REPORT"
           fi
 
-  # TODO(agent-gc): garbage-collection agent. Once the drift issue is reliable, run a coding agent on a
-  # schedule that takes one finding from the open `drift` issue (or docs/exec-plans/tech-debt-tracker.md),
-  # fixes it on a branch, runs `make check-all` and opens a small PR for human review. Never pushes to main,
-  # never edits harness files. Off until a human sets the repository variable AGENT_GC_ENABLED=true after
-  # configuring the agent runner and its token.
-  agent-gc:
-    if: vars.AGENT_GC_ENABLED == 'true'
-    needs: drift
+  # agent-gc, the doc gardener (exec plan 0003 P3.4, ci.md#agent-gc): one agent fixes broken links in
+  # unprotected docs; a separate job without the agent opens a small PR for human review. Off until a human
+  # sets the repository variable AGENT_GC_ENABLED=true (ci.md#agent-gc lists what comes first). review-gate
+  # checks the key and the default branch. AGENT_GC_TOKEN is an environment secret, invisible here: the PR job
+  # fails red when the agent-gc environment does not provide it.
+  gc-gate:
+    needs: review-gate
+    if: needs.review-gate.outputs.enabled == 'true' && vars.AGENT_GC_ENABLED == 'true'
+    permissions:
+      pull-requests: read # the open agent-gc PR check
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      enabled: ${{ steps.gc-gate.outputs.enabled }}
     steps:
-      - run: echo "not configured"
+      - name: Gate (no open agent-gc PR)
+        id: gc-gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          open="$(gh pr list --label agent-gc --state open --json number --jq 'length')"
+          if [[ $open != 0 ]]; then
+            echo "::notice title=agent-gc skipped::an agent-gc PR is still open, one at a time (docs/harness/ci.md#agent-gc)"
+            echo "enabled=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "enabled=true" >>"$GITHUB_OUTPUT"
+
+  # The agent edits this job's working tree only: no write token, Edit allowed on the target files alone, the
+  # rest of the checkout read-only, no cache saved, every file the job writes under $RUNNER_TEMP.
+  agent-gc:
+    needs: gc-gate
+    if: needs.gc-gate.outputs.enabled == 'true'
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      pr: ${{ steps.patch.outputs.pr }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          deps: "false"
+          save-caches: "false"
+
+      - name: Findings, prompt and settings
+        id: targets
+        run: |
+          d="$RUNNER_TEMP/agent-gc"
+          mkdir -p "$d"
+          scripts/harness/agent-gc.sh findings >"$d/findings.txt"
+          counts="$(scripts/harness/agent-gc.sh targets "$d/findings.txt" "$d/targets.txt")"
+          read -r kept files left <<<"$counts"
+          if ((left > 0)); then
+            echo "::notice title=agent-gc::$left docs-links-resolve findings are not agent-gc's to fix (a protected or untracked file, an AGENTS.md or CLAUDE.md, or past the ${REVIEW_GC_MAX_FILES}-file cap); the drift issue's make docs-links section lists every finding"
+          fi
+          if ((kept == 0)); then
+            echo "::notice title=agent-gc::nothing to fix"
+            exit 0
+          fi
+          echo "agent-gc: $kept findings in $files files"
+          scripts/harness/agent-gc.sh prompt "$d/targets.txt" >"$d/prompt.txt"
+          scripts/harness/agent-gc.sh settings "$d/targets.txt" "$RUNNER_TEMP" "$RUNNER_TOOL_CACHE" \
+            "$HOME/.claude" "$HOME/.config" "$HOME/.ssh" "$HOME/runners" >"$d/settings.json"
+          echo "run=true" >>"$GITHUB_OUTPUT"
+
+      - name: Install Claude Code (pinned, sha256-verified)
+        if: steps.targets.outputs.run == 'true'
+        run: |
+          scripts/install-tools.sh claude
+          .bin/claude --version
+
+      - name: Clean tree, baseline, checkout read-only but the target files
+        id: lock
+        if: steps.targets.outputs.run == 'true'
+        run: |
+          d="$RUNNER_TEMP/agent-gc"
+          scripts/harness/agent-gc.sh baseline "$d/baseline.txt"
+          scripts/harness/agent-gc.sh lock "$d/targets.txt"
+
+      - name: Fix (agent and leak screen only; no write token, no shell)
+        id: gc-agent
+        if: steps.targets.outputs.run == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" # no auto-update, telemetry or error reporting
+        run: |
+          d="$RUNNER_TEMP/agent-gc"
+          GC_SCHEMA=$(scripts/harness/agent-gc.sh schema)
+          code=0
+          timeout -k 30 "${REVIEW_MAX_MINUTES}m" \
+            .bin/claude -p --bare --restricted --strict-mcp-config --tools Read,Grep,Glob,Edit --disallowedTools 'mcp__*' \
+            --permission-mode dontAsk --settings "$d/settings.json" --no-session-persistence \
+            --output-format json --json-schema "$GC_SCHEMA" --model "$REVIEW_MODEL" \
+            --max-turns "$REVIEW_MAX_TURNS" --max-budget-usd "$REVIEW_MAX_BUDGET_USD" \
+            <"$d/prompt.txt" >"$d/out.json" 2>"$d/err.txt" || code=$?
+          if [[ $code == 124 || $code == 137 ]]; then
+            rm -f "$d/out.json" "$d/err.txt"
+            echo "::notice title=agent-gc skipped::the agent hit the ${REVIEW_MAX_MINUTES}-minute cap"
+            exit 0
+          fi
+          echo "exit=$code" >>"$GITHUB_OUTPUT"
+          scripts/harness/agent-gc.sh added "$d/added.txt"
+          rc=0
+          scripts/harness/agent-gc.sh screen "$d/out.json" "$d/err.txt" "$d/added.txt" || rc=$?
+          case $rc in
+            0) echo "screened=true" >>"$GITHUB_OUTPUT" ;;
+            1)
+              rm -f "$d/out.json" "$d/err.txt" "$d/added.txt"
+              echo "::warning title=agent-gc withheld::the agent output or edit holds the API key or an sk-ant- prefix; nothing proposed (rotate the key if it is the key)"
+              ;;
+            *) exit "$rc" ;;
+          esac
+
+      # Whatever the agent's outcome: a change beyond the target files is a confinement failure, a red job.
+      - name: Confined (edits of the target files only)
+        id: confined
+        if: ${{ !cancelled() && steps.lock.outcome == 'success' }}
+        run: scripts/harness/agent-gc.sh confined "$RUNNER_TEMP/agent-gc/targets.txt" "$RUNNER_TEMP/agent-gc/baseline.txt"
+
+      - name: Patch (within the cap, the doc check passes again)
+        id: patch
+        if: steps.gc-agent.outputs.screened == 'true'
+        env:
+          AGENT_EXIT: ${{ steps.gc-agent.outputs.exit }}
+        run: |
+          d="$RUNNER_TEMP/agent-gc"
+          export PATH="$PWD/.bin:$PATH" # the pinned jq reads the agent's output
+          verdict="$(scripts/harness/agent-gc.sh result "$AGENT_EXIT" "$d/out.json" "$d/err.txt")"
+          if [[ $verdict == edited ]]; then
+            verdict="$(scripts/harness/agent-gc.sh patch "$d/findings.txt" "$d/targets.txt" "$d/fix.patch")"
+          fi
+          if [[ $verdict != patch ]]; then
+            echo "::notice title=agent-gc skipped::${verdict#skip: }"
+            exit 0
+          fi
+          echo "pr=true" >>"$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.patch.outputs.pr == 'true'
+        with:
+          name: agent-gc
+          path: |
+            ${{ runner.temp }}/agent-gc/targets.txt
+            ${{ runner.temp }}/agent-gc/fix.patch
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Make the checkout writable again (post steps)
+        if: always()
+        run: chmod -R u+w .
+
+  # Applies the patch to the same commit and opens the PR, with its own token and no agent: the patch and the
+  # targets are data, checked again (`agent-gc.sh apply`), and the PR body is fixed text. A PR opened with
+  # GITHUB_TOKEN would start no workflow, so AGENT_GC_TOKEN opens it and the required checks run on it. The
+  # token is a secret of the agent-gc environment, whose deployment branches are the default branch only.
+  agent-gc-pr:
+    needs: agent-gc
+    if: needs.agent-gc.outputs.pr == 'true'
+    environment: agent-gc
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: agent-gc
+          path: ${{ runner.temp }}/agent-gc
+      - name: Apply the patch (checked again) and write the PR body
+        env:
+          GC_DIR: ${{ runner.temp }}/agent-gc
+        run: |
+          scripts/harness/agent-gc.sh apply "$GC_DIR/targets.txt" "$GC_DIR/fix.patch"
+          scripts/harness/agent-gc.sh body "$GC_DIR/targets.txt" "$GC_DIR/fix.patch" >"$RUNNER_TEMP/body.md"
+      # The commit is the token's identity. The agent-gc label exists already (ci.md#agent-gc): the token has
+      # no Issues permission to create it.
+      - name: Commit, push the agent-gc branch, open the PR
+        id: gc-pr
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GC_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [[ -z $GH_TOKEN ]]; then
+            echo "::error title=agent-gc::no AGENT_GC_TOKEN secret in the agent-gc environment (docs/harness/ci.md#agent-gc)"
+            exit 1
+          fi
+          read -r login id < <(gh api user --jq '"\(.login) \(.id)"')
+          [[ $login =~ ^[A-Za-z0-9-]+(\[bot\])?$ && $id =~ ^[0-9]+$ ]] || {
+            echo "::error title=agent-gc::AGENT_GC_TOKEN's identity is not a GitHub account ('$login' '$id')"
+            exit 1
+          }
+          branch="agent-gc/$GITHUB_RUN_ID"
+          git config user.name "$login"
+          git config user.email "$id+$login@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -q -m "docs: fix broken doc links (agent-gc)" -m "drift.yml run $GITHUB_RUN_ID (exec plan 0003 P3.4)."
+          gh auth setup-git
+          git push origin "HEAD:refs/heads/$branch"
+          gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --label agent-gc \
+            --title "docs: fix broken doc links (agent-gc)" --body-file "$RUNNER_TEMP/body.md"

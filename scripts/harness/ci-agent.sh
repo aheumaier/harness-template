@@ -1,6 +1,6 @@
 # shellcheck shell=bash
-# The shared contract of the CI agent scripts: pr-review.sh (pr-review.yml, exec plan 0003 P3.2) and
-# scheduled-review.sh (drift.yml, P3.3). Sourced, never run. The caller sets ROOT and AGENT_SCRIPT (its name,
+# The shared contract of the CI agent scripts: pr-review.sh (pr-review.yml, exec plan 0003 P3.2),
+# scheduled-review.sh and agent-gc.sh (drift.yml, P3.3 and P3.4). Sourced, never run. The caller sets ROOT and AGENT_SCRIPT (its name,
 # the prefix of its messages) and defines die (message on stderr, exit 2) before sourcing. Nothing here calls
 # the agent or the network; every function fails closed (docs/adr/0019-inferential-sensors-are-advisory.md,
 # docs/harness/ci.md#pr-review).
@@ -46,6 +46,19 @@ agent_settings() {
     },
     disableAllHooks: true
   }' --args "$@"
+}
+
+# agent_protected: sets AGENT_PROTECTED to the patterns of scripts/harness/protected-paths.txt, every
+# non-comment line, `config` or not. They are git pathspecs (`*` also matches `/`): pass them to git, which
+# matches them as integrity-check does, never to a shell glob.
+agent_protected() {
+  local pattern
+  AGENT_PROTECTED=()
+  while read -r pattern _; do
+    [[ -z $pattern || $pattern == \#* ]] && continue
+    AGENT_PROTECTED+=("$pattern")
+  done <"$ROOT/scripts/harness/protected-paths.txt"
+  [[ ${#AGENT_PROTECTED[@]} -gt 0 ]] || die "no patterns in scripts/harness/protected-paths.txt"
 }
 
 # agent_found <grep args...>: grep -q, 0 on a match, 1 on none, exit 2 when grep fails (a screen fails closed).
@@ -96,6 +109,40 @@ agent_stopped() {
   stderr=$(agent_oneline "$(tail -n 5 "$err")")
   error=$(agent_oneline "$(jq -r 'if .is_error == true and (.result | type == "string") then .result else "" end' "$out")")
   echo "skip: the agent stopped (exit $code, subtype $subtype)${error:+; error: $error}; stderr: ${stderr:-<empty>}"
+}
+
+# agent_structured <key> <exit> <out.json> <stderr>: 0 when the agent succeeded with structured output (an
+# object holding a <key> array); when it stopped on a cap or an API error (an error_* subtype, or is_error),
+# prints the skip line and returns 1. The CLI leaves structured_output out when there is none, so a success
+# without it is a broken schema, flag or CLI, never "nothing found": exit 2, like any other ending.
+agent_structured() {
+  local key=$1 code=$2 out=$3 err=$4
+  if agent_ok "$code" "$out" "$err"; then
+    jq -e --arg k "$key" '.structured_output | type == "object" and (.[$k] | type == "array")' "$out" >/dev/null ||
+      die "the agent succeeded (exit 0) without structured output holding a $key array: check --json-schema and the Claude Code pin"
+    return 0
+  fi
+  jq -e '.is_error == true or (.subtype | type == "string" and startswith("error_"))' "$out" >/dev/null ||
+    die "the agent ended without success, a cap or an error: $(agent_stopped "$code" "$out" "$err" | sed 's/^skip: the agent stopped //')"
+  agent_stopped "$code" "$out" "$err"
+  return 1
+}
+
+# agent_nonce: 24 random hex characters for the delimiters around untrusted data; exit 2 when /dev/urandom
+# gives anything else.
+agent_nonce() {
+  local nonce
+  nonce=$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')
+  [[ $nonce =~ ^[0-9a-f]{24}$ ]] || die "could not read a nonce from /dev/urandom"
+  printf '%s\n' "$nonce"
+}
+
+# agent_cap <name> [default]: the value of the cap variable <name> (or the default when unset), a positive
+# integer; exit 2 otherwise. Assign it on its own line: `local v=$(agent_cap …)` would hide the exit.
+agent_cap() {
+  local v=${!1:-${2:-}}
+  [[ $v =~ ^[1-9][0-9]*$ ]] || die "$1 must be a positive integer, got '$v'"
+  printf '%s\n' "$v"
 }
 
 # agent_fence <file>: a code fence longer than any backtick run in the file, so the text cannot close it.

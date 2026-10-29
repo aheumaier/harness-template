@@ -230,7 +230,8 @@ EOF
 }
 
 # The reviews' trust invariants (drift.yml header), read from the real file.
-@test "drift.yml: no marketplace agent action; the key only in the reviews' agent step; no \${{ in run blocks" {
+# agent-gc's secrets (ci.md#agent-gc) are listed here too: the check covers the whole file.
+@test "drift.yml: no marketplace agent action; the key only in the agent steps, AGENT_GC_TOKEN only in the PR step; no \${{ in run blocks" {
   run -1 grep -nE '^[^#]*(anthropics/|claude-code-action)' "$W"
   run -0 awk '
     /^      - / { s++ }
@@ -238,7 +239,9 @@ EOF
     /^[^#]*secrets\./ { t = $0; sub(/^ +/, "", t); sub(/ +#.*/, "", t); hit[++n] = s; txt[n] = t }
     END { for (i = 1; i <= n; i++) print ((hit[i] in id) ? id[hit[i]] : "?") ": " txt[i] }' "$W"
   [ "$output" = "gate: HAS_KEY: \${{ secrets.ANTHROPIC_API_KEY != '' }}
-agent: ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}" ]
+agent: ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}
+gc-agent: ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}
+gc-pr: GH_TOKEN: \${{ secrets.AGENT_GC_TOKEN }}" ]
   run -0 awk '
     inrun { match($0, /^ */); if ($0 ~ /^ *$/ || RLENGTH > ind) { if (index($0, "${{")) print NR ": " $0; next } inrun = 0 }
     /^ *run:/ { match($0, /^ */); ind = RLENGTH; inrun = 1; if (index($0, "${{")) print NR ": " $0 }' "$W"

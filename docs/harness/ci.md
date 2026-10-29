@@ -22,6 +22,7 @@ target runs, and it never blocks.
 | `migration-gate.yml` | PR touching `apps/api/db/migrations/**` | `migrations` | append-only, Atlas lint, squawk | no (path-filtered; same sensors in `check-all`) |
 | `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, Trivy (`vuln-deps`), schema doc, doc links, coverage that fell since the last run ([coverage](#coverage)), the weekly mutation score table, or a mutation run that could not measure ([mutation testing](#mutation-testing); survivors go to the job summary only), the findings of the scheduled reviews → one open `drift` issue | no |
 | | | `review-gate`, `reviews (<review>)` | the [scheduled reviews](#scheduled-reviews): security, data handling, modularity, one read-only agent each, on the default branch only; skipped with a notice without the `ANTHROPIC_API_KEY` secret | no |
+| | | `gc-gate`, `agent-gc`, `agent-gc-pr` | [agent GC](#agent-gc): one agent fixes broken doc links in unprotected docs → one small PR labelled `agent-gc` for human review; off until the `AGENT_GC_ENABLED` variable is `true` | no |
 | `harness-nfr.yml` | nightly, manual | `harness-nfr` | p95 per sensor over 7 days of `harness-timings-check-all` artifacts vs `budgets.txt` (`scripts/harness/nfr-report.sh`, alerts only) and `make harness-determinism` (`make check` twice; fails on any difference) → one open `harness-nfr` issue | no |
 
 `.github/actions/setup` installs the pinned toolchain (`scripts/tool-versions.env`) and caches `.bin`,
@@ -216,8 +217,72 @@ CONFIRM=1 scripts/github-branch-protection.sh   # applies it (gh auth with admin
 
 When a workflow job is renamed, update `REQUIRED_CHECKS` in the script and re-run it.
 
-## Agent GC (not configured)
+## Agent GC
 
-`drift.yml` has an `agent-gc` job stub, enabled only when the repository variable `AGENT_GC_ENABLED` is
-`true`. Its intended behaviour is documented in the workflow: take one drift finding, fix it on a branch,
-open a small PR for human review.
+`agent-gc`, the doc gardener (exec plan 0003 P3.4): each week one agent fixes the broken links and anchors
+the computational doc check found and proposes the edit as a small PR for human review. An inferential
+sensor, so advisory ([ADR 0019](../adr/0019-inferential-sensors-are-advisory.md)): no rule id, no fixture,
+no budget row, never a required check; its PR is a proposal like any other, merged or closed by a human.
+
+- **What it fixes.** The `docs-links-resolve` findings of `.bin/harness check-links` in tracked `*.md` files
+  outside `scripts/harness/protected-paths.txt` that are no `AGENTS.md` or `CLAUDE.md` (guides every agent
+  reads, edited by a human), from at most `REVIEW_GC_MAX_FILES` files (`scripts/harness/agent-gc.sh findings`
+  and `targets`). The other `docs-links-resolve` findings (a protected or untracked file, an agent guide,
+  past the cap) are not agent-gc's: the job leaves a notice with their count, and the drift issue's
+  `make docs-links` section lists every finding. Other rules are not read: `rules-fixture-claims` findings
+  are all in the protected `rules.md`. P3.5's `QUALITY.md` staleness check may join once it exists, if its
+  findings are in unprotected files.
+- **Same CI agent contract as the [scheduled reviews](#scheduled-reviews)**, with Edit added:
+  `--tools Read,Grep,Glob,Edit`, and a `--settings` file (`agent-gc.sh settings`) that allows Edit on each
+  target file alone and still denies Write, Bash and the web. The agent gets the findings as data between
+  nonce lines (`agent-gc.sh prompt`; in each file it fixes every finding or leaves the file untouched) and
+  answers in a JSON schema (`{"edited": [...]}`); the diff, not that answer, is what it proposes.
+- **A job that trusts nothing the agent touched.** The `agent-gc` job holds `contents: read` and no write
+  token, saves no cache (the setup action's `save-caches: "false"`: `.bin` restored only, no Go, pnpm or
+  Playwright cache) and keeps every file it writes (findings, targets, prompt, settings, the agent's output,
+  the patch) under `$RUNNER_TEMP`. Before the agent runs the tree must be clean, untracked files included
+  (`agent-gc.sh baseline` records the ignored ones), and the checkout is made read-only, `.git` included,
+  except the target files (`agent-gc.sh lock`). The agent step holds the API key and runs only `claude`, the
+  schema, `git diff-files` and the leak screen (on the agent's output and on the lines its edit adds).
+- **Confined, whatever the agent's outcome** (success, cap, timeout or withheld output): `agent-gc.sh
+  confined` turns the job red when the tree holds anything but edits of target files: a new, deleted or
+  renamed file, a mode change, an edit of any other file, a new or deleted ignored file, or any file
+  (ignored or under `.git`) written after the baseline.
+- **Checked before anything is proposed** (`agent-gc.sh patch`): a notice and no PR when the agent changed
+  nothing, changed more than `REVIEW_GC_MAX_CHANGED_LINES` lines, or the doc check, run again, reports a new
+  finding or one left in an edited file.
+- **The PR.** The `agent-gc-pr` job runs no agent. It checks out the same commit, checks the patch again and
+  writes the PR body, both without the token (`agent-gc.sh apply`: target files only, none protected or an
+  agent guide, within the cap, no file created, deleted or renamed and no mode change; `agent-gc.sh body`:
+  fixed text plus the findings of the files the patch changes, in a code fence). It then commits as the
+  token's identity (`docs: fix broken doc links (agent-gc)`), pushes only the branch `agent-gc/<run id>` and
+  opens a PR labelled `agent-gc` against the branch it ran on. It never pushes to the default branch. The PR
+  goes through the same required checks and code-owner review as any other; a PR opened with `GITHUB_TOKEN`
+  would start no workflow, hence `AGENT_GC_TOKEN`. One open `agent-gc` PR at a time: the `gc-gate` job skips
+  while one is open.
+- **The write token.** The agent-gc write token is an environment secret limited to the default branch, held
+  by a non-admin identity outside every branch-protection bypass and without Workflows or Administration
+  permission; write collaborators are trusted with the key, not with this token. So `AGENT_GC_TOKEN` is a
+  secret of the `agent-gc` environment, whose deployment-branch policy is the default branch only, and only
+  `agent-gc-pr` names that environment. It belongs to a machine user that is not an admin, not the code
+  owner (a PR its owner authored cannot be approved by them, so a code-owner token would leave its PRs
+  unreviewable) and in no bypass list of the branch protection or rulesets. It is a fine-grained token for
+  this repository only with Contents and Pull requests read and write, and no Workflows, Administration or
+  Issues permission. A GitHub App token minted per run is the planned replacement
+  ([TD-50](../exec-plans/tech-debt-tracker.md)).
+- **Cost cap per run**: the scheduled reviews' `REVIEW_MODEL`, `REVIEW_MAX_TURNS`, `REVIEW_MAX_BUDGET_USD`
+  and `REVIEW_MAX_MINUTES`, plus `REVIEW_GC_MAX_FILES` (5) and `REVIEW_GC_MAX_CHANGED_LINES` (40), at the top
+  of the protected workflow.
+- **Skips with a notice** when it is off, the API key is missing, off the default branch (`review-gate`), an
+  `agent-gc` PR is open, there is nothing to fix, or the agent stops on a cap or an API error. **Red only on
+  harness breakage**: the doc check broke, the tree was not clean, the agent did not start or succeeded
+  without structured output, the confinement failed, the patch fails its second check, or the `agent-gc`
+  environment has no `AGENT_GC_TOKEN`.
+- **Turning it on** is a human step, after [ADR 0019](../adr/0019-inferential-sensors-are-advisory.md) is
+  accepted and the scheduled reviews run ([TD-38](../exec-plans/tech-debt-tracker.md)): create the `agent-gc`
+  environment (deployment branches: the default branch only) and its `AGENT_GC_TOKEN` secret as above; create
+  the `agent-gc` label once by hand (`gh label create agent-gc`; the token cannot); turn on "Automatically
+  delete head branches", so merged `agent-gc/<run id>` branches go (whoever closes an agent-gc PR unmerged
+  deletes its branch); then set the
+  repository variable `AGENT_GC_ENABLED` to `true` and start one manual `drift` run on the default branch
+  ([TD-50](../exec-plans/tech-debt-tracker.md)). Until then `gc-gate` and the jobs after it are skipped.
