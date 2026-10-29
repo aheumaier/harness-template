@@ -19,3 +19,9 @@ minimumReleaseAgeStrict: false
 minimumReleaseAgeExclude:
   - "@tanstack/query-core@5.105.0"
   - "@tanstack/react-query@5.105.0"
+
+# Known-vulnerable transitive pins (deps-no-known-vulns), each scoped to its chain with when to drop it (ADR 0023).
+overrides:
+  # @stryker-mutator/core 10.x → typed-rest-client ~2.3.0 → qs 6.15.1 exactly (CVE-2026-8723, -82417, -82562,
+  # -110816). Drop it when Stryker depends on typed-rest-client ≥ 3 (qs ^6.16.0); tech-debt TD-34.
+  "typed-rest-client>qs": 6.16.1

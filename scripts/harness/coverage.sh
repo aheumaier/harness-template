@@ -89,17 +89,22 @@ collect() {
     die "git ls-files failed listing JS workspaces"
   for pj in $pjs; do
     ws="$(dirname "$pj")"
-    # 0: a coverage script; 1: neither test nor coverage; 4: a test script only.
-    node -e 'const s = require(process.argv[1]).scripts ?? {}; process.exit(s.coverage ? 0 : s.test ? 4 : 1)' \
-      "$ROOT/$pj" && kind=0 || kind=$?
+    # 10: a coverage script; 11: neither test nor coverage; 12: a test script only; anything else (invalid
+    # JSON: node exits 1, the code of "no tests" before): unreadable.
+    kind=0
+    node -e '
+      let s;
+      try { s = require(process.argv[1]).scripts ?? {}; } catch { process.exit(2); }
+      process.exit(s.coverage ? 10 : s.test ? 12 : 11);
+    ' "$ROOT/$pj" || kind=$?
     case "$kind" in
-      0) ;;
-      1)
+      10) ;;
+      11)
         rows="$rows"$'\n'"$ws"$'\t-\t-'
         continue
         ;;
-      4) die "$ws has a test script but no coverage script: add \"coverage\": \"vitest run --coverage\" to $pj (apps/web/AGENTS.md)" ;;
-      *) die "cannot read the scripts of $pj" ;;
+      12) die "$ws has a test script but no coverage script: add \"coverage\": \"vitest run --coverage\" to $pj (apps/web/AGENTS.md)" ;;
+      *) die "cannot read the scripts of $pj: fix its JSON" ;;
     esac
     name="$out/ws/$(echo "$ws" | tr / _)"
     if ! (cd "$ROOT/$ws" && pnpm run --silent coverage --coverage.provider=v8 --coverage.reporter=json-summary \

@@ -17,7 +17,7 @@ same target is red on your machine (with `BASE_REF=origin/main` for diff-based s
 | `harness-integrity.yml` | PR via `pull_request_target` (incl. label and title changes) | `harness-integrity` | the **base branch's** `make harness-integrity` against the PR head (`HARNESS_ROOT`) | yes |
 | | | `pr-conventions` | the **base branch's** `make commits specs` against the PR head and title (Conventional Commits, PR title ≤ 90 characters, spec-kit specs) | yes |
 | `migration-gate.yml` | PR touching `apps/api/db/migrations/**` | `migrations` | append-only, Atlas lint, squawk | no (path-filtered; same sensors in `check-all`) |
-| `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, Trivy (`vuln-deps`), schema doc, doc links, coverage that fell since the last run ([coverage](#coverage)) → one open `drift` issue | no |
+| `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, Trivy (`vuln-deps`), schema doc, doc links, coverage that fell since the last run ([coverage](#coverage)), a mutation run that could not measure ([mutation testing](#mutation-testing); its scores go to the job summary) → one open `drift` issue | no |
 | `harness-nfr.yml` | nightly, manual | `harness-nfr` | p95 per sensor over 7 days of `harness-timings-check-all` artifacts vs `budgets.txt` (`scripts/harness/nfr-report.sh`, alerts only) and `make harness-determinism` (`make check` twice; fails on any difference) → one open `harness-nfr` issue | no |
 
 `.github/actions/setup` installs the pinned toolchain (`scripts/tool-versions.env`) and caches `.bin`,
@@ -42,6 +42,39 @@ by no required check.
   `coverage.tsv` as the `coverage` artifact (35 days) for the next run, and adds to the `drift` issue only
   the packages whose coverage fell (`make coverage-fell`). Only its baseline step gets a token.
 - A ratchet or any other threshold needs its own ADR, justified by a finding.
+
+## Mutation testing
+
+`make mutation` (`scripts/harness/mutation.sh`) mutates the source files changed in the last 7 days
+(`MUTATION_SINCE`, any date `git rev-list --before` takes) and reports, per package, how many mutants the
+tests killed: [gremlins](https://github.com/go-gremlins/gremlins) for `apps/api` (`*_test.go`, `testdata/`,
+generated files and the nested `tools/` modules excluded) and [Stryker](https://stryker-mutator.io) for each
+JS workspace's `src/` (tests, `*.d.ts` and `src/gen/` excluded) through its `mutation` script; a workspace
+with neither `test` nor `mutation` reads `no tests`, one with `test` only fails with what to add. The score
+is killed and timed-out mutants over all valid ones; a surviving mutant is a covered line whose change no
+test notices. It is a weekly drift report, never a gate
+([ADR 0023](../adr/0023-mutation-testing-is-a-drift-report.md), extending
+[ADR 0020](../adr/0020-test-coverage-is-a-trend.md)): it fails only when it cannot measure (missing tool,
+failing tests, shallow history, unparseable input, a loosened Stryker config), never on a score. A report,
+not a sensor: no rule id, in neither `make check` (minutes, and its window reads the clock) nor
+`make check-all`.
+
+- Changed means the tree diff between `HEAD` and the newest first-parent commit at or before the window
+  start, so a branch committed earlier and merged inside the window counts. Whole files, not changed lines:
+  a test for a line usually guards its neighbours too.
+- What is measured is protected config: gremlins reads only `scripts/harness/gremlins.yaml` (`--config`,
+  every `GREMLINS_*` variable unset; two workers and a timeout coefficient of 10, because with one worker
+  per core mutants time out from load, not because they hang), and each workspace's `stryker.config.json`
+  (protected) may set neither `thresholds.break` nor `excludedMutations`.
+- Same test set as [coverage](#coverage) and `make test-go`: gremlins runs `go test` with `GOFLAGS=-short`,
+  so integration tests are skipped and code only they reach reads as `No coverage`.
+- The summary keeps `No coverage` and `no tests` rows: they are where a test is missing, which a score
+  alone hides.
+- `drift.yml` checks out the full history (`fetch-depth: 0`; a shallow clone fails closed) and runs it in
+  its own step capped at 20 minutes. The scores and survivors go to its job summary only; the `drift` issue
+  gets a mutation entry only when it cannot measure: a failing `make mutation` adds its output, a step that
+  hit the cap one line pointing at the step log.
+- A threshold or ratchet needs its own ADR, justified by a finding.
 
 ## Label waivers
 

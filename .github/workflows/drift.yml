@@ -1,6 +1,7 @@
 # Harness file (protected). Weekly sweep for drift that accumulates without any single PR causing it:
 # dead code, known vulnerabilities in dependencies, a stale schema doc, dead doc links, test coverage that
-# fell since the last run. Findings go to one open issue labelled `drift` (created, or commented on).
+# fell since the last run, mutants that survived in the week's changes. Findings go to one open issue labelled
+# `drift` (created, or commented on).
 name: drift
 
 on:
@@ -18,11 +19,12 @@ jobs:
       actions: read # earlier drift runs and their coverage artifacts
       issues: write
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0 # make mutation selects the files changed in the last 7 days from history
       - uses: ./.github/actions/setup
       - run: make setup
       # The Trivy vulnerability DB for vuln-deps, shared with ci.yml and refreshed once a day.
@@ -53,10 +55,25 @@ jobs:
               break
             fi
           done
+      # Mutation testing of the files changed in the last 7 days (ADR 0023, ci.md#mutation-testing), a trend,
+      # never a gate: scores and survivors go to the job summary only; the issue gets an entry only when it
+      # cannot measure (make mutation failed, or this step hit its wall-clock cap; the Sweep reports both).
+      - name: Mutation
+        id: mutation
+        continue-on-error: true
+        timeout-minutes: 20
+        run: |
+          fence='```'
+          if ! out="$(make mutation 2>&1)"; then
+            printf '### make mutation failed\n\n%s\n%s\n%s\n' "$fence" "$out" "$fence" >"$RUNNER_TEMP/mutation.md"
+            exit 1
+          fi
+          printf '%s\n' "$out" >>"$GITHUB_STEP_SUMMARY"
       - name: Sweep
         id: sweep
         env:
           COVERAGE_BASELINE: ${{ steps.baseline.outputs.previous }}
+          MUTATION_OUTCOME: ${{ steps.mutation.outcome }}
         run: |
           report="$RUNNER_TEMP/drift.md"
           fence='```'
@@ -83,6 +100,14 @@ jobs:
                 out="$(printf '### make coverage-fell failed\n\n%s\n%s\n%s' "$fence" "$out" "$fence")"
               [[ -z "$out" ]] || printf '%s\n\n' "$out" >>"$report"
             fi
+          fi
+          # Mutation (ADR 0023): only a run that could not measure reaches the issue. mutation.md exists when
+          # make mutation failed; without it, the step was killed by its timeout.
+          if [[ -s "$RUNNER_TEMP/mutation.md" ]]; then
+            cat "$RUNNER_TEMP/mutation.md" >>"$report"
+            echo >>"$report"
+          elif [[ "$MUTATION_OUTCOME" != success ]]; then
+            printf '### make mutation did not finish (%s; its step log has the output)\n\n' "$MUTATION_OUTCOME" >>"$report"
           fi
           cat "$report"
           # GitHub caps an issue body or comment at 65536 characters; the full report is in this log.

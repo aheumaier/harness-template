@@ -28,6 +28,7 @@ goinstall oapi-codegen github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@
 goinstall oasdiff github.com/oasdiff/oasdiff@"$OASDIFF_VERSION"
 goinstall shfmt mvdan.cc/sh/v3/cmd/shfmt@"$SHFMT_VERSION"
 goinstall actionlint github.com/rhysd/actionlint/cmd/actionlint@"$ACTIONLINT_VERSION"
+goinstall gremlins github.com/go-gremlins/gremlins/cmd/gremlins@"$GREMLINS_VERSION"
 
 # Downloaded binaries: os darwin|linux, arch amd64|arm64; anything else has no sha256 pin.
 os=$(uname -s | tr '[:upper:]' '[:lower:]')

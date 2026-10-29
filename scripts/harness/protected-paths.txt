@@ -10,6 +10,7 @@
 *.custom-gcl.yml config
 *.dependency-cruiser.* config
 *eslint.config.* config
+*stryker.config.* config
 *.spectral.yaml config
 *atlas.hcl config
 *.squawk.toml config

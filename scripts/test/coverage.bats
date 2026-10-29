@@ -117,13 +117,17 @@ EOF
   has '--coverage.provider=v8 --coverage.reporter=json-summary --coverage.reportsDirectory='
 }
 
-@test "collect fails with a remediation for a workspace with tests but no coverage script" {
+@test "collect fails with a remediation for a workspace with tests but no coverage script or a package.json it cannot read" {
   fake_tools
   mkdir -p "$SANDBOX/packages/api-client"
   printf '{"scripts":{"test":"vitest run"}}\n' >"$SANDBOX/packages/api-client/package.json"
   run -2 "$C" collect "$T/out"
   has 'packages/api-client has a test script but no coverage script'
   has '"coverage": "vitest run --coverage"'
+  # Invalid JSON is not "no tests".
+  printf '{"scripts":\n' >"$SANDBOX/packages/api-client/package.json"
+  run -2 "$C" collect "$T/out"
+  has 'cannot read the scripts of packages/api-client/package.json: fix its JSON'
 }
 
 @test "collect fails with the test output when go test fails, and closed on an unparseable profile" {

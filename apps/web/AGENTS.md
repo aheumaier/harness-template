@@ -13,4 +13,13 @@
   `--coverage.provider`, `--coverage.reporter` and `--coverage.reportsDirectory` flags and write an
   istanbul json-summary there (Vitest does). No `thresholds`: coverage is a trend, never a gate
   ([ADR 0020](../../docs/adr/0020-test-coverage-is-a-trend.md), [ci.md](../../docs/harness/ci.md#coverage)).
+- Mutation testing: `make mutation` runs each workspace's `mutation` script as
+  `pnpm run mutation stryker.config.json --mutate <files> --reporters json --cleanTempDir always` on the
+  `src/` files changed in the last 7 days. Any workspace with a `test` script needs three pieces, as here:
+  the `"mutation": "stryker run"` script, the devDependencies `@stryker-mutator/core` and
+  `@stryker-mutator/vitest-runner` at this workspace's exact versions, and a `stryker.config.json` copied
+  from this one (under pnpm the Vitest runner must be listed in `plugins`; `vitest.related: false` keeps a
+  changed file without tests from failing the run). The config is protected: no `thresholds.break`, no
+  `excludedMutations` ([ADR 0023](../../docs/adr/0023-mutation-testing-is-a-drift-report.md),
+  [ci.md](../../docs/harness/ci.md#mutation-testing)).
 - `make dev` serves this app on the worktree's `WEB_PORT`.

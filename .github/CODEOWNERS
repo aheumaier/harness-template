@@ -8,6 +8,7 @@
 .custom-gcl.yml             @aheumaier
 .dependency-cruiser.*       @aheumaier
 eslint.config.*             @aheumaier
+stryker.config.*            @aheumaier
 .spectral.yaml              @aheumaier
 atlas.hcl                   @aheumaier
 .squawk.toml                @aheumaier

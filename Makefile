@@ -113,7 +113,7 @@ traces: ## Spans of one trace as JSON lines, in start order: make traces ID=<tra
 	@$(WITH_ENV) $(OBS_QUERY) traces
 
 ##@ Reports
-.PHONY: coverage coverage-fell
+.PHONY: coverage coverage-fell mutation
 # A trend, never a gate (ADR 0020): not in check or check-all; coverage.yml puts it in its job summary,
 # drift.yml compares it with the last scheduled run's. COVERAGE_PREVIOUS=<coverage.tsv> adds the change column.
 COVERAGE_DIR := .cache/coverage
@@ -124,6 +124,13 @@ coverage: ## Unit-test coverage per Go package and JS workspace, as Markdown (.c
 	@scripts/harness/coverage.sh report $(COVERAGE_TSV) "$(COVERAGE_PREVIOUS)"
 coverage-fell: ## After make coverage: only the packages that fell since COVERAGE_PREVIOUS=<coverage.tsv>
 	@scripts/harness/coverage.sh report --fell $(COVERAGE_TSV) "$(COVERAGE_PREVIOUS)"
+# A trend, never a gate (ADR 0023): not in check (slow; the window reads the clock) or check-all;
+# drift.yml runs it weekly. MUTATION_SINCE takes any date `git rev-list --before` does.
+MUTATION_DIR := .cache/mutation
+MUTATION_SINCE ?= 7 days ago
+mutation: ## Mutation score and surviving mutants (gremlins, Stryker) of the files changed since MUTATION_SINCE (7 days ago)
+	@scripts/harness/mutation.sh collect $(MUTATION_DIR) "$(MUTATION_SINCE)"
+	@scripts/harness/mutation.sh report $(MUTATION_DIR)/mutants.tsv "$(MUTATION_SINCE)"
 
 ##@ Tools
 .PHONY: tools deps
