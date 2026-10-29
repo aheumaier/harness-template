@@ -112,7 +112,7 @@ They comment, never fail (Phase 3, ADR).
 | 1 | Runtime legibility (G1) | NFR-O1 met: logs by request ID and a p95 latency, per worktree, via `make` | implemented |
 | 2 | Behaviour harness (G2) | NFR-B1 and NFR-B2 met; coverage reported per package; weekly mutation score in the drift issue | implemented |
 | 3 | Inferential sensors and garbage collection (G3, G4, G8, G11) | reviewer comments on every PR (advisory); scheduled reviews and `agent-gc` open issues/PRs; QUALITY.md has a staleness check; orphan scripts, dead Go code and clones fail `check-all`; `reuse-reviewer` exists | proposed |
-| 4 | Taste lints and harness lifecycle (G5, G7, G9, G10, G12) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue; `adoption-probe` green on a root-module fixture | proposed |
+| 4 | Taste lints and harness lifecycle (G5, G7, G9, G10, G12) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue; `adoption-probe` green on a root-module fixture; reviewer catches seen twice are earned rules; sensor slices get an evasion review | proposed |
 
 ## Progress
 
@@ -227,6 +227,8 @@ PR; **–** needs none.
 - [ ] P4.8 — H — `make rename` accepts a bare Go module or `MODULE=skip`
 - [ ] P4.9 — H — protected paths and CODEOWNERS name the harness's own workflows, not `.github/*`
 - [ ] P4.10 — H — CI `adoption-probe`: README §(b) on a root-`go.mod` fixture
+- [ ] P4.11 — H — reviewer catches seen twice become rules (`Status: earned`, ADR 0019) with fixtures
+- [ ] P4.12 — H — `evasion-reviewer` agent for sensor slices; a retry gets a diff-only re-review
 
 ### Phase 0 — quick wins
 
@@ -529,6 +531,42 @@ give it a sensor. Each touches protected paths.
   `HARNESS_STACK=go make setup check harness-selftest`. This is the sensor for README §(b); without it the
   procedure drifts again.
   - Acceptance: green on the template; red when the fixture's `layout.env` still points at `apps/api`.
+
+Review feedback loop. P4.11 and P4.12 come from the harness assessment of this loop (Log, 2026-10-29): the
+same classes of mistake were caught by reviewers again and again, and three of three sensor evasions were
+found only after integration.
+
+- **P4.11 — earned rules.** Every reviewer finding class this plan caught at least twice (lane reviews, phase
+  gates, the peer evasion review) becomes a rule in rules.md with `Status: earned (<finding 1>, <finding 2>)`
+  (ADR 0019), a sensor, a remediation and a fixture. Candidates, each kept only if the Log or a review shows
+  two findings:
+  - `harness-reads-layout`: no `apps/api/tools/harness/*.go` other than `layout.go` (and the tool's own
+    module constants) holds a template layout literal (`apps/api`, `internal/`, `db/migrations`); a Go test
+    in `tools/harness` scans its own sources (P4.6 review, Phase 3 gate on `qualityrows.go`).
+  - `docs-make-targets-exist`: every `make <target>` named in AGENTS.md, CLAUDE.md, the guides and the skills
+    is a target `make help` lists.
+  - `harness-rule-lists-match`: hand-copied rule lists (the skip lists in `.claude/skills/review-*/SKILL.md`,
+    `.claude/agents/reuse-reviewer.md`) name only rule ids rules.md defines and every rule of the sections
+    they claim to skip (TD-94). The slice may edit those named skill and agent files;
+    `.claude/hooks/fast-check.sh` stays a human PR (TD-66).
+  - `harness-sensor-deps-pinned`: a version change of a sensor devDependency (jscpd, eslint,
+    dependency-cruiser, knip, Stryker) is a `config` change in `integrity-check` (TD-91, ADR 0027).
+  - A near-miss fixture (must pass) for each sensor of this plan that had a substring or path bug
+    (`orphans` TD-75/TD-78, `check-links`, `quality-rows`), so the fix cannot regress into a false positive.
+  - Candidates with one finding only stay in the tracker; the Log names them.
+  - Acceptance: each new rule's fixture fails with its remediation; `make check`, `harness-selftest` and
+    `rules-fixture-claims` are green; each rule's `Status:` links two findings.
+- **P4.12 — evasion review.** A read-only `.claude/agents/evasion-reviewer.md` (tools Read, Grep, Glob and
+  `.bin/harness`/`make` sensor runs in a scratch copy) tries to make a new or changed sensor pass on bad
+  input: substrings, comments, symlinks, build tags, empty listings, wrong roots, untracked files. It
+  reproduces each bypass against the real sensor and reports `file:line — bypass — repro — fix`, as the peer
+  review of 3edf728 did (TD-75..TD-78). It runs for any slice that adds a rule id or changes
+  `scripts/harness/**` or `apps/api/tools/harness/**`, next to code-reviewer. After a retry, code-reviewer
+  runs once more on the retry diff only: each finding fixed, nothing new broken. A slice never edits this plan
+  or [the loop prompt](0003-loop-prompt.md), so the slice's Decisions carry the exact text for the loop
+  prompt's §5c and for the CLAUDE.md "before calling a change done" line; a human applies both (hand-off).
+  - Acceptance: run on 3edf728's diff, the agent reproduces at least three of the eleven bypasses filed as
+    TD-75..TD-78; the proposed §5c and CLAUDE.md text is in the hand-off.
 
 ## Open assumptions
 
@@ -1129,3 +1167,7 @@ give it a sensor. Each touches protected paths.
   its root from the session's project dir, so lane worktrees are unguarded (as guard-bash). Lane `check`
   green, `harness-selftest` 67/67, `orphans` and `docs-links` green, `check-all` red only on
   harness-integrity.
+- 2026-10-29: P4.11 and P4.12 added at the user's request, from recommendations 3 and 4 of the harness
+  assessment of this loop: reviewer catches seen twice become earned rules (ADR 0019), and sensor slices get
+  an evasion review plus a diff-only re-review after a retry. Both are H; P4.12's loop prompt and CLAUDE.md
+  wiring is a human step. Recommendations 1, 2 and 5 stay in the hand-off.
