@@ -96,6 +96,15 @@ those two lines into a decision the Phase 3 slices can build on.
 - **Local reviewer calls are workflow steps, not gates.** These are the calls `CLAUDE.md` and the exec-plan
   loop make before a change is called done. The author weighs the findings, and "done" still means
   `make check` is green. This holds for every agent added later (P3.8's `reuse-reviewer`).
+- **`evasion-reviewer` (plan 0003 P4.12) is a local reviewer with Bash.** It tries to make a new or changed
+  sensor pass on bad input and reproduces each bypass by running the sensor in a scratch copy: a detached
+  `git worktree` in the system temp directory, never the real tree. That confinement is prose in its prompt
+  for now ([TD-107](../exec-plans/tech-debt-tracker.md)), and so is its cost cap. Its findings
+  are counted as `evasion:<rule-id>:<class>` (the fixing commit quotes the line and names that class), with
+  two differences from the ratchet above. A bypass never becomes a new rule: an accepted one is fixed in the
+  rule it evades, with a fixture or near-miss case. A second acceptance of the same `<rule-id>:<class>`
+  means that sensor fixes the class as a whole or declares it a blind spot in rules.md. Its technique
+  classes are never dropped from the prompt, since they apply to every new sensor.
 
 ## Consequences
 - P3.2, P3.3, P3.4 and P3.8 build on this ADR. `agent-gc` stays off until it is accepted (plan 0003, P3.4).
