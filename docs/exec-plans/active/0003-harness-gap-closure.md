@@ -217,7 +217,10 @@ PR; **–** needs none.
 - [ ] P4.4 — H — per-rule fire counts in `timings.jsonl`; drift issue lists rules that never fired in 90 days
 - [x] P4.5 — d518888 — done — no pinned tool references → `docs/references/*-llms.txt` for oapi-codegen, sqlc,
   orval, Atlas with `docs-references-pinned` in `make check` (ADR 0029); a harness change (H), not "–"
-- [ ] P4.6 — H — `scripts/harness/layout.env` read by every script, the Makefile, the hooks and `.bin/harness`
+- [x] P4.6 — 449d561 — done — the product layout was hard-coded in every sensor → `scripts/harness/layout.env`
+  (with `API_CLIENT_DIR`) parsed by `layout.sh` for the scripts, the Makefile and CI and by `.bin/harness`;
+  `make layout-check` (`harness-layout-valid`) in `make check`; `.claude/hooks/fast-check.sh` keeps the template
+  layout until a human `.claude` PR (TD-66), as does `make new-domain` (TD-67) (ADR 0030)
 - [ ] P4.7 — H — stack profiles: `HARNESS_STACK=go,db,web` selects sensors, tool installs and fixtures
 - [ ] P4.8 — H — `make rename` accepts a bare Go module or `MODULE=skip`
 - [ ] P4.9 — H — protected paths and CODEOWNERS name the harness's own workflows, not `.github/*`
@@ -1096,3 +1099,19 @@ give it a sensor. Each touches protected paths.
   bats and `harness-tests` over their NFR-H5 budgets (TestOrphans 0.2 s). Lane `check` green,
   `harness-selftest` 67/67, fixtures, `orphans`, `deadcode-go`, `fixture-claims` and `references-pinned`
   green, `check-all` red only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
+- 2026-10-29: P4.6 done (449d561). `scripts/harness/layout.env` is data, never sourced: `layout.sh` parses
+  and validates it (`--print` emits only the known keys), `layout.go` reads it for `.bin/harness`, the
+  domainiso analyzer reads `LAYER_GLOB`; the setup action exports it to `$GITHUB_ENV`, migration-gate runs
+  on every PR and gates only when `MIGRATIONS_DIR` changed. Acceptance grep 342 → 259 lines, the rest in the
+  allowed classes. Deviations from the plan: `API_CLIENT_DIR` added (orval runs there); item "domainiso
+  reports when `LAYER_GLOB` matches no package" taken literally turned the template red, so `layout-check`
+  reports the empty glob and domainiso skips `platform` and fails flat packages (ADR 0030);
+  `fast-check.sh` is under `.claude/**`, so it stays on the template layout until a human PR sources
+  `layout.sh` (TD-66); the new-domain generator also encodes import paths and `routes.go` wiring and
+  stays out (TD-67); golangci's analysis cache does not key on `LAYER_GLOB` (TD-65). TD-26 closed, TD-20,
+  TD-25 and TD-46 narrowed. Review: architecture CHANGES (12) and code CHANGES (16), fixed in one retry.
+  Rebase onto 5121d5d: Makefile `check` (layout-check next to references-pinned), `deadcode-go` (P3.6's
+  recipe on `$(API_DIR)`), `.PHONY`, harness `main.go` (orphans and references-pinned moved into the new
+  `rootSensors` map, quality-rows kept apart), ADR index, ci.md and tracker. Lane `check` green,
+  `harness-selftest` 69/69, `orphans`, `deadcode-go`, `references-pinned` and `lint-ci` green, `check-all` red
+  only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
