@@ -87,8 +87,8 @@ check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
 CHECK_ALL_SKIP ?=
 check-all: export HARNESS_SCOPE := full
-check-all: check ##Everything: check + integration, contract, migration, security, dead code, clones, e2e
-	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go vuln-deps lint-migrations squawk migrations-append-only lint-api contract-check knip clones-web docs-quality-shape harness-integrity commits specs)
+check-all: check ## Everything: check + integration, contract, migration, security, dead code, orphan scripts, clones, e2e
+	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go vuln-deps lint-migrations squawk migrations-append-only lint-api contract-check knip deadcode-go clones-web docs-quality-shape harness-integrity orphans commits specs)
 	@$(MAKE) -k test-integration test-obs e2e
 
 harness-selftest: $(HARNESS) ## Every fixture in scripts/harness/fixtures must be rejected by its sensor (FIXTURE=name for one)
@@ -221,8 +221,9 @@ test-harness:
 vuln-go:
 	@$(RUN) govulncheck go-no-known-vulns --dir $(API) -- govulncheck ./...
 
-deadcode-go: ## Unreachable Go functions (drift.yml; deadcode exits 0, so fail on any output)
-	@$(RUN) deadcode go-no-dead-code --dir $(API) -- bash -c 'out="$$(deadcode -test ./...)"; [[ -z "$$out" ]] || { echo "$$out"; exit 1; }'
+# tools/analyzers is left out: deadcode cannot see golangci-lint's module-plugin entry points (TD-70).
+deadcode-go: ## Unreachable Go functions in apps/api and tools/harness (check-all, drift.yml; deadcode exits 0, so fail on any output)
+	@$(RUN) deadcode go-no-dead-code --dir $(API) -- bash -c 'set -o pipefail; out="$$(deadcode -test ./... && cd tools/harness && deadcode -test ./... | sed "s|^|tools/harness/|")" || exit 2; [[ -z "$$out" ]] || { echo "$$out"; exit 1; }'
 
 ##@ Web sensors (apps/web, packages/*)
 .PHONY: lint-web arch-web typecheck-web test-web knip clones-web
@@ -327,12 +328,15 @@ vuln-deps: $(GCL) ## Known vulns in pnpm-lock.yaml and every go.mod (fetches the
 	@$(RUN) trivy-vuln deps-no-known-vulns -- scripts/harness/trivy.sh vuln
 
 ##@ CI and harness integrity (.github/, protected harness files)
-.PHONY: lint-ci harness-integrity harness-sync-check commits specs
+.PHONY: lint-ci harness-integrity orphans harness-sync-check commits specs
 lint-ci: ## actionlint (+ shellcheck on run: blocks) on .github/workflows
 	@$(RUN) actionlint ci-workflows-valid -- actionlint -no-color
 
 harness-integrity: $(HARNESS) ## Added suppressions carry a reason; harness configs are not loosened (vs BASE_REF)
 	@$(RUN) integrity harness-suppression-reason,harness-config-not-loosened -- env BASE_REF="$(BASE_REF)" $(HARNESS) integrity-check .
+
+orphans: $(HARNESS) ## Every file under scripts/ is named by a target, workflow, hook, skill, agent or guide; every make target is in make help or called
+	@$(RUN) orphans repo-no-orphan-scripts -- $(HARNESS) orphans .
 
 # Reads the network (fetches HARNESS_UPSTREAM), so not in check or check-all: drift.yml runs it weekly. The URL
 # comes from scripts/tool-versions.env; a command-line HARNESS_UPSTREAM=<url> reaches the script by make's export.

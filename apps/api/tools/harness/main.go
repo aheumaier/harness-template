@@ -6,6 +6,7 @@
 //	harness guard-bash <root>      PreToolUse guard for Bash commands (.claude/hooks/guard-bash.sh)
 //	harness check-links <root>     docs-links-resolve, docs-claude-imports-agents (make docs-links)
 //	harness fixture-claims <root>  rules-fixture-claims (make fixture-claims)
+//	harness orphans <root>         repo-no-orphan-scripts (make orphans, check-all)
 //	harness quality-rows -no-clock <root>
 //	                               docs-quality-rows-well-formed, docs-quality-rows-match-domains
 //	                               (make docs-quality-shape, check-all)
@@ -35,7 +36,7 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness check-links <root> | harness fixture-claims <root> | harness quality-rows [-no-clock] <root> | harness references-pinned <root> | harness approved-check <root> | harness integrity-check <root> | harness rename [-write] <root> <name> <module> <owner>"
+const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness check-links <root> | harness fixture-claims <root> | harness orphans <root> | harness quality-rows [-no-clock] <root> | harness references-pinned <root> | harness approved-check <root> | harness integrity-check <root> | harness rename [-write] <root> <name> <module> <owner>"
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
@@ -92,6 +93,19 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		switch {
 		case err != nil:
 			fmt.Fprintf(stderr, "harness fixture-claims: %v\n", err)
+			return 2
+		case bad:
+			return 1
+		}
+		return 0
+	case "orphans":
+		if len(args) != 2 {
+			break
+		}
+		bad, err := orphans(args[1], stdout)
+		switch {
+		case err != nil:
+			fmt.Fprintf(stderr, "harness orphans: %v\n", err)
 			return 2
 		case bad:
 			return 1

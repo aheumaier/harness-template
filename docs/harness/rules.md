@@ -95,9 +95,9 @@ whose `fixture.conf` tests that rule, or says `none (<reason>)` ([rules-fixture-
 ### go-no-dead-code
 - **Rule:** No Go function is unreachable from `main` or the tests.
 - **Why:** Agents leave orphans behind; dead code misleads the next agent reading the repo.
-- **Sensor:** `deadcode -test` (golang.org/x/tools), `make deadcode-go` (drift.yml, weekly).
+- **Sensor:** `deadcode -test` (golang.org/x/tools) on `apps/api` and `apps/api/tools/harness`, `make deadcode-go` (in `make check-all` since [ADR 0031](../adr/0031-no-orphan-scripts-or-make-targets.md), and drift.yml weekly). `apps/api/tools/analyzers` is left out: deadcode cannot see golangci-lint's module-plugin entry points ([TD-70](../exec-plans/tech-debt-tracker.md)).
 - **Remediation:** Delete the unreachable function, or call it from the code path (or test) that should use it.
-- **Fixture:** none (weekly drift sensor) · Status: seed
+- **Fixture:** `fixtures/go-dead-function` · Status: seed
 
 ## Database (apps/api/db)
 
@@ -329,6 +329,13 @@ clones only in `make check-all`.
 - **Sensor:** bats-core (`make test-sh`, part of `make check`). Scripts that need the full toolchain (`selftest.sh`, `gen-check.sh`, `contract-check.sh`, `new-domain.sh` end to end) are exercised by `make harness-selftest` and the CI generator probe instead.
 - **Remediation:** Read the first `not ok` test and its `expected output to contain` lines, fix the script (not the test) unless the behaviour change is intended and stated in the PR.
 - **Fixture:** none (a failing bats test is its own fixture) · Status: seed
+
+### repo-no-orphan-scripts
+- **Rule:** Every git-known file under `scripts/` (`scripts/harness/fixtures/` and `scripts/templates/` excluded) is named by its repo path in a referencer: the Makefile, a workflow or action under `.github/`, a Claude hook or `.claude/settings.json`, or a named shell script (executable: only their code counts, not `#` comments or make help text), or a skill, an agent or a guide (Markdown outside `docs/adr/`, `docs/exec-plans/`, `docs/generated/`, `specs/`, `.specify/` and fixtures; all of its text counts). Go code, `package.json` and `compose.yaml` are not referencers. A path counts as a whole token; a `/` before it only after `.`, `..` or a variable expansion (`$ROOT/scripts/x.sh`, `"$root"/scripts/x.sh`), so `apps/scripts/x.sh` does not name `scripts/x.sh`. A file directly in a runner directory, `scripts/test` (`bats scripts/test`) or `scripts/git-hooks` (`core.hooksPath scripts/git-hooks`), is also named when the code of an executable referencer names that directory; no other directory counts. Every target of the Makefile itself whose name matches `[a-z0-9][a-z0-9-]*` either is listed by `make help` (a header line matching `^[a-z0-9-]+:.*##`: one name, no blank before the colon, a `##` comment) or is called by name from another target's prerequisites or recipe, a workflow, an action, a Claude hook, setting, skill or agent, a guide or a named script. Variable-named, file and double-colon targets, names with `_`, `.` or uppercase letters, and targets in included makefiles are not checked; a target-specific variable line (`check-all: export X := y`) is not a call. A fixture is never a referencer, so a script named only by a fixture is an orphan.
+- **Why:** Agents add helper scripts and targets and leave them behind when the caller goes; an orphan looks like a live sensor, is kept in sync for nothing and misleads the next agent about how the harness runs.
+- **Sensor:** `.bin/harness orphans` (`apps/api/tools/harness`; `make orphans`, in `make check-all`). The runner directories are an allowlist, `runnerDirs` in `orphans.go`: `scripts/test`, `scripts/git-hooks`. Blind spots: a target name that is a common word (`check`, `gen`) is found in any prose, and a script named in a guide counts even if nothing runs it.
+- **Remediation:** Wire the script or target up where it should run (a make target, workflow step or hook), give an entry-point target a `##` help comment on its header line (`name: ## <what it does>`), or delete it. Data a script reads counts once that script names it.
+- **Fixture:** `fixtures/repo-orphan-script`, `fixtures/repo-orphan-make-target`; `apps/api/tools/harness/orphans_test.go` · Status: team-convention ([ADR 0031](../adr/0031-no-orphan-scripts-or-make-targets.md))
 
 ## Secrets and dependencies (Trivy)
 
