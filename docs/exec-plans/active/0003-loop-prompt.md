@@ -221,8 +221,9 @@ is a human TODO.
   harness change). It reviews the diff, never the whole repo; a whole-repo run waits for P3.3's schedule.
 
 **Template sync (P4.3).** The upstream URL comes from `HARNESS_UPSTREAM` in `scripts/tool-versions.env`,
-defaulting to this repo's `origin`. A missing upstream makes `make harness-sync-check` exit 2 with a
-remediation; it never passes silently.
+empty in the template itself (the check notes it and exits 0) and written by `make rename`. An unreachable
+upstream or unusable marker makes `make harness-sync-check` exit 2 with a remediation; it never passes
+silently.
 
 **Feature spec rule (A1).**
 - Commits for P1.2 and P1.3 use `feat(platform): …` and say in the body: "Spec: exec plan 0003 (P1.x);

@@ -206,7 +206,9 @@ PR; **–** needs none.
 - [x] P4.2 — f49fc8d — done — no lint bounded function length, complexity, parameters or file length →
   golangci (`funlen`, `gocognit`, revive limits) and ESLint (`max-lines-per-function`, `complexity`, `max-params`,
   `max-lines`) enforce them; rules `code-*` with 8 fixtures; `harness-selftest` 47 → 55
-- [ ] P4.3 — H — template version marker (`.harness-version`) + `make harness-sync-check` against upstream
+- [x] P4.3 — a91b86d — done — no record of the template a product was cut from → `.harness-version` holds
+  the template commit, `make rename` sets `HARNESS_UPSTREAM`, `make harness-sync-check` lists protected files
+  changed upstream since, reported by the weekly drift run (ADR 0026; private template: TD-51)
 - [ ] P4.4 — H — per-rule fire counts in `timings.jsonl`; drift issue lists rules that never fired in 90 days
 - [ ] P4.5 — – — `docs/references/*-llms.txt` for oapi-codegen, sqlc, orval, Atlas (pinned versions)
 - [ ] P4.6 — H — `scripts/harness/layout.env` read by every script, the Makefile, the hooks and `.bin/harness`
@@ -470,7 +472,7 @@ code: `deadcode` and knip do that without false positives from entry points they
   - TS: ESLint `max-lines`, `max-lines-per-function`, `complexity`, `max-params`.
   - Generated code is excluded.
 - **P4.3 — template sync.** `.harness-version` records the upstream commit a product was cut from.
-  `make harness-sync-check` diffs the protected paths against that upstream tag and lists what changed. It
+  `make harness-sync-check` diffs the protected paths against that upstream commit and lists what changed. It
   never applies anything. The weekly drift run reports when a product falls behind.
 - **P4.4 — rippable harness.** `run.sh` adds the finding count per rule to `timings.jsonl`. The drift issue
   lists rules that never fired in 90 days. A human decides to keep or retire each one; this rule is never
@@ -993,3 +995,15 @@ give it a sensor. Each touches protected paths.
   says whoever closes one deletes it); agent-gc's findings source is `docs-links-resolve` only, so P3.5's
   staleness check must join `RULES` and the prompt. Lane `check` green, `harness-selftest` 55/55, `lint-ci`
   green, `check-all` red only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
+- 2026-10-29: P4.3 done (a91b86d). `.harness-version` (template commit, `# declined` lines; protected),
+  `HARNESS_UPSTREAM` in `tool-versions.env` (empty = this repo is the template, the check notes it and exits
+  0; `make rename` writes it, `TestRenameSetsUpstream`), `scripts/harness/sync-check.sh` (throwaway bare
+  fetch, marker/tip/working-tree three-way, exit 2 with a remediation when upstream or marker is unusable),
+  drift.yml step, rule `harness-upstream-in-sync` with fixture `harness-behind-upstream`, sync-check.bats 17
+  cases, ADR 0026. Review: architecture and code CHANGES, fixed in one retry; architecture's "URL in
+  `.harness-version`" rejected per §4 (the URL stays in `tool-versions.env`, recorded in the ADR). Rebase onto
+  3822912: ADR index, ci.md drift row and tracker (TD-45 → TD-51) conflicts. The plan's "upstream tag" and the
+  loop prompt's "defaulting to `origin`" corrected to what shipped. Noticed: the sync fetch runs under the
+  default 5000 ms step budget (2.9 s measured); `harness-version-well-formed` is a sensor candidate; the
+  protected-path globs are now parsed in seven places (TD-39). Lane `check` green, `harness-selftest` 56/56,
+  `lint-ci` green, `check-all` red only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
