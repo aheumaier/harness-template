@@ -28,3 +28,4 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0021](0021-telemetry-export-over-otlp-http.md) | Telemetry leaves the process over OTLP/HTTP, one exporter per signal (amends 0002, 0018) | proposed |
 | [0022](0022-approved-api-responses.md) | Handler tests pin API responses to approved files, checked against the contract | proposed |
 | [0023](0023-mutation-testing-is-a-drift-report.md) | Mutation testing is a weekly drift report, never a gate (extends 0020) | proposed |
+| [0024](0024-size-and-complexity-limits-are-maintainability-sensors.md) | Size and complexity limits are maintainability sensors, not style (amends core belief 3) | proposed |
