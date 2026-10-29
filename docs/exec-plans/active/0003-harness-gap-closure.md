@@ -238,7 +238,8 @@ PR; **–** needs none.
   `actions/setup`, CODEOWNERS and the PR template; product workflows stay owner-reviewed; ADR 0035, TD-24
   paid, TD-95..97
 - [ ] P4.10 — H — CI `adoption-probe`: README §(b) on a root-`go.mod` fixture
-- [ ] P4.11 — H — reviewer catches seen twice become rules (`Status: earned`, ADR 0019) with fixtures
+- [x] P4.11 — 0e03d34 — done — two earned rules with fixtures: `harness-rule-lists-match`,
+  `harness-reads-layout`; TD-103
 - [x] P4.12 — 8445e4d — done — `evasion-reviewer` agent for sensor slices; ADR 0019 amended, TD-107..110;
   the diff-only re-review and §5c wiring are hand-off proposals
 - [ ] P5.1 — H — `specs-scenarios-tested`: each acceptance scenario has a test that names its id, or an exemption
@@ -1344,3 +1345,16 @@ gates for contract, migration and harness changes. Four are not.
   harness-integrity. Hand-off: the agent's proposed loop-prompt §5c/§5d text (run it on sensor slices;
   a retry gets a diff-only re-review), the slice-rule line and the CLAUDE.md review row; the PR needs
   the `harness-change-approved` label.
+- 2026-10-29: P4.11 done (0e03d34). Earned (ADR 0019), each with fixtures:
+  `harness-rule-lists-match` (P3.8 lane review, TD-94 as opened in d8a6ff9; a `requiredSkips` manifest in
+  rulelists.go names the ids and section claims each rule list must keep, fails closed on a file with no
+  entry; goldmark code spans) and `harness-reads-layout` (TD-46 as opened in fad6b28, approvedcheck.go:99,
+  fixed 449d561; d8a6ff9's qualityrows.go `domainsDir`; a test reads paths via loadLayout, folds + chains
+  and Join arguments, whole path segments; rules.md lists what stays uncaught). Dropped candidates:
+  `harness-sensor-deps-pinned` (one finding, TD-91) and `docs-make-targets-exist` (no finding, TD-103).
+  Shared helpers `ruleHeadings` and `printFinding`. Review: code-reviewer CHANGES (1 high, 3 medium,
+  5 low), reuse 5 items, R1 and R5 accepted, R2 rejected (run.sh:86 is live: `finding_pattern` makes the
+  rule non-general) and R4 rejected (a make macro differs from the sibling targets); all fixed in one
+  retry. Rebased onto 749e76a (tracker rows only). Lane `check` and `harness-selftest` green, `check-all`
+  red only on harness-integrity, `test-obs` failed once under three-lane load and passed on rerun. Noticed: references.go:73 could use printFinding; protect-harness does
+  not fire in lane worktrees (hand-off).
