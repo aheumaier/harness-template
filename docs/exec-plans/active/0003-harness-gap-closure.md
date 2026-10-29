@@ -180,7 +180,10 @@ PR; **–** needs none.
   [ADR 0019](../../adr/0019-inferential-sensors-are-advisory.md) proposed: one top-level PR comment, never a
   review thread; skip with a notice; outside the harness NFRs; hard cost cap in a protected file; a finding
   class accepted twice becomes an earned rule
-- [ ] P3.2 — H — `code-reviewer` on every PR in CI, posting one comment; never a required check
+- [x] P3.2 — 1b33d8e — done — `code-reviewer` ran only on request → `pr-review.yml` runs it on every
+  `pull_request` and posts one advisory comment (never a required check); sha256-pinned Claude Code via
+  `install-tools.sh claude`, read-only tools, pinned model, turn and budget caps; inert with a notice until
+  the `ANTHROPIC_API_KEY` secret exists (TD-38); ADR 0016 and 0019 amended; TD-39 added
 - [ ] P3.3 — H — scheduled security, data-handling and modularity reviews → drift issue
 - [ ] P3.4 — H — enable `agent-gc`: doc-gardening PRs for drift the computational checks found
 - [ ] P3.5 — H — QUALITY.md grades per domain and layer, `Updated:` date, staleness check in drift
@@ -856,3 +859,20 @@ give it a sensor. Each touches protected paths.
   check-all; AGENTS.md and CLAUDE.md should name `make test-obs` and the query-runtime skill; the
   `Makefile:79` help text; Vite loses its colours through `tee`. TD-36: share the API boot helper with
   P2.3's `make e2e`.
+- 2026-10-29: P3.2 integrated (1b33d8e, rebased from lane 76c57f8 onto 7911867; conflicts merged:
+  `install-tools.sh` keeps P3.2's `claude` mode above the `goinstall` block and P2.6's gremlins line,
+  ci.md keeps "Mutation testing" then "PR review", tracker TD-39/TD-38 above TD-37; the lane's TD-36/TD-37
+  were renumbered TD-38/TD-39 before commit to avoid P1.5's rows). Decisions: trigger `pull_request` only,
+  never `pull_request_target`; the PR's own workflow copy runs, so write collaborators are trusted with a
+  dedicated, spend-limited key (ADR 0019); a gate job reads `pr-review.sh` from the base commit (a base
+  without it skips) and builds the prompt, the agent job holds the key but no write token, a third job with
+  `pull-requests: write` posts the fenced result after a leak screen; CLI flags (`-p --bare --restricted
+  --strict-mcp-config --tools Read,Grep,Glob --disallowedTools 'mcp__*' --permission-mode dontAsk
+  --settings --no-session-persistence --output-format json`) were checked against the docs, not run;
+  `REVIEW_MODEL=claude-sonnet-5-5`; no JSON → red, cap or agent error → notice, leak screen hit → warning
+  and no comment; Claude Code 2.1.300 (2026-10-14, past the age rule) pinned by the release manifest's
+  sha256 (signature not verified); jq on the runner is unpinned. Review fixed in one retry. Noticed: a
+  sensor `workflow-privileged-trigger-no-secrets` is missing (protected); the 60000-character diff cut is
+  duplicated in drift.yml with drift; the confinement test needs a real key (dummy keys are rejected
+  before tools load). Human: run `.bin/claude --help` once against the pinned flags, add the dedicated key
+  and run the confinement test.
