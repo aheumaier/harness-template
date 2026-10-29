@@ -110,7 +110,7 @@ They comment, never fail (Phase 3, ADR).
 |---|-------|----------------|-------|
 | 0 | Quick wins: Trivy, pre-commit, structured-logging lints, doc truth | secrets and JS/nested-Go vulns are detected; `rules-fixture-claims` is green; every drift item above is fixed | implemented |
 | 1 | Runtime legibility (G1) | NFR-O1 met: logs by request ID and a p95 latency, per worktree, via `make` | implemented |
-| 2 | Behaviour harness (G2) | NFR-B1 and NFR-B2 met; coverage reported per package; weekly mutation score in the drift issue | proposed |
+| 2 | Behaviour harness (G2) | NFR-B1 and NFR-B2 met; coverage reported per package; weekly mutation score in the drift issue | implemented |
 | 3 | Inferential sensors and garbage collection (G3, G4, G8, G11) | reviewer comments on every PR (advisory); scheduled reviews and `agent-gc` open issues/PRs; QUALITY.md has a staleness check; orphan scripts, dead Go code and clones fail `check-all`; `reuse-reviewer` exists | proposed |
 | 4 | Taste lints and harness lifecycle (G5, G7, G9, G10, G12) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue; `adoption-probe` green on a root-module fixture | proposed |
 
@@ -951,3 +951,27 @@ give it a sensor. Each touches protected paths.
   line as a loosened config line; check-all's second recipe line skipped after a first-line red (TD-37); bats
   ~85-90 s (NFR-H5). Lane `check` green, `harness-selftest` 55/55, `check-all` red only on harness-integrity
   (specs green since PR #4 merged), `test-integration`, `test-obs` and `e2e` green.
+- 2026-10-29: Phase 2 gate. Reviews of the Phase 2 commits at 0bd8958: architecture 14 findings plus 4 sensor
+  candidates, code 10. Fixed in fad6b28: ADR 0025 (browser e2e is the NFR-B2 sensor) and rules.md cites it;
+  the browser installs only where e2e runs (`make e2e`, `make e2e-deps`, the setup action's `browser` input);
+  `make mutation-scores` puts the weekly score table in the drift issue (ADR 0023 amended); `make
+  test-scaffold` checks the generator probe's tests ran and passed, none skipped; coverage.yml no longer
+  continues on error (ADR 0020 amended); `new-domain.sh` prints an undo hint scoped to its own files; the e2e
+  test parses `/health` with the generated schema; TD-41 absorbs TD-36, TD-43..TD-49 record the deferred
+  findings (scaffold approval tests, workspace report contract, loosened weekly, layout paths, protected
+  config in apps/web, testkit, gremlins everywhere), TD-31 extended. Rejected: CI evidence for NFR-B1/B2 (the
+  loop may not push; local evidence below, one `ci.yml` run is a human TODO that also updates nfr.md's Today
+  cells, still **fail**); an e2e selftest fixture (`harness-selftest` runs inside `make check`'s budget and
+  cannot boot `make dev` plus a browser; TD-42 keeps it); check-all's two recipe lines (already TD-37); a
+  budget-row nit and one informational finding. Noticed (protected): the drive-app skill (lines 21-23) and
+  the new-domain skill (line 29) predate `make e2e` and the scoped undo hint; AGENTS.md and CLAUDE.md should
+  name `make e2e`, `e2e-deps`, `test-scaffold` and `mutation-scores`; drift.yml's header line 3; the
+  code-reviewer's only-make-check hook blocks `git show`/`diff --cached`, so reviews read files only. Sensor
+  candidates: `rule-status-cites-adopting-adr`, `workspace-report-scripts`, `report-config-no-threshold`,
+  `probe-tests-not-skipped`, `scaffold-templates-render`, an undo-hint/probe-cleanup consistency check.
+  Gate lane: `check` green, `harness-selftest` 55/55, `lint-ci` green, `check-all` red only on
+  harness-integrity, `test-integration`, `test-obs` and `e2e` green; main after integration: `check` green,
+  `harness-selftest` 55/55. Exit criterion: met locally. NFR-B1: `make new-domain NAME=zzz_probe`, `make
+  check` and `make test-scaffold NAME=zzz_probe` green, and the printed undo hint left the tree clean; NFR-B2:
+  `make e2e` green; coverage per package: `make coverage` printed 15 rows (Go packages and JS workspaces);
+  mutation: `make mutation` then `make mutation-scores` (the table drift.yml puts in the issue) printed apps/api 61.5 % (91 mutants) and apps/web 20.0 % (15), the two packages without tests named. CI confirmation of NFR-B1/B2 waits for the human run above; Phase 2 implemented.
