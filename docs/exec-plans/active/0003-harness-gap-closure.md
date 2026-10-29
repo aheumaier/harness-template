@@ -40,6 +40,10 @@ From a comparison on 2026-10-28 (`perf/harness-nfr` @ 53ec497). ✅ present · �
 | G10 | Rippable harness: know which rules still fire, retire dead ones | O'Reilly, Osmani | `timings.jsonl` records latency only, not findings | ❌ |
 | G11 | Orphans and duplication: unused scripts and make targets, copy-paste clones, one concept implemented twice | OpenAI (agents replicate existing patterns, garbage collection); core belief "the best code is the code nobody writes" | `go-no-dead-code` weekly only (drift.yml), knip in check-all; nothing for scripts, make targets or clones; reuse left to `code-reviewer` | 🟡 |
 | G12 | Adoption fails on a real brownfield repo | README §(b), walked against two repos (see below) | layout hard-coded in ~15 protected files; `make rename` refuses a bare module; `make setup` needs a root `package.json`; `check` always composes go+db+web; `.github/` is always harness | ❌ |
+| G13 | Spec acceptance scenarios traced to tests; an untested scenario sends the work back to the test step without a human | Thoughtworks ([Engineering the harness](https://www.thoughtworks.com/insights/blog/architecture/engineering-the-harness-a-practical-pattern-for-reliable-coding-agents), Sep 2026: REVIEW checks tests against acceptance criteria) | `specs-structure` and `specs-required-for-features` check spec files only; nothing ties a `Given/When/Then` scenario to a test | ❌ |
+| G14 | Contract changes judged across repos: the upstream specs a product consumes, and the consumers of its own contract | Thoughtworks (multi-repo impact analysis and confirmation gate) | `api-no-breaking-change` compares the contract with its own merge base only; vendored upstream specs (first adopter: 7ed-emergencies `api/upstream`) and consumers are unknown to the harness | ❌ |
+| G15 | Defaults an agent picked without asking are recorded and reviewable | Thoughtworks (explicit defaults instead of guesses) | loop slices record Decisions; other PRs have no place for them; `speckit-clarify` covers specs only | 🟡 |
+| G16 | Tests written apart from the implementation, so the implementer cannot fit the test to its code | Thoughtworks (RED test agent, GREEN implementer agent) | the same agent writes test and code; weekly mutation testing (P2.6) finds weak tests only afterwards | 🟡 |
 | — | Enforced merge gates | Fowler (human input where it matters) | out of scope: [TD-2](../tech-debt-tracker.md), blocked on the GitHub plan | — |
 
 **Doc drift found** (Phase 0 fixes it and adds the sensor that would have caught the first item):
@@ -113,6 +117,7 @@ They comment, never fail (Phase 3, ADR).
 | 2 | Behaviour harness (G2) | NFR-B1 and NFR-B2 met; coverage reported per package; weekly mutation score in the drift issue | implemented |
 | 3 | Inferential sensors and garbage collection (G3, G4, G8, G11) | reviewer comments on every PR (advisory); scheduled reviews and `agent-gc` open issues/PRs; QUALITY.md has a staleness check; orphan scripts, dead Go code and clones fail `check-all`; `reuse-reviewer` exists | implemented (exit pending: ADR 0019 accepted, first PR comment and drift run observed) |
 | 4 | Taste lints and harness lifecycle (G5, G7, G9, G10, G12) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue; `adoption-probe` green on a root-module fixture; reviewer catches seen twice are earned rules; sensor slices get an evasion review | proposed |
+| 5 | Spec-to-test and cross-repo feedback (G13, G14, G15, G16) | every acceptance scenario in `specs/` has a test or a reasoned exemption, checked in `check-all`; upstream spec drift reported weekly on the first adopter; PR template has an Assumptions section the reviewer checks; `test-writer` trial result recorded | proposed |
 
 ## Progress
 
@@ -235,6 +240,13 @@ PR; **–** needs none.
 - [ ] P4.10 — H — CI `adoption-probe`: README §(b) on a root-`go.mod` fixture
 - [ ] P4.11 — H — reviewer catches seen twice become rules (`Status: earned`, ADR 0019) with fixtures
 - [ ] P4.12 — H — `evasion-reviewer` agent for sensor slices; a retry gets a diff-only re-review
+- [ ] P5.1 — H — `specs-scenarios-tested`: each acceptance scenario has a test that names its id, or an exemption
+  with a reason
+- [ ] P5.2 — H — upstream specs and contract consumers in `layout.env`; weekly upstream drift via oasdiff;
+  consumers named in `api-no-breaking-change`'s remediation
+- [ ] P5.3 — H — PR template "Assumptions" section; code-reviewer flags guessed defaults missing from it
+- [ ] P5.4 — H — trial: a spec-only `test-writer` subagent writes the failing tests before the implementer
+  runs; kept only if mutation scores and reviews show it
 
 ### Phase 0 — quick wins
 
@@ -574,6 +586,52 @@ found only after integration.
   - Acceptance: run on 3edf728's diff, the agent reproduces at least three of the eleven bypasses filed as
     TD-75..TD-78; the proposed §5c and CLAUDE.md text is in the hand-off.
 
+### Phase 5 — spec-to-test and cross-repo feedback
+
+From Nandyala and Pani, [Engineering the harness](https://www.thoughtworks.com/insights/blog/architecture/engineering-the-harness-a-practical-pattern-for-reliable-coding-agents) (Thoughtworks, 2026-09-29), compared with this
+repo on 2026-10-29. Most of its practices are already here: scoped guides, read-only reviewers,
+silent-success sensors (`scripts/harness/run.sh`), prose promoted to rules, earned and pruned rules (G10), and
+gates for contract, migration and harness changes. Four are not.
+
+- **P5.1 — scenarios traced to tests (G13).** spec-kit writes acceptance scenarios as numbered
+  `Given/When/Then` items under each user story (`.specify/templates/spec-template.md:34-65`). Rule
+  `specs-scenarios-tested`:
+  - A scenario's id is `<NNN>/US<story>-AS<n>`, derived from its position; nothing is written into the spec
+    (A17).
+  - Each id appears in a Go or TS test (test name or a `// spec: 001/US1-AS2` comment), or the scenario
+    ends with `(untested: <reason>)` in the spec.
+  - The sensor is in `.bin/harness`, runs in `check-all` and in `check` when `specs/` or a test file changes,
+    and lists each untested id with its scenario text. A red run sends the agent back to the test step on its
+    own, as the article's REVIEW → RED loop does. Whether a test that names an id really checks its scenario
+    is code-reviewer's call (advisory, ADR 0019).
+  - Acceptance: a fixture spec with one untested scenario fails with the remediation; the template's own
+    specs pass or carry exemptions; `rules-fixture-claims` is green.
+- **P5.2 — cross-repo contract impact (G14).** The template is one repo, so this lands as layout keys an
+  adopter fills in; 7ed-emergencies is the first.
+  - `layout.env` gets `UPSTREAM_SPECS` (each vendored upstream spec with its source and pinned revision) and
+    `CONTRACT_CONSUMERS` (repos that vendor this repo's contract). Both may be empty.
+  - Weekly in drift.yml (network, so never in `check`, NFR-R1): fetch each upstream spec at its source's
+    head and run `oasdiff breaking` against the vendored copy; findings go to the drift issue (A18).
+  - `api-no-breaking-change`'s remediation lists `CONTRACT_CONSUMERS`, so contract-gate's label stands for a
+    confirmed multi-repo change, the article's confirmation gate.
+  - Acceptance: a fixture with a vendored spec behind a breaking upstream change reports it; on
+    7ed-emergencies' upstream specs the run is quiet or names real drift.
+- **P5.3 — recorded defaults (G15).** The PR template gets an "Assumptions" section: each default chosen
+  without asking, and where it sits in the diff. code-reviewer reports guessed values (timeouts, limits,
+  names, fallbacks) that the diff adds and the section does not list. Advisory only: parsing cannot tell a
+  guess from a decision.
+  - Acceptance: run on a past PR diff, the reviewer names at least one unlisted default; the template change
+    ships in a human-approved harness PR (P4.9 lists the PR template).
+- **P5.4 — tests apart from the implementation (G16), as a trial.** A `test-writer` subagent that may write
+  only test files gets the spec and the task, not the implementation, and writes the failing tests first
+  (`/speckit-implement`'s test tasks). The implementer may not weaken them; code-reviewer flags assertions
+  removed or loosened after the test commit.
+  - Earned, not assumed: build two features this way and compare their mutation scores (P2.6) and review
+    findings with two built the usual way. Keep it only if the trial shows fewer surviving mutants or fewer
+    missed scenarios; record the result either way in the Log.
+  - Acceptance: trial result and decision recorded; if kept, an ADR and the agent file in a human `.claude`
+    PR.
+
 ## Open assumptions
 
 - **A1 — feature spec rule.** `platform` middleware (P1.2, P1.3) and scaffold changes touch `apps/`. Under
@@ -710,6 +768,13 @@ found only after integration.
   - **Proposed, not made** (protected): depguard rule `go-otel-sdk-only-in-telemetry` (otel SDK, exporters
     and bridges only in `internal/platform/telemetry`, otelpgx only in `internal/platform/db`, tests exempt),
     with a fixture and a rules.md entry.
+
+- **A17 — scenario ids.** Positional ids (`US1-AS2`) are assumed stable enough, since merged specs rarely
+  renumber. If P5.1 shows churn, write ids into the spec instead, which changes spec-kit's template and so
+  needs a `.specify` harness PR.
+- **A18 — upstream access.** The weekly drift run is assumed able to read an adopter's upstream specs. If
+  their source repos need credentials, use a read-only repo secret, or run the check locally via `make` and
+  paste its result into the drift issue.
 - **A19 — stack profile choices (P4.7).**
   - `STACK` lives in `scripts/harness/layout.env`, `HARNESS_STACK` overrides it for one run; a missing
     `STACK` means `go:db:web` so readers of older layout.env copies keep working, an invalid value fails
@@ -1248,6 +1313,11 @@ found only after integration.
   wording "`.github/` workflows and actions named in `scripts/harness/protected-paths.txt`". Noticed: a
   product workflow can use `pull_request_target` or broad `permissions:` gated only by owner review; input
   for P4.12's evasion review.
+- 2026-10-29: Phase 5 (G13–G16) added from the Thoughtworks article "Engineering the harness" (Nandyala,
+  Pani, 2026-09-29). Compared practice by practice: scoped guides, least-privilege reviewers, silent-success
+  sensors, prose-to-rule promotion, earned and pruned rules and gates for contract, migration and harness
+  changes are already here; spec-to-test traceability, cross-repo contract impact, recorded defaults and
+  separate test authorship are not.
 - 2026-10-29: P4.7 done (bfec770). `STACK` (default `go:db:web`) selects what `check`, `check-all`, `gen`,
   `tools`, `deps`, `setup` and `harness-selftest` run; spectral, squawk and bats are pinned releases in
   `.bin`. Acceptance: in a copy without `apps/web`, `packages/` and `apps/api/db`, `HARNESS_STACK=go make
