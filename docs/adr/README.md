@@ -29,3 +29,4 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0022](0022-approved-api-responses.md) | Handler tests pin API responses to approved files, checked against the contract | proposed |
 | [0023](0023-mutation-testing-is-a-drift-report.md) | Mutation testing is a weekly drift report, never a gate (extends 0020) | proposed |
 | [0024](0024-size-and-complexity-limits-are-maintainability-sensors.md) | Size and complexity limits are maintainability sensors, not style (amends core belief 3) | proposed |
+| [0025](0025-browser-e2e-is-the-nfr-b2-sensor.md) | Browser e2e is the NFR-B2 sensor; its browser is installed only where e2e runs | proposed |

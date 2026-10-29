@@ -11,16 +11,16 @@ target runs, and it never blocks.
 
 | Workflow | Trigger | Job (= status check) | Runs | Required |
 |----------|---------|----------------------|------|----------|
-| `ci.yml` | PR, push to main | `check-all` | `make setup && make check-all` minus `contract-check`, `harness-integrity`, `commits` and `specs` (own workflows, PR title, label waivers); needs Docker and pulls `OBS_IMAGE` (2.58 GB) for `make test-obs` on each fresh runner, no image cache ([ADR 0017](../adr/0017-per-worktree-observability-stack.md)); installs the system libraries of Playwright's Chromium headless shell (unpinned apt, [ADR 0016](../adr/0016-tool-supply-chain.md) known gap) for `make e2e`, whose browser `.github/actions/setup` caches as `.bin/playwright` apart from the rest of `.bin`, keyed on the locked Playwright version; uploads `.cache/harness/timings.jsonl` as `harness-timings-check-all` (8 days) and shows latency-budget warnings as annotations; on failure uploads `.tmp/e2e` and `.tmp/dev` as `e2e-failure` (3 days) | yes |
+| `ci.yml` | PR, push to main | `check-all` | `make setup && make check-all` minus `contract-check`, `harness-integrity`, `commits` and `specs` (own workflows, PR title, label waivers); needs Docker and pulls `OBS_IMAGE` (2.58 GB) for `make test-obs` on each fresh runner, no image cache ([ADR 0017](../adr/0017-per-worktree-observability-stack.md)); the only job that installs a browser: `make e2e-deps` installs the system libraries of Playwright's Chromium headless shell (unpinned apt, [ADR 0025](../adr/0025-browser-e2e-is-the-nfr-b2-sensor.md) known gap) and `make e2e` the browser itself, which `.github/actions/setup` (input `browser: "true"`) caches as `.bin/playwright` apart from the rest of `.bin`, keyed on the locked Playwright version; uploads `.cache/harness/timings.jsonl` as `harness-timings-check-all` (8 days) and shows latency-budget warnings as annotations; on failure uploads `.tmp/e2e` and `.tmp/dev` as `e2e-failure` (3 days) | yes |
 | | | `harness-selftest` | every fixture rejected by its sensor ([rules.md](rules.md)) | yes |
-| | | `generator-probe` | `make new-domain NAME=zzz_probe && make check`, then the probe's generated service, handler and integration tests (`make test-integration`, NFR-B1); discards the probe and asserts a clean tree | yes |
-| `coverage.yml` | PR, push to main | `coverage` | `make setup && make coverage` into the job summary ([coverage](#coverage)); `continue-on-error`, a report, not a sensor | no |
+| | | `generator-probe` | `make new-domain NAME=zzz_probe && make check`, then `make test-scaffold NAME=zzz_probe`: the probe's generated service, handler and integration tests through `go test -json`, red unless each ran and passed, none skipped (NFR-B1); restores only the paths the generator touched and asserts a clean tree | yes |
+| `coverage.yml` | PR, push to main | `coverage` | `make setup && make coverage` into the job summary ([coverage](#coverage)); a report, not a sensor: a failure to measure turns it red, never blocking | no |
 | `pr-review.yml` | PR (`pull_request`, never `pull_request_target`) | `review`, `comment` | the `code-reviewer` prompt, headless, on the PR's diff → one top-level PR comment, replaced on each push ([PR review](#pr-review)); an inferential sensor, advisory ([ADR 0019](../adr/0019-inferential-sensors-are-advisory.md)) | no |
 | `contract-gate.yml` | PR via `pull_request_target` (incl. label changes) | `api-no-breaking-change` | the **base branch's** `make contract-check` against the PR's spec when `api/openapi.yaml` changed (oasdiff, red only on breaking changes) | yes |
 | `harness-integrity.yml` | PR via `pull_request_target` (incl. label and title changes) | `harness-integrity` | the **base branch's** `make harness-integrity` against the PR head (`HARNESS_ROOT`) | yes |
 | | | `pr-conventions` | the **base branch's** `make commits specs` against the PR head and title (Conventional Commits, PR title ≤ 90 characters, spec-kit specs) | yes |
 | `migration-gate.yml` | PR touching `apps/api/db/migrations/**` | `migrations` | append-only, Atlas lint, squawk | no (path-filtered; same sensors in `check-all`) |
-| `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, Trivy (`vuln-deps`), schema doc, doc links, coverage that fell since the last run ([coverage](#coverage)), a mutation run that could not measure ([mutation testing](#mutation-testing); its scores go to the job summary), the findings of the scheduled reviews → one open `drift` issue | no |
+| `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, Trivy (`vuln-deps`), schema doc, doc links, coverage that fell since the last run ([coverage](#coverage)), the weekly mutation score table, or a mutation run that could not measure ([mutation testing](#mutation-testing); survivors go to the job summary only), the findings of the scheduled reviews → one open `drift` issue | no |
 | | | `review-gate`, `reviews (<review>)` | the [scheduled reviews](#scheduled-reviews): security, data handling, modularity, one read-only agent each, on the default branch only; skipped with a notice without the `ANTHROPIC_API_KEY` secret | no |
 | `harness-nfr.yml` | nightly, manual | `harness-nfr` | p95 per sensor over 7 days of `harness-timings-check-all` artifacts vs `budgets.txt` (`scripts/harness/nfr-report.sh`, alerts only) and `make harness-determinism` (`make check` twice; fails on any difference) → one open `harness-nfr` issue | no |
 
@@ -75,9 +75,10 @@ not a sensor: no rule id, in neither `make check` (minutes, and its window reads
 - The summary keeps `No coverage` and `no tests` rows: they are where a test is missing, which a score
   alone hides.
 - `drift.yml` checks out the full history (`fetch-depth: 0`; a shallow clone fails closed) and runs it in
-  its own step capped at 20 minutes. The scores and survivors go to its job summary only; the `drift` issue
-  gets a mutation entry only when it cannot measure: a failing `make mutation` adds its output, a step that
-  hit the cap one line pointing at the step log.
+  its own step capped at 20 minutes. The scores and survivors go to its job summary; the `drift` issue gets
+  a mutation entry every week: the score table per package (`make mutation-scores`, `mutation.sh report
+  --scores`, no survivors) when the run succeeded, the output of a failing `make mutation`, or one line
+  pointing at the step log for a step that hit the cap.
 - A threshold or ratchet needs its own ADR, justified by a finding.
 
 ## PR review

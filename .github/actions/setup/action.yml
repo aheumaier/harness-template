@@ -6,6 +6,9 @@ inputs:
   deps:
     description: Install JS dependencies (pnpm install --frozen-lockfile).
     default: "true"
+  browser:
+    description: Restore the cache of make e2e's browser (.bin/playwright), for the one job that runs e2e (ADR 0025).
+    default: "false"
 runs:
   using: composite
   steps:
@@ -54,12 +57,13 @@ runs:
         key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
         restore-keys: pnpm-${{ runner.os }}-
 
-    # make deps installs the browser of the locked Playwright here (scripts/install-tools.sh browsers). The pin is
-    # exact, so apps/web/package.json names the locked version (--frozen-lockfile fails otherwise); a restored
-    # older browser fails its version stamp and is replaced.
+    # make e2e installs the browser of the locked Playwright here on demand (scripts/install-tools.sh browsers,
+    # ADR 0025), so only a job with input browser caches it. The pin is exact, so apps/web/package.json names the
+    # locked version (--frozen-lockfile fails otherwise); a restored older browser fails its version stamp and is
+    # replaced.
     - name: Locked Playwright version
       id: playwright
-      if: inputs.deps == 'true'
+      if: inputs.browser == 'true'
       shell: bash
       run: |
         v="$(node -p 'require("./apps/web/package.json").devDependencies["@playwright/test"]')"
@@ -70,7 +74,7 @@ runs:
         echo "version=$v" >>"$GITHUB_OUTPUT"
 
     - name: Cache Playwright's browser (.bin/playwright)
-      if: inputs.deps == 'true'
+      if: inputs.browser == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: .bin/playwright

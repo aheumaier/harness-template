@@ -51,12 +51,7 @@ the nested `go.mod`s `govulncheck` does not reach.
 - **Known gap:** pnpm is bootstrapped with `npm install pnpm@<version>` into `.bin/.pnpm` without a pinned
   integrity hash (tech-debt tracker). JS packages themselves are covered by `pnpm-lock.yaml` integrity and
   pnpm's `minimumReleaseAge`.
-- **Known gap:** Playwright's Chromium headless shell (`make e2e`, `scripts/install-tools.sh browsers`) comes
-  from Playwright's CDN with no sha256 pin; it is pinned only through the locked `@playwright/test` version,
-  which names the browser build. CI's `playwright install-deps` installs the system libraries with an
-  unpinned `sudo apt-get` (tech-debt tracker). Mitigation: the browser drives only this worktree's localhost
-  servers, the download host cannot be redirected from the environment (the installer unsets Playwright's
-  download-host overrides), and the `check-all` job runs with `contents: read` and no secrets. Each
-  Playwright bump is a harness PR with a human provenance note.
+- Playwright's browser for `make e2e` has no sha256 pin: a known gap recorded in
+  [ADR 0025](0025-browser-e2e-is-the-nfr-b2-sensor.md).
 - If Trivy is compromised again past the age window, the pins still hold the old binary; the next bump's
   provenance check is where it must be caught.

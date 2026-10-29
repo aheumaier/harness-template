@@ -171,6 +171,12 @@ EOF
   has '| packages/domain |  |  |  |  |  |  | no tests (1 files) |'
   has '#### Surviving mutants (1)'
   has '- `apps/api/a.go:3:5`: CONDITIONALS_NEGATION'
+  # --scores (drift.yml's issue entry): the same header and table, no survivors.
+  run -0 "$M" report --scores "$T/m.tsv" "$SINCE"
+  has "### Mutation testing of the files changed since $SINCE (a trend, not a gate)"
+  has '| apps/api | 2 | 4 | 1 | 1 | 1 | 1 | 50.0% |'
+  has '| packages/domain |  |  |  |  |  |  | no tests (1 files) |'
+  [[ "$output" != *Surviving* && "$output" != *CONDITIONALS_NEGATION* ]] || false
   tsv "$T/dead.tsv" "apps/web apps/web/src/x.ts:1:1 StringLiteral killed"
   run -0 "$M" report "$T/dead.tsv" "$SINCE"
   run ! has 'Surviving'
@@ -191,6 +197,9 @@ EOF
   run -2 "$M" report "$T/missing.tsv" "$SINCE"
   has 'run make mutation'
   run -2 "$M" report "$T/ok.tsv"
+  run -2 "$M" report --scores "$T/ok.tsv"
+  run -2 "$M" report --scores "$T/status.tsv" "$SINCE"
+  has 'unparseable mutants file'
   run -2 "$M" files
   run -2 "$M" collect "$T/out"
   run -2 "$M" nope

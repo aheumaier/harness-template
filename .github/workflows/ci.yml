@@ -29,11 +29,13 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      # The only job that runs make e2e, so the only one with its browser (ADR 0025): make e2e installs it into
+      # .bin/playwright on demand, cached here; make e2e-deps adds its system libraries (unpinned apt via sudo, TD-42).
       - uses: ./.github/actions/setup
+        with:
+          browser: "true"
       - run: make setup
-      # The system libraries of Playwright's Chromium headless shell for make e2e (unpinned apt via sudo: ADR 0016
-      # known gap, TD-42); the browser itself is in .bin/playwright.
-      - run: apps/web/node_modules/.bin/playwright install-deps chromium-headless-shell
+      - run: make e2e-deps
       # The Trivy vulnerability DB for deps-no-known-vulns (make vuln-deps), refreshed once a day.
       - id: today
         run: echo "date=$(date -u +%Y-%m-%d)" >>"$GITHUB_OUTPUT"
@@ -91,15 +93,16 @@ jobs:
       - run: make setup
       - run: make new-domain NAME=zzz_probe
       - run: make check
-      - name: The probe's service, handler and integration tests exist and pass (NFR-B1)
-        # -tags=integration builds the untagged unit tests too, so this runs all three against make setup's Postgres.
-        run: |
-          for t in service/service_test.go api/api_test.go api/api_integration_test.go; do
-            test -s "apps/api/internal/zzz_probe/$t" || { echo "::error::make new-domain generated no $t (NFR-B1)"; exit 1; }
-          done
-          make test-integration
+      # Every Test* of scripts/templates/new-domain ran and passed against make setup's Postgres, none skipped
+      # (go test -json; scripts/harness/scaffold-tests.sh).
+      - name: The probe's service, handler and integration tests ran and passed (NFR-B1)
+        run: make test-scaffold NAME=zzz_probe
+      # Restores only what the generator writes (its undo hint in scripts/new-domain.sh), so a change anywhere
+      # else fails the assertion instead of being reset.
       - name: The probe stays inside the generator's paths
         run: |
-          git checkout -- .
-          git clean -fdq -- apps/api api docs packages/api-client
+          git checkout -- apps/api/cmd/api/routes.go api/openapi.yaml apps/api/sqlc.yaml docs/QUALITY.md \
+            apps/api/db/migrations/atlas.sum docs/generated packages/api-client/src/gen
+          git clean -fdq -- apps/api/internal/zzz_probe apps/api/db/queries/zzz_probe.sql \
+            'apps/api/db/migrations/*_zzz_probe.sql' packages/api-client/src/gen
           test -z "$(git status --porcelain)" || { git status --porcelain; exit 1; }

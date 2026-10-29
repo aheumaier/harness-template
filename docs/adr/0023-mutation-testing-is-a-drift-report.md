@@ -16,9 +16,11 @@ repo) and would be gamed like coverage once it blocks a merge.
   earlier and merged inside the window counts. Score per package (killed and timed-out mutants over all
   valid ones) plus every surviving mutant.
 - **A weekly drift report, never a gate.** `drift.yml` runs it weekly; the scores and survivors go to that
-  run's job summary. The `drift` issue gets a mutation entry only when `make mutation` fails or times out,
-  so it cannot measure. Not in `make check` (slow; the window reads the clock) or `check-all`, not a
-  required check, no rule id. `mutation.sh` fails only when it cannot measure, never on a score. A threshold
+  run's job summary. The `drift` issue gets a mutation entry every week: the score table per package
+  (`make mutation-scores`, no survivors) when `make mutation` succeeded, otherwise an entry saying it failed
+  or timed out, so it could not measure (amended 2026-10-29, exec plan 0003 Phase 2 gate: the plan asks for
+  the weekly score in the drift issue). Not in `make check` (slow; the window reads the clock) or
+  `check-all`, not a required check, no rule id. `mutation.sh` fails only when it cannot measure, never on a score. A threshold
   or ratchet needs its own ADR, justified by a finding as in ADR 0020.
 - **The tools**, each meeting the 14-day age rule of [ADR 0016](0016-tool-supply-chain.md) on 2026-10-29:
   - Go: **gremlins v0.6.0** (released 2025-12-05), pinned in `scripts/tool-versions.env` and built by
@@ -50,7 +52,9 @@ repo) and would be gamed like coverage once it blocks a merge.
   devDependencies run on developer machines and in CI, so they are attack surface the scan should see; the
   remedy is a Stryker bump or a scoped override, both small harness PRs. A separate lockfile or `pnpm dlx`
   would hide the tree from the scan and bypass `minimumReleaseAge`.
-- A week without changed source files reports nothing; the score covers recent changes, not the repo.
+- A week without changed source files reports nothing to score; the score covers recent changes, not the repo.
+- The `drift` issue is commented on every week, also when nothing else drifted: the score table is a finding
+  of its own. Survivors stay out of it (they can be long and change weekly); the job summary has them.
 - Unit tests only: code exercised only by integration tests reads as `nocoverage`.
 - A score can fall because the week's changes were harder to test; the survivors list, not the number, is
   what a human or the garbage-collection agent acts on.

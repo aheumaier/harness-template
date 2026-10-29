@@ -12,8 +12,9 @@
 #       after it is in scope.
 #   scripts/harness/mutation.sh collect <dir> <since>                   (make mutation)
 #       mutates them and writes <dir>/mutants.tsv
-#   scripts/harness/mutation.sh report <tsv> <since>
-#       Markdown: score per package, then every surviving mutant.
+#   scripts/harness/mutation.sh report [--scores] <tsv> <since>
+#       Markdown: score per package, then every surviving mutant. --scores prints the score table only, without
+#       the surviving mutants (make mutation-scores: drift.yml's weekly issue entry; the job summary has them).
 #
 # Mutable source:
 #   - package apps/api: apps/api/**/*.go of the apps/api module (not a nested module such as tools/harness),
@@ -38,7 +39,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-usage="usage: mutation.sh files <since> | collect <dir> <since> | report <tsv> <since>"
+usage="usage: mutation.sh files <since> | collect <dir> <since> | report [--scores] <tsv> <since>"
 API=apps/api
 GREMLINS_CONFIG="$ROOT/scripts/harness/gremlins.yaml"
 # An allowed file name, as an ERE (awk) and a JS regex.
@@ -253,6 +254,11 @@ collect() {
 }
 
 report() {
+  local scores=0
+  if [[ "${1:-}" == --scores ]]; then
+    scores=1
+    shift
+  fi
   (($# == 2)) || die "$usage"
   local tsv="$1" since="$2"
   [[ -f "$tsv" ]] || die "no $tsv: run make mutation"
@@ -261,7 +267,7 @@ report() {
     NF != 4 || $1 !~ /^[A-Za-z0-9_.@\/-]+$/ || file !~ name { exit 1 }
     $3 !~ /^([A-Za-z_]+|-)$/ || $4 !~ /^(killed|timeout|survived|nocoverage|invalid|notests)$/ { exit 1 }
   ' "$tsv" || die "unparseable mutants file $tsv (expected <package>\\t<path:line:column>\\t<mutator>\\t<status> per line)"
-  LC_ALL=C awk -F'\t' -v since="$since" '
+  LC_ALL=C awk -F'\t' -v since="$since" -v scores="$scores" '
     {
       p = $1; file = $2; sub(/:[0-9]+:[0-9]+$/, "", file)
       if (!(p in order)) { order[p] = ++n; name[n] = p }
@@ -285,7 +291,7 @@ report() {
           count[p, "timeout"] + 0, count[p, "survived"] + 0, count[p, "nocoverage"] + 0,
           (all > 0 ? sprintf("%.1f%%", 100 * det / all) : "no mutants")
       }
-      if (lived > 0) printf "\n#### Surviving mutants (%d): a test covers the line but none fails when it changes\n\n%s", lived, live
+      if (lived > 0 && !scores) printf "\n#### Surviving mutants (%d): a test covers the line but none fails when it changes\n\n%s", lived, live
     }
   ' "$tsv"
 }

@@ -9,7 +9,7 @@ include scripts/tool-versions.env
 export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 export OBS_IMAGE # compose.yaml interpolates the obs service even when its profile is off
 export PATH := $(CURDIR)/.bin:$(CURDIR)/node_modules/.bin:$(PATH)
-# Playwright's browsers (make e2e) live in .bin like every tool, installed by make deps (scripts/install-tools.sh).
+# Playwright's browser (make e2e) lives in .bin like every tool, installed on demand by make e2e only (ADR 0025).
 export PLAYWRIGHT_BROWSERS_PATH := $(CURDIR)/.bin/playwright
 
 RUN  := scripts/harness/run.sh
@@ -135,18 +135,26 @@ test-obs: ## One request's access line, trace and p95 latency through make logs,
 	@$(WITH_ENV) $(RUN) obs-e2e obs-request-queryable -- env MAKE="$(MAKE)" scripts/harness/obs-e2e.sh
 
 ##@ Behaviour: browser journeys against this worktree's make dev (exec plan 0003 P2.3, NFR-B2)
-.PHONY: e2e
+.PHONY: e2e e2e-deps
 # Playwright (apps/web/playwright.config.ts) attaches to a running make dev, else starts one and stops it after;
 # in make check-all (HARNESS_SCOPE=full) it always starts its own and fails while another make dev runs.
 # E2E_GREP (a title regex; not GREP, which a shell may already export): make exports it, and the recipe's shell
 # reads it as "$E2E_GREP", so make never splices it in.
 # Failure artifacts (screenshot, trace) go to .tmp/e2e; make dev's own output to .tmp/dev/{api,web}.log.
+# The browser is installed here, on demand and outside the e2e latency budget, so only a job or worktree that
+# runs e2e downloads it (ADR 0025).
 e2e: ## Browser journeys (Playwright) against make dev, started if not running: make e2e [E2E_GREP=<title regex>] (`$$` for `$`; Docker)
+	@scripts/install-tools.sh browsers
 	@$(WITH_ENV) $(RUN) e2e web-e2e-journeys --dir apps/web -- env MAKE="$(MAKE)" \
 	  node_modules/.bin/playwright test $${E2E_GREP:+--grep "$$E2E_GREP"}
 
+# Linux only: apt through sudo, unpinned (ADR 0025, TD-42). CI's check-all job runs it before make check-all.
+e2e-deps: ## System libraries of make e2e's Chromium headless shell (Linux, sudo)
+	@[[ -x apps/web/node_modules/.bin/playwright ]] || { echo "no apps/web/node_modules/.bin/playwright: run make deps" >&2; exit 1; }
+	@apps/web/node_modules/.bin/playwright install-deps chromium-headless-shell
+
 ##@ Reports
-.PHONY: coverage coverage-fell mutation
+.PHONY: coverage coverage-fell mutation mutation-scores
 # A trend, never a gate (ADR 0020): not in check or check-all; coverage.yml puts it in its job summary,
 # drift.yml compares it with the last scheduled run's. COVERAGE_PREVIOUS=<coverage.tsv> adds the change column.
 COVERAGE_DIR := .cache/coverage
@@ -164,6 +172,8 @@ MUTATION_SINCE ?= 7 days ago
 mutation: ## Mutation score and surviving mutants (gremlins, Stryker) of the files changed since MUTATION_SINCE (7 days ago)
 	@scripts/harness/mutation.sh collect $(MUTATION_DIR) "$(MUTATION_SINCE)"
 	@scripts/harness/mutation.sh report $(MUTATION_DIR)/mutants.tsv "$(MUTATION_SINCE)"
+mutation-scores: ## After make mutation: only the score per package, without the surviving mutants (drift.yml's issue)
+	@scripts/harness/mutation.sh report --scores $(MUTATION_DIR)/mutants.tsv "$(MUTATION_SINCE)"
 # Advisory (ADR 0019): drift.yml feeds this prompt to a read-only agent weekly; locally it is the dry run.
 .PHONY: review-prompt
 review-prompt: ## Prompt of a scheduled review, as drift.yml sends it: make review-prompt REVIEW=security|data-handling|modularity
@@ -174,9 +184,8 @@ review-prompt: ## Prompt of a scheduled review, as drift.yml sends it: make revi
 tools: $(GCL) $(HARNESS) ## Install pinned CLI tools into .bin
 	@scripts/install-tools.sh
 
-deps: ## Install JS dependencies from the lockfile, and the browser of its Playwright into .bin
+deps: ## Install JS dependencies from the lockfile (make e2e installs its browser itself)
 	@pnpm install --frozen-lockfile --silent
-	@scripts/install-tools.sh browsers
 
 $(GCL): $(API)/.custom-gcl.yml $(ANALYZERS_SRC) scripts/tool-versions.env
 	@scripts/install-tools.sh
@@ -253,7 +262,7 @@ contract-check: ## oasdiff breaking-change check vs merge base with BASE_REF (co
 	@$(RUN) oasdiff api-no-breaking-change -- env BASE_REF="$(BASE_REF)" scripts/harness/contract-check.sh
 
 ##@ Database
-.PHONY: lint-migrations squawk migrations-append-only gen-schema-doc schema-doc-fresh test-integration
+.PHONY: lint-migrations squawk migrations-append-only gen-schema-doc schema-doc-fresh test-integration test-scaffold
 BASE_REF ?= $(shell scripts/harness/merge-base.sh --ref)
 ATLAS_LINT_SCOPE ?= --git-base "$(BASE_REF)"
 
@@ -274,6 +283,10 @@ schema-doc-fresh:
 
 test-integration: ## Integration tests against the worktree's Postgres (.env.local)
 	@$(WITH_ENV) unset "$${!OTEL_@}"; $(RUN) go-integration go-tests-pass --dir $(API) -- go test -race -count=1 -tags=integration ./...
+
+# CI's generator probe (ci.yml): a scaffold whose tests compile but skip or vanish would pass test-integration.
+test-scaffold: ## After make new-domain NAME=<name>: each of its scaffolded tests ran and passed, none skipped (NFR-B1)
+	@$(WITH_ENV) unset "$${!OTEL_@}"; scripts/harness/scaffold-tests.sh $(NAME)
 
 ##@ Shell sensors (scripts/, .claude/hooks/)
 .PHONY: lint-sh fmt-check-sh test-sh

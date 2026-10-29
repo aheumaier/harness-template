@@ -250,9 +250,9 @@ hand, in one reviewed harness PR:
      | [contract-check.sh](scripts/harness/contract-check.sh) | `SPEC=api/openapi.yaml` (line 10) | with no contract at that path on the base branch it exits 0 |
      | [fast-check.sh](.claude/hooks/fast-check.sh) | every branch keyed on `apps/api`, `api/openapi.yaml`, `packages/` (lines 44–82) | edits to your code get no per-file check |
      | [integritycheck.go](apps/api/tools/harness/integritycheck.go) | excludes `apps/api/internal/*/store/*`, `packages/api-client/src/gen/*` (lines 36–37) | your generated code is judged as hand-written |
-     | [action.yml](.github/actions/setup/action.yml) | `go-version-file: apps/api/go.mod` (line 18), `.bin/pnpm store path` (line 44) and `make deps` (lines 54–57) | every CI job fails in setup |
+     | [action.yml](.github/actions/setup/action.yml) | `go-version-file: apps/api/go.mod` (line 21), `.bin/pnpm store path` (line 50), `make deps` (lines 84–87) and, for the browser cache, `./apps/web/package.json` (line 69) | every CI job fails in setup; with input `browser`, the `check-all` job fails there |
      | [contract-gate.yml](.github/workflows/contract-gate.yml), [harness-integrity.yml](.github/workflows/harness-integrity.yml) | `go-version-file: apps/api/go.mod` (lines 44, 49), `api/openapi.yaml` | the gates fail in setup, or never see a contract change |
-     | [ci.yml](.github/workflows/ci.yml) | the `make new-domain` probe job (lines 67–83) | it fails, since the generator writes the template layout |
+     | [ci.yml](.github/workflows/ci.yml) | the `make new-domain` probe job (lines 83–108) | it fails, since the generator writes the template layout |
      | [Makefile](Makefile) | `API := apps/api` (line 21), `../../$(GCL)` (lines 104, 108), `$(API)/tools/harness` and `$(API)/tools/analyzers` (lines 28, 30, 99, 117, 120) | every Go sensor runs in `apps/api`, which holds only the copied tools, not your code. Set `API` to your `go.mod` directory and move the three Go configs there with it (the `$(GCL)` recipe, lines 91–94, follows them). Fix the two `../../` paths, and `destination: ../../.bin` and `path: ./tools/analyzers` in `.custom-gcl.yml`. In the five `$(API)/tools/` lines, write the literal path where you copied the tools, or `test-analyzers` and `test-harness` look under `<API>/tools/` and go red |
      | [install-tools.sh](scripts/install-tools.sh) | installs pnpm and exits 1 unless the root `package.json` pins `packageManager` (lines 97–108) | `make setup` aborts before the other tools land; see step 6 on why a root `package.json` stays |
      | [setup-worktree.sh](scripts/setup-worktree.sh) | `make tools deps` (line 71), compose `db` and `cd apps/api && atlas migrate apply` (lines 93, 99) | `make setup` fails in `pnpm install` without a lockfile; `SKIP_DB=1` skips only the db part |
@@ -288,7 +288,7 @@ hand, in one reviewed harness PR:
      ([sh-tests-pass](docs/harness/rules.md#sh-tests-pass), in `make check`) runs the harness's own bats tests.
      Keep a root `package.json` with `packageManager` and the dev dependencies the remaining sets need (at
      least `bats`), or install those tools another way and take `deps` out of `setup-worktree.sh` line 71 and
-     `action.yml` lines 44 and 54–57 as well.
+     `action.yml` lines 50 and 84–87 as well.
    - A rule you keep must still reject its fixture. Port fixtures to your layout until these are green:
      ```sh
      make harness-selftest

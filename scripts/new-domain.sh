@@ -9,8 +9,11 @@
 # Each domain starts with three passing tests (NFR-B1): service (fake store), handler (strict server +
 # httptest) and integration (-tags=integration, real Postgres). Every generated file and insertion is a
 # template in scripts/templates/new-domain/. Insertions go before `harness:domain-*` / `harness:quality-rows`
-# markers. Undo before committing:
-#   git checkout -- . && git clean -fd -- apps/api api docs packages/api-client
+# markers. Undo before committing (restores only what it wrote; printed with the real paths at the end):
+#   git checkout -- apps/api/cmd/api/routes.go api/openapi.yaml apps/api/sqlc.yaml docs/QUALITY.md \
+#     apps/api/db/migrations/atlas.sum docs/generated packages/api-client/src/gen
+#   git clean -fd -- apps/api/internal/<name> apps/api/db/queries/<name>.sql \
+#     'apps/api/db/migrations/*_<name>.sql' packages/api-client/src/gen
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -118,4 +121,5 @@ fi
 cat <<EOF
 new-domain: created domain '$name' (tag $name, GET /$kebab/status, hook useGet${pascal}Status).
 Next: model the domain in api/openapi.yaml and $migration, then \`make gen\`, implement, \`make check\`.
+Undo (before committing): git checkout -- $ROUTES $SPEC $SQLC $QUALITY apps/api/db/migrations/atlas.sum docs/generated packages/api-client/src/gen && git clean -fd -- $D apps/api/db/queries/$name.sql $migration packages/api-client/src/gen
 EOF

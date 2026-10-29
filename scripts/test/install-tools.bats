@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # scripts/install-tools.sh claude: the CI-only Claude Code install (exec plan 0003 P3.2, ADR 0016) fails closed
 # on a missing pin or a checksum mismatch. A stub curl serves fake bytes: no network.
+# scripts/install-tools.sh browsers: make e2e's on-demand browser install (ADR 0025), against a stub playwright.
 bats_require_minimum_version 1.5.0
 load helpers
 
@@ -59,4 +60,54 @@ pins() {
   rm "$BATS_TEST_TMPDIR/curl.log"
   run -0 "$I" claude
   [ ! -e "$BATS_TEST_TMPDIR/curl.log" ]
+}
+
+# fake_playwright: apps/web/node_modules/.bin/playwright in the sandbox; `install` logs its arguments, the
+# browsers path and any download override it sees, and writes a marker there.
+fake_playwright() {
+  mkdir -p "$SANDBOX/apps/web/node_modules/.bin"
+  cat >"$SANDBOX/apps/web/node_modules/.bin/playwright" <<'EOF'
+#!/usr/bin/env bash
+[[ "$1" != --version ]] || { echo "Version 1.64.1"; exit 0; }
+echo "$* $PLAYWRIGHT_BROWSERS_PATH ${PLAYWRIGHT_DOWNLOAD_HOST:-}${npm_config_playwright_download_host:-}" >>"$BATS_TEST_TMPDIR/pw.log"
+touch "$PLAYWRIGHT_BROWSERS_PATH/chromium_headless_shell"
+EOF
+  chmod +x "$SANDBOX/apps/web/node_modules/.bin/playwright"
+}
+
+@test "browsers: installs the locked headless shell once into PLAYWRIGHT_BROWSERS_PATH, ignoring download overrides" {
+  fake_playwright
+  local pw="$BATS_TEST_TMPDIR/browsers"
+  run -0 env PLAYWRIGHT_BROWSERS_PATH="$pw" PLAYWRIGHT_DOWNLOAD_HOST=http://evil \
+    npm_config_playwright_download_host=http://evil "$I" browsers
+  has 'installing playwright chromium headless shell 1.64.1'
+  [ "$(cat "$BATS_TEST_TMPDIR/pw.log")" = "install --only-shell chromium $pw " ]
+  [ "$(cat "$pw/.version")" = 1.64.1 ]
+  [ -e "$pw/chromium_headless_shell" ]
+  # Stamped: a second run downloads nothing.
+  run -0 env PLAYWRIGHT_BROWSERS_PATH="$pw" "$I" browsers
+  [ -z "$output" ]
+  [ "$(wc -l <"$BATS_TEST_TMPDIR/pw.log")" -eq 1 ]
+}
+
+@test "browsers: defaults to .bin/playwright; replaces an older stamped build, never deletes an unstamped directory" {
+  fake_playwright
+  mkdir -p "$SANDBOX/.bin/playwright"
+  echo 1.0.0 >"$SANDBOX/.bin/playwright/.version"
+  touch "$SANDBOX/.bin/playwright/old-build"
+  run -0 env -u PLAYWRIGHT_BROWSERS_PATH "$I" browsers
+  [ "$(cat "$SANDBOX/.bin/playwright/.version")" = 1.64.1 ]
+  [ ! -e "$SANDBOX/.bin/playwright/old-build" ]
+  local mine="$BATS_TEST_TMPDIR/mine"
+  mkdir -p "$mine"
+  touch "$mine/keep"
+  run -0 env PLAYWRIGHT_BROWSERS_PATH="$mine" "$I" browsers
+  [ -e "$mine/keep" ]
+  [ -e "$mine/chromium_headless_shell" ]
+}
+
+@test "browsers: without node_modules it fails with the remediation and installs nothing" {
+  run -1 env PLAYWRIGHT_BROWSERS_PATH="$BATS_TEST_TMPDIR/browsers" "$I" browsers
+  has 'run make deps first'
+  [ ! -e "$BATS_TEST_TMPDIR/browsers" ]
 }

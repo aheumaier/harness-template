@@ -1,3 +1,4 @@
+import { Health } from '@harness-template/api-client';
 import { expect, test } from '@playwright/test';
 
 // The app's critical path against this worktree's make dev (NFR-B2, rules.md#web-e2e-journeys).
@@ -7,7 +8,9 @@ test('critical path: the API is healthy and the web shell shows it', async ({ pa
     const res = await request.get(`http://${process.env.HTTP_ADDR ?? ''}/healthz`, { headers: { 'X-Request-Id': id } });
     expect(res.status()).toBe(200);
     expect(res.headers()['x-request-id']).toBe(id);
-    expect(await res.json()).toEqual({ status: 'ok' });
+    // The contract's schema (generated from api/openapi.yaml), not a copy of it: a drifted body fails here.
+    const body: unknown = await res.json();
+    expect(Health.safeParse(body).success, `body ${JSON.stringify(body)} is not the contract's Health`).toBe(true);
   });
 
   await test.step('the web shell renders the API status without errors', async () => {

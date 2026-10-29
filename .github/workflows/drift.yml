@@ -221,8 +221,9 @@ jobs:
             fi
           done
       # Mutation testing of the files changed in the last 7 days (ADR 0023, ci.md#mutation-testing), a trend,
-      # never a gate: scores and survivors go to the job summary only; the issue gets an entry only when it
-      # cannot measure (make mutation failed, or this step hit its wall-clock cap; the Sweep reports both).
+      # never a gate: scores and survivors go to the job summary; the Sweep puts the score table (no survivors)
+      # in the issue every week, or an entry saying it could not measure (make mutation failed, or this step
+      # hit its wall-clock cap).
       - name: Mutation
         id: mutation
         continue-on-error: true
@@ -275,13 +276,18 @@ jobs:
               [[ -z "$out" ]] || printf '%s\n\n' "$out" >>"$report"
             fi
           fi
-          # Mutation (ADR 0023): only a run that could not measure reaches the issue. mutation.md exists when
-          # make mutation failed; without it, the step was killed by its timeout.
+          # Mutation (ADR 0023): the weekly score per package (no survivors: they stay in the job summary), or
+          # why there is none. mutation.md exists when make mutation failed; without it and without success, the
+          # step was killed by its timeout.
           if [[ -s "$RUNNER_TEMP/mutation.md" ]]; then
             cat "$RUNNER_TEMP/mutation.md" >>"$report"
             echo >>"$report"
           elif [[ "$MUTATION_OUTCOME" != success ]]; then
             printf '### make mutation did not finish (%s; its step log has the output)\n\n' "$MUTATION_OUTCOME" >>"$report"
+          else
+            out="$(make mutation-scores 2>&1)" ||
+              out="$(printf '### make mutation-scores failed\n\n%s\n%s\n%s' "$fence" "$out" "$fence")"
+            printf '%s\n\n' "$out" >>"$report"
           fi
           # Scheduled reviews (ci.md#scheduled-reviews), advisory (ADR 0019): last and security first, so the
           # cut below drops modularity first. render takes the untrusted findings with the pinned jq.
