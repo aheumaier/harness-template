@@ -198,7 +198,9 @@ PR; **–** needs none.
 - [ ] P3.5 — H — QUALITY.md grades per domain and layer, `Updated:` date, staleness check in drift
 - [ ] P3.6 — H — `repo-no-orphan-scripts` (unreferenced scripts and make targets); `deadcode-go` into
   `check-all`
-- [ ] P3.7 — H — clone detection: golangci `dupl` (Go) and `jscpd` (TS) with thresholds, in `check-all`
+- [x] P3.7 — 8e4f77b — done — no clone detection → `repo-no-clones`: golangci `dupl` threshold 26 per package
+  in `make check` (lint-go), `jscpd` 5.4.1 `minTokens` 16 over `apps/` and `packages/` in `check-all`; thresholds
+  measured after cheap fixes with a scaffolded domain, no baseline (ADR 0027; per-package blind spot TD-52)
 - [ ] P3.8 — H — `reuse-reviewer` agent: does the diff re-implement something that exists?
 - [x] P4.1 — 20c1021 — done — core belief 3 called size and complexity style →
   [ADR 0024](../../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md) proposed: limits as maintainability
@@ -1007,3 +1009,25 @@ give it a sensor. Each touches protected paths.
   default 5000 ms step budget (2.9 s measured); `harness-version-well-formed` is a sensor candidate; the
   protected-path globs are now parsed in seven places (TD-39). Lane `check` green, `harness-selftest` 56/56,
   `lint-ci` green, `check-all` red only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
+- 2026-10-29: P3.7 done (8e4f77b). `dupl` in `apps/api/.golangci.yml` (26; 25 trips `platform/problem`'s test),
+  `run.sh` maps `(dupl)` to the rule; `make clones-web` runs jscpd with the protected `scripts/harness/jscpd.json`
+  by `--config` (a stray `.jscpd.json`, `.config/jscpd.json` or `package.json` key is never loaded; fixture
+  `web-clone-stray-config`), import and re-export statements ignored (two identical import lines already reach
+  16 tokens); `jscpd:ignore` is a never-allowed marker in the integrity check; the `nolint:dupl` with
+  `reason: … (rule: repo-no-clones)` is the Go exception, jscpd has none. Deviation from the plan's "in
+  `check-all`": `dupl` runs in `make check`, since it rides lint-go at no measurable cost (warm golangci with and
+  without dupl within noise, 0.7–1.1 s); TS clones surface only at `check-all` (ADR 0027). Cheap fixes before
+  measuring: the scaffold's handler-test assertion into one `t.Helper` (dupl with a probe domain 41 → 26), the
+  web providers into `AppProviders` plus `renderWithProviders` (jscpd 22 → 16), so the planned threshold
+  tech-debt row was dropped. Review: architecture CHANGES (8: ADR, cheap fixes, cross-domain placement policy,
+  npm native-binary supply chain, scan roots, wording), code CHANGES (9: thresholds were a baseline,
+  remediation, jscpd escape hatches, fixture sizing, path stripping); all fixed in one retry. **Ground-rule
+  breach:** the lane agent's first run used `HARNESS_CHANGE_APPROVED=1 make check-all`; that run was discarded
+  as evidence, the agent was told never to set an approval override, and the retry's runs were plain. Rebase
+  onto 9579f99: ADR index and tracker conflicts (TD-44/45 → TD-52, TD-45 dropped). Noticed: AGENTS.md's
+  `check-all` row should name clones (protected); `fast-check.sh` does not run `repo-no-clones`, as for the size
+  rules; the next Go ratchet step is a table-driven `problem_test.go` (then 23, `logging_test.go`);
+  `new-domain.sh`'s undo hint (`git checkout -- . && git clean -fd …`) would wipe uncommitted work when run in a
+  dirty tree. Post-commit security review: jscpd's import `ignorePattern` can span newlines and `format` lacks
+  `jsx`, so a shaped TS clone can evade the sensor (TD-53). Lane `check` green, `harness-selftest` 59/59, `lint-ci`, `knip` and `clones-web` green,
+  `check-all` red only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
