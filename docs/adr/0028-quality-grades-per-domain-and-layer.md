@@ -6,12 +6,14 @@ Status: proposed · 2026-10-29
 Exec plan 0003 (P3.5) closes a gap to OpenAI's *Harness engineering*: a quality document that grades each
 product domain and architectural layer and tracks the gaps over time. [docs/QUALITY.md](../QUALITY.md) had
 one grade per domain and nothing that noticed a grade going stale or outliving its domain. Grades are
-written by a reviewer (human or the `code-reviewer` subagent), so no sensor can decide whether a grade is
+written by a human reviewer (the `code-reviewer` subagent only suggests grades in its review output and
+never writes a row), so no sensor can decide whether a grade is
 right; it can decide whether a row exists, parses and was graded recently. [ADR 0015](0015-anticipated-rules-and-nfr-classes-b-o.md)
 says every rule beyond its five needs an incident or its own ADR; no incident has earned these yet.
 
 ## Decision
-- **Shape.** One row per backend domain (`apps/api/internal/<domain>/`, `platform` excluded), a grade per
+- **Shape.** One row per backend domain (`apps/api/internal/<domain>/`, the domains' directory in
+  `scripts/harness/layout.env`; `platform` excluded), a grade per
   layer (`model`, `store`, `service`, `api`: `A`–`F`, `–` until graded) and an `Updated` date (`YYYY-MM-DD`,
   the day of the last grading). Cells hold no `|`. One row per domain keeps `make new-domain`'s single
   insertion before the `harness:quality-rows` marker; it writes `–` grades and today's date.
@@ -35,7 +37,9 @@ says every rule beyond its five needs an incident or its own ADR; no incident ha
 - **agent-gc does not fix these findings until a grading agent exists.** A stale row needs a new grade, a
   judgement only a reviewer of the domain makes today; an agent that only moves the date games the rule. The
   deterministic findings never reach main. `scripts/harness/agent-gc.sh` keeps `RULES="docs-links-resolve"`;
-  revisit when an agent can grade a domain's layers.
+  revisit when an agent can grade a domain's layers. The `code-reviewer` subagent does not change this: it
+  suggests grades in its review output and never writes a row, so a stale row stays stale until a human
+  grades it.
 
 ## Consequences
 - Every domain is re-graded at least monthly, or the `drift` issue names its row each week.

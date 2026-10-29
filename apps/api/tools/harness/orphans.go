@@ -48,7 +48,8 @@ var (
 	makeHelpRE = regexp.MustCompile(`^[a-z0-9-]+:.*##`)
 	// What follows the colon of a target-specific variable line: `VAR = x`, `VAR := x`, `export VAR …`.
 	makeAssignRE = regexp.MustCompile(`^[ \t]*((export|override)[ \t]|[A-Za-z_][A-Za-z0-9_.-]*[ \t]*(=|:=|::=|\?=|\+=|!=))`)
-	// Markdown that records history or is generated, not a guide anyone follows.
+	// Markdown that records history or is generated, not a guide anyone follows. Twin of NOT_GUIDE_RE in
+	// scripts/harness/agent-gc.sh (findings there are not agent-gc's to fix): change both.
 	notGuideRE = regexp.MustCompile(`^(docs/(adr|exec-plans|generated)/|specs/|\.specify/)|(^|/)fixtures/`)
 	// What may precede the `/` before a repo path: `.`, `..` or a variable expansion (`$ROOT`, `$1`, `${ROOT}`,
 	// `${{ github.workspace }}`, `$(CURDIR)`, `"$root"`).

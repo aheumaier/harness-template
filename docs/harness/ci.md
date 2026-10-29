@@ -4,8 +4,8 @@ CI runs the same `make` targets you run locally; a workflow adds no checks of it
 same target is red on your machine (with `BASE_REF=origin/main` for diff-based sensors). CI sets
 `HARNESS_SCOPE=full`, so every sensor runs; a local `make check` skips those whose inputs did not change
 ([harness-scope](rules.md#harness-scope)). Inferential sensors are the exception
-([ADR 0019](../adr/0019-inferential-sensors-are-advisory.md)): `pr-review.yml` runs an agent that no `make`
-target runs, and it never blocks.
+([ADR 0019](../adr/0019-inferential-sensors-are-advisory.md)): `pr-review.yml` and `drift.yml`'s scheduled
+`reviews` and `agent-gc` jobs run agents that no `make` target runs, and they never block.
 
 ## Workflows (`.github/workflows/`)
 
@@ -118,7 +118,7 @@ and neither job is a required check. A top-level comment opens no review thread,
 - **Red only on harness breakage**: the agent did not start (no JSON result: a bad flag, a broken install),
   or a commit is missing (fetch depth, or a head lost to a force-push race). Never on a finding.
 - **Cost cap per run**: the `REVIEW_*` values at the top of the workflow (diff size, turns, US dollars,
-  model); a new push cancels the running review. The workflow is protected, so raising a cap needs the
+  model, minutes: `REVIEW_MAX_MINUTES` stops the agent with a notice before the job's own timeout); a new push cancels the running review. The workflow is protected, so raising a cap needs the
   `harness-change-approved` label.
 - **Dry run** of what the agent gets: `scripts/harness/pr-review.sh prompt <(git diff main...)`.
 - **Turning it on** is a human step, after ADR 0019 is accepted: run `.bin/claude --help` and a
@@ -226,9 +226,11 @@ no budget row, never a required check; its PR is a proposal like any other, merg
 
 - **What it fixes.** The `docs-links-resolve` findings of `.bin/harness check-links` in tracked `*.md` files
   outside `scripts/harness/protected-paths.txt` that are no `AGENTS.md` or `CLAUDE.md` (guides every agent
-  reads, edited by a human), from at most `REVIEW_GC_MAX_FILES` files (`scripts/harness/agent-gc.sh findings`
+  reads, edited by a human) and no history or generated Markdown (`docs/adr/`, `docs/exec-plans/`,
+  `docs/generated/`, `specs/`, `.specify/`, any `fixtures/`: `NOT_GUIDE_RE` in `agent-gc.sh`, the twin of
+  `notGuideRE` in `orphans.go`), from at most `REVIEW_GC_MAX_FILES` files (`scripts/harness/agent-gc.sh findings`
   and `targets`). The other `docs-links-resolve` findings (a protected or untracked file, an agent guide,
-  past the cap) are not agent-gc's: the job leaves a notice with their count, and the drift issue's
+  history or generated Markdown, past the cap) are not agent-gc's: the job leaves a notice with their count, and the drift issue's
   `make docs-links` section lists every finding. Other rules are not read: `rules-fixture-claims` findings
   are all in the protected `rules.md`; the `make docs-quality` findings are in the unprotected `QUALITY.md`,
   but until a grading agent exists a stale row needs a reviewer's new grade, not a gardener's new date, and
@@ -254,8 +256,8 @@ no budget row, never a required check; its PR is a proposal like any other, merg
   nothing, changed more than `REVIEW_GC_MAX_CHANGED_LINES` lines, or the doc check, run again, reports a new
   finding or one left in an edited file.
 - **The PR.** The `agent-gc-pr` job runs no agent. It checks out the same commit, checks the patch again and
-  writes the PR body, both without the token (`agent-gc.sh apply`: target files only, none protected or an
-  agent guide, within the cap, no file created, deleted or renamed and no mode change; `agent-gc.sh body`:
+  writes the PR body, both without the token (`agent-gc.sh apply`: target files only, none protected, an
+  agent guide or history or generated Markdown, within the cap, no file created, deleted or renamed and no mode change; `agent-gc.sh body`:
   fixed text plus the findings of the files the patch changes, in a code fence). It then commits as the
   token's identity (`docs: fix broken doc links (agent-gc)`), pushes only the branch `agent-gc/<run id>` and
   opens a PR labelled `agent-gc` against the branch it ran on. It never pushes to the default branch. The PR

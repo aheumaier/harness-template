@@ -20,6 +20,13 @@ setup() {
   printf '# Agents\n\nSee [a](gone.md).\n' >"$SANDBOX/docs/sub/AGENTS.md"
   printf '@AGENTS.md\n\nSee [c](gone.md).\n' >"$SANDBOX/docs/sub/CLAUDE.md"
   printf '# Gh\n\nSee [y](gone.md).\n' >"$SANDBOX/.github/notes.md"
+  # Tracked history and generated Markdown (NOT_GUIDE_RE): never agent-gc's to fix.
+  mkdir -p "$SANDBOX/docs/adr" "$SANDBOX/docs/exec-plans" "$SANDBOX/docs/generated" "$SANDBOX/specs/001-x" \
+    "$SANDBOX/.specify" "$SANDBOX/apps/fixtures"
+  for f in docs/adr/0001-x.md docs/exec-plans/0001-x.md docs/generated/db-schema.md specs/001-x/spec.md \
+    .specify/x.md apps/fixtures/x.md; do
+    printf '# H\n\nSee [g](gone.md).\n' >"$SANDBOX/$f"
+  done
   printf 'ignored/\n' >"$SANDBOX/.gitignore"
   printf 'cache\n' >"$SANDBOX/ignored/cache.txt"
   sandbox_base
@@ -100,6 +107,22 @@ reset_tree() {
   REVIEW_GC_MAX_FILES=0 run -2 "$S" targets "$T/findings.txt" "$T/out.txt"
   has "REVIEW_GC_MAX_FILES must be a positive integer"
   run -2 "$S" targets "$T/missing.txt" "$T/out.txt"
+}
+
+@test "targets: a link finding in tracked history or generated Markdown (an ADR, a plan, a spec) is left for a human" {
+  for f in docs/adr/0001-x.md docs/exec-plans/0001-x.md docs/generated/db-schema.md specs/001-x/spec.md \
+    .specify/x.md apps/fixtures/x.md; do
+    [ "$(git -C "$SANDBOX" ls-files -- "$f")" = "$f" ]
+    echo "$f:3: broken link (gone.md): ${f%/*}/gone.md does not exist [docs-links-resolve]"
+  done >"$T/findings.txt"
+  echo "$G1" >>"$T/findings.txt"
+  run -0 "$S" targets "$T/findings.txt" "$T/out.txt"
+  [ "$output" = "1 1 6" ]
+  [ "$(cat "$T/out.txt")" = "$G1" ]
+  printf '%s\n' 'docs/adr/0001-x.md:3: broken link (gone.md): docs/adr/gone.md does not exist [docs-links-resolve]' >"$T/adr.txt"
+  : >"$T/p.diff"
+  run -2 "$S" apply "$T/adr.txt" "$T/p.diff"
+  has "target 'docs/adr/0001-x.md' is protected, an agent guide, history or generated Markdown, or not tracked"
 }
 
 @test "prompt: the shared guard, Edit on the target files only, all-or-nothing per file, findings between nonce lines" {
@@ -340,12 +363,12 @@ reset_tree() {
   rm -f "$SANDBOX/docs/guide2.md"
   printf '%s\n' "$G1" 'docs/guide2.md: broken link (a): b [docs-links-resolve]' >"$T/new-targets.txt"
   run -2 "$S" apply "$T/new-targets.txt" "$T/new.patch"
-  has "protected, an agent guide or not tracked"
+  has "protected, an agent guide, history or generated Markdown, or not tracked"
 
   for f in docs/harness/rules.md docs/sub/AGENTS.md docs/sub/CLAUDE.md; do
     printf '%s\n' "$f: broken link (a): b [docs-links-resolve]" >"$T/prot.txt"
     run -2 "$S" apply "$T/prot.txt" "$T/fix.patch"
-    has "target '$f' is protected, an agent guide or not tracked"
+    has "target '$f' is protected, an agent guide, history or generated Markdown, or not tracked"
   done
 
   printf 'not a patch\n' >"$T/junk.patch"

@@ -38,7 +38,7 @@
 # label (ADR 0010, Consequences).
 #
 # Cost cap per run (ADR 0019: raising one is a harness-config change, rule harness-config-not-loosened): the
-# REVIEW_* values below; harness-only PRs are skipped (the code-owner review applies); a new push cancels a
+# REVIEW_* values below (model, diff size, turns, US dollars, minutes); harness-only PRs are skipped (the code-owner review applies); a new push cancels a
 # superseded run.
 name: pr-review
 
@@ -61,6 +61,7 @@ env:
   REVIEW_MAX_DIFF_BYTES: "100000"
   REVIEW_MAX_TURNS: "20"
   REVIEW_MAX_BUDGET_USD: "1.00"
+  REVIEW_MAX_MINUTES: "10" # below the job timeout-minutes (15): the cap ends as a notice
 
 jobs:
   review:
@@ -116,11 +117,18 @@ jobs:
         run: |
           d=.cache/pr-review
           code=0
-          .bin/claude -p --bare --restricted --strict-mcp-config --tools Read,Grep,Glob --disallowedTools 'mcp__*' \
+          # The minutes cap is a notice like the others (124: timed out, 137: killed after the grace period).
+          timeout -k 30 "${REVIEW_MAX_MINUTES}m" \
+            .bin/claude -p --bare --restricted --strict-mcp-config --tools Read,Grep,Glob --disallowedTools 'mcp__*' \
             --permission-mode dontAsk --settings "$d/settings.json" --no-session-persistence \
             --output-format json --model "$REVIEW_MODEL" \
             --max-turns "$REVIEW_MAX_TURNS" --max-budget-usd "$REVIEW_MAX_BUDGET_USD" \
             <"$d/prompt.txt" >"$d/out.json" 2>"$d/err.txt" || code=$?
+          if [[ $code == 124 || $code == 137 ]]; then
+            rm -f "$d/out.json" "$d/err.txt"
+            echo "::notice title=pr-review skipped::the agent hit the ${REVIEW_MAX_MINUTES}-minute cap"
+            exit 0
+          fi
           echo "exit=$code" >>"$GITHUB_OUTPUT"
           rc=0
           scripts/harness/pr-review.sh screen "$d/out.json" "$d/err.txt" || rc=$?

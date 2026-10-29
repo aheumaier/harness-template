@@ -258,9 +258,10 @@ knip: ## Unused files, exports and dependencies in the JS workspace
 # a .jscpd.json, .config/jscpd.json or package.json "jscpd" key it would otherwise find. Generated code is listed
 # there by path, as in eslint.config.mjs (ignores); golangci finds it by its header (exclusions.generated): keep the
 # copies in step. jscpd names each file relative to the root it was given, so it gets absolute paths and the root is
-# cut back off.
+# cut back off. jscpd's exit 1 is findings only when it printed a clone line; any other failure (a bad config, no
+# files: --fail-on-empty) is exit 2, so a broken sensor never reads as a clone (scripts/test/clones-web.bats).
 clones-web: ## Copy-pasted code in the JS workspaces (jscpd)
-	@$(RUN) jscpd repo-no-clones -- bash -c 'root="$$(pwd -P)"; out="$$(jscpd --config "$$root/scripts/harness/jscpd.json" --reporters xcode --absolute --exit-code 1 --fail-on-empty --no-colors --no-tips $(foreach d,$(WEB_DIRS),"$$root/$(d)"))" && s=0 || s=$$?; echo "$${out//"$$root"\//}"; exit $$s'
+	@$(RUN) jscpd repo-no-clones -- bash -c 'root="$$(pwd -P)"; out="$$(jscpd --config "$$root/scripts/harness/jscpd.json" --reporters xcode --absolute --exit-code 1 --fail-on-empty --no-colors --no-tips $(foreach d,$(WEB_DIRS),"$$root/$(d)"))" && s=0 || s=$$?; echo "$${out//"$$root"\//}"; ((s == 0)) || { ((s == 1)) && grep -Eq ": warning: Found [0-9]+ lines " <<<"$$out" && s=1 || s=2; }; exit $$s'
 
 ##@ Contract (SPEC)
 .PHONY: lint-api contract-check approve approved-check

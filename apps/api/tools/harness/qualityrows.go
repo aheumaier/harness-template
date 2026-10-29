@@ -4,7 +4,9 @@ package main
 // 0003 P3.5, ADR 0028). The rows sit between the table header (the line starting `| Domain |`) and the
 // `harness:quality-rows` marker that `make new-domain` inserts before. Columns are found by header name:
 //
-//	Domain   `[<domain>](../apps/api/internal/<domain>/AGENTS.md)` or a bare <domain>
+//	Domain   `[<domain>](../<domains>/<domain>/AGENTS.md)` or a bare <domain>, where <domains> is the
+//	         domains' parent directory from scripts/harness/layout.env (API_DIR plus LAYER_GLOB without its
+//	         /*/*; apps/api/internal in the template)
 //	model, store, service, api   A–F, or – (en dash) until the first grade
 //	Updated  YYYY-MM-DD, the day of the last grading
 //
@@ -14,13 +16,14 @@ package main
 //	  docs-quality-rows-well-formed    one cell per column, a domain name or a link to its AGENTS.md, grades
 //	                                   A–F or –, Updated in YYYY-MM-DD
 //	  docs-quality-rows-match-domains  one row per domain: none for a domain without git-known files under
-//	                                   apps/api/internal/<domain>/ (platform is no domain), none missing, none twice
+//	                                   <domains>/<domain>/ (platform is no domain), none missing, none twice
 //	qualityFresh (make docs-quality, the weekly drift sweep only), reads the clock:
 //	  docs-quality-row-fresh           Updated is at most qualityMaxAgeDays before today and not after it;
 //	                                   rows that are not well-formed are left to the shape mode
 //
 // today is a parameter, so the tests never read the clock. Both modes fail closed (exit 2) when QUALITY.md, its
-// table header, a needed column or the marker is missing.
+// table header, a needed column or the marker is missing; the shape mode also when layout.env is missing or
+// malformed (it reads <domains> from there; the age check needs no domain).
 
 import (
 	"bufio"
@@ -41,7 +44,6 @@ const (
 	qualityFile       = "docs/QUALITY.md"
 	qualityMarker     = "harness:quality-rows"
 	qualityMaxAgeDays = 30
-	domainsDir        = "apps/api/internal/"
 )
 
 var (
@@ -69,8 +71,9 @@ type qualityRow struct {
 func (t *qualityTable) cell(r qualityRow, name string) string { return r.cells[t.col[name]] }
 
 type qualityChecker struct {
-	out io.Writer
-	bad bool
+	out     io.Writer
+	domains string // the domains' parent directory with a trailing `/` (layout.domainsDir)
+	bad     bool
 }
 
 func (c *qualityChecker) report(line int, rule, format string, a ...any) {
@@ -84,11 +87,19 @@ func qualityShape(root string, stdout io.Writer) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	domains, err := backendDomains(root)
+	l, err := loadLayout(root)
 	if err != nil {
 		return false, err
 	}
-	c := &qualityChecker{out: stdout}
+	dir, err := l.domainsDir()
+	if err != nil {
+		return false, err
+	}
+	c := &qualityChecker{out: stdout, domains: dir + "/"}
+	domains, err := backendDomains(root, c.domains)
+	if err != nil {
+		return false, err
+	}
 	seen := map[string]int{} // domain → line of its first row
 	for _, r := range t.rows {
 		d := c.wellFormed(t, r)
@@ -100,14 +111,14 @@ func qualityShape(root string, stdout io.Writer) (bool, error) {
 			c.report(r.line, "docs-quality-rows-match-domains", "a second row for domain %s (first at line %d): keep one", d, first)
 		case !domains[d]:
 			seen[d] = r.line
-			c.report(r.line, "docs-quality-rows-match-domains", "domain %s is gone (no git-known file under %s%s/): delete its row", d, domainsDir, d)
+			c.report(r.line, "docs-quality-rows-match-domains", "domain %s is gone (no git-known file under %s%s/): delete its row", d, c.domains, d)
 		default:
 			seen[d] = r.line
 		}
 	}
 	for _, d := range slices.Sorted(maps.Keys(domains)) {
 		if _, ok := seen[d]; !ok {
-			c.report(t.marker, "docs-quality-rows-match-domains", "domain %s (%s%s/) has no row: add one before the marker and grade it", d, domainsDir, d)
+			c.report(t.marker, "docs-quality-rows-match-domains", "domain %s (%s%s/) has no row: add one before the marker and grade it", d, c.domains, d)
 		}
 	}
 	return c.bad, nil
@@ -224,7 +235,7 @@ func (c *qualityChecker) wellFormed(t *qualityTable, r qualityRow) string {
 	return domain
 }
 
-// domainCell returns the domain a Domain cell names: a bare name, or [name](../apps/api/internal/name/AGENTS.md).
+// domainCell returns the domain a Domain cell names: a bare name, or [name](../<domains>/name/AGENTS.md).
 func (c *qualityChecker) domainCell(line int, cell string) string {
 	const rule = "docs-quality-rows-well-formed"
 	name, target, linked := cell, "", false
@@ -232,10 +243,10 @@ func (c *qualityChecker) domainCell(line int, cell string) string {
 		name, target, linked = m[1], m[2], true
 	}
 	if !domainNameRE.MatchString(name) {
-		c.report(line, rule, "Domain %q is not a domain name or a link to one: write [<domain>](../%s<domain>/AGENTS.md)", cell, domainsDir)
+		c.report(line, rule, "Domain %q is not a domain name or a link to one: write [<domain>](../%s<domain>/AGENTS.md)", cell, c.domains)
 		return ""
 	}
-	if want := "../" + domainsDir + name + "/AGENTS.md"; linked && target != want {
+	if want := "../" + c.domains + name + "/AGENTS.md"; linked && target != want {
 		c.report(line, rule, "Domain link [%s](%s) does not point at its domain: write [%s](%s)", name, target, name, want)
 	}
 	return name
@@ -251,18 +262,17 @@ func tableCells(line string) []string {
 	return cells
 }
 
-// backendDomains is the set of directories under apps/api/internal/ that hold a git-known file, platform
-// excluded (shared plumbing, AGENTS.md#layer-rule). analyzers/domainiso has its own copy of this definition
-// (TD-55).
-func backendDomains(root string) (map[string]bool, error) {
-	files, err := gitKnown(root, domainsDir+"*")
+// backendDomains is the set of directories under dir (the domains' parent, with a trailing `/`) that hold a
+// git-known file and are domains (isDomainDir).
+func backendDomains(root, dir string) (map[string]bool, error) {
+	files, err := gitKnown(root, dir+"*")
 	if err != nil {
 		return nil, err
 	}
 	domains := map[string]bool{}
 	for _, f := range files {
-		d, rest, nested := strings.Cut(strings.TrimPrefix(f, domainsDir), "/")
-		if nested && rest != "" && d != "platform" {
+		d, rest, nested := strings.Cut(strings.TrimPrefix(f, dir), "/")
+		if nested && rest != "" && isDomainDir(d) {
 			domains[d] = true
 		}
 	}

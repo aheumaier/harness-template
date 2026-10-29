@@ -5,7 +5,9 @@ deterministic sensor that fails with the remediation below. `scripts/harness/run
 **Remediation** line of a rule verbatim when its sensor fails, so keep it one actionable sentence.
 
 Status: **seed** = created with the template; **team-convention** = a convention the team already follows,
-adopted as a rule by a recorded decision (ADR) instead of an incident. New rules must be earned (link the
+adopted as a rule by a recorded decision (ADR) instead of an incident; **earned** = promoted from an inferential
+sensor's finding class accepted twice ([ADR 0019](../adr/0019-inferential-sensors-are-advisory.md)), written
+`Status: earned (<finding 1>, <finding 2>)` with both findings linked. New rules must be earned (link the
 incident/PR that motivated them) and need a fixture in `scripts/harness/fixtures/` before they merge.
 
 Format per rule: rule · why · sensor · remediation · fixture. `make harness-selftest` applies every fixture to
@@ -481,14 +483,14 @@ In CI these run in the `pr-conventions` job of `harness-integrity.yml` (base bra
 - **Fixture:** `fixtures/docs-agents-without-claude` · Status: seed
 
 ### docs-quality-rows-well-formed
-- **Rule:** Every row of `docs/QUALITY.md` between the table header and the `harness:quality-rows` marker has one cell per header column (no `|` inside a cell); its `Domain` is a domain name or `[<domain>](../apps/api/internal/<domain>/AGENTS.md)` (link text and target name the same domain); each layer (`model`, `store`, `service`, `api`) is graded `A`–`F` or `–` (en dash U+2013: not graded yet; a hyphen is not); and `Updated` is a real date written `YYYY-MM-DD`.
+- **Rule:** Every row of `docs/QUALITY.md` between the table header and the `harness:quality-rows` marker has one cell per header column (no `|` inside a cell); its `Domain` is a domain name or `[<domain>](../<domains>/<domain>/AGENTS.md)` (link text and target name the same domain; `<domains>` is the domains' directory from `scripts/harness/layout.env`, `API_DIR` plus `LAYER_GLOB` without its `/*/*`: `apps/api/internal` in the template); each layer (`model`, `store`, `service`, `api`) is graded `A`–`F` or `–` (en dash U+2013: not graded yet; a hyphen is not); and `Updated` is a real date written `YYYY-MM-DD`.
 - **Why:** The grades tell an agent which layers it can change safely, and the age check and the domain match can only read a row that parses; a hyphen for "not graded" or a link to another domain's guide reads right to a human and wrong to every tool (exec plan 0003 P3.5, after OpenAI's per-domain and per-layer quality grades).
-- **Sensor:** `.bin/harness quality-rows -no-clock` (`apps/api/tools/harness/qualityrows.go`; `make docs-quality-shape`, part of `make check-all`; the CI generator probe runs it on the row a fresh `make new-domain` writes). Deterministic: it reads no clock. `TestQualityRowTemplateMatchesHeader` (`make check`, via `test-harness`) renders the generator's row template under the real header and checks that both modes accept it.
+- **Sensor:** `.bin/harness quality-rows -no-clock` (`apps/api/tools/harness/qualityrows.go`; `make docs-quality-shape`, part of `make check-all`; the CI generator probe runs it on the row a fresh `make new-domain` writes). Deterministic: it reads no clock; it exits 2 when `layout.env` is missing or malformed. `TestQualityRowTemplateMatchesHeader` (`make check`, via `test-harness`) renders the generator's row template under the real header and checks that both modes accept it.
 - **Remediation:** Make the row match the header named in the message: one cell per column, the domain's link as written above, grades `A`–`F` or `–` by the legend under the table, `Updated` as `YYYY-MM-DD`.
 - **Fixture:** `fixtures/docs-quality-row-malformed` · Status: team-convention ([ADR 0028](../adr/0028-quality-grades-per-domain-and-layer.md))
 
 ### docs-quality-rows-match-domains
-- **Rule:** `docs/QUALITY.md` has exactly one row per backend domain: none for a name without a git-known file under `apps/api/internal/<domain>/` (`platform` is no domain), none missing for a domain, none twice.
+- **Rule:** `docs/QUALITY.md` has exactly one row per backend domain: none for a name without a git-known file under `<domains>/<domain>/` (the domains' directory from `layout.env`, as in [docs-quality-rows-well-formed](#docs-quality-rows-well-formed); `platform` is no domain), none missing for a domain, none twice.
 - **Why:** A row for a deleted domain grades code that no longer exists, and a missing row hides a domain from the grades (and from [docs-quality-row-fresh](#docs-quality-row-fresh)), so deleting a stale row cannot silence the age check. Deleting a domain also breaks its row's link to the domain's `AGENTS.md`, so [docs-links-resolve](#docs-links-resolve) usually turns `make check` red first; this rule names the real fix and also covers a row without that link.
 - **Sensor:** `.bin/harness quality-rows -no-clock` (`apps/api/tools/harness/qualityrows.go`; `make docs-quality-shape`, part of `make check-all` and the CI generator probe), with [docs-quality-rows-well-formed](#docs-quality-rows-well-formed) in one pass over the file.
 - **Remediation:** Delete the row of a domain that is gone, merge a second row into the first, or add the missing domain's row before the `harness:quality-rows` marker (as `make new-domain` does) and grade it.

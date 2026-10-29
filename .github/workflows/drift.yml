@@ -43,7 +43,8 @@
 # agent-gc (exec plan 0003 P3.4, ci.md#agent-gc), the doc gardener, shares that contract and those caps, with
 # these differences (scripts/test/agent-gc.bats checks them):
 #   - its agent has Edit too, allowed by its --settings file on the target files alone (tracked docs outside
-#     scripts/harness/protected-paths.txt, no AGENTS.md or CLAUDE.md, that `harness check-links` flagged;
+#     scripts/harness/protected-paths.txt, no AGENTS.md or CLAUDE.md, no ADR, plan, spec, generated doc or
+#     fixture, that `harness check-links` flagged;
 #     `agent-gc.sh settings`), with Write still denied. Before it runs, the tree must be clean and the checkout
 #     is made read-only, .git included, except the target files (`agent-gc.sh baseline` and `lock`).
 #   - its job saves no cache (setup `save-caches: "false"`) and keeps every file it writes under $RUNNER_TEMP,
@@ -423,7 +424,7 @@ jobs:
           counts="$(scripts/harness/agent-gc.sh targets "$d/findings.txt" "$d/targets.txt")"
           read -r kept files left <<<"$counts"
           if ((left > 0)); then
-            echo "::notice title=agent-gc::$left docs-links-resolve findings are not agent-gc's to fix (a protected or untracked file, an AGENTS.md or CLAUDE.md, or past the ${REVIEW_GC_MAX_FILES}-file cap); the drift issue's make docs-links section lists every finding"
+            echo "::notice title=agent-gc::$left docs-links-resolve findings are not agent-gc's to fix (a protected or untracked file, an AGENTS.md or CLAUDE.md, history or generated Markdown, or past the ${REVIEW_GC_MAX_FILES}-file cap); the drift issue's make docs-links section lists every finding"
           fi
           if ((kept == 0)); then
             echo "::notice title=agent-gc::nothing to fix"

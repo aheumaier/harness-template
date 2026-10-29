@@ -249,3 +249,47 @@ comment pull-requests: write" ]
     [ "$n" -lt "$script" ]
   done
 }
+
+@test "pr-review.yml: the agent runs under a minutes cap below the job's timeout, which ends as a notice" {
+  minutes=$(sed -n 's/^  REVIEW_MAX_MINUTES: "\([0-9][0-9]*\)".*/\1/p' "$W")
+  job=$(awk '/^  [a-z]/ { s = ($0 == "  review:") } s && /^    timeout-minutes: / { print $2 }' "$W")
+  [ -n "$minutes" ] && [ -n "$job" ]
+  [ "$minutes" -lt "$job" ]
+}
+
+# Every `.bin/claude -p` in every workflow, read from the real files (ADR 0019): one call per step, the shared
+# CI agent flags, the minutes cap whose 124/137 ends as a notice, and the read-only tools; only agent-gc's step
+# (drift.yml, id gc-agent) adds Edit. A new agent call in any workflow is covered without a new test.
+@test "workflows: every .bin/claude -p runs with the shared CI agent flags and the minutes cap" {
+  seen=""
+  for wf in "$REPO"/.github/workflows/*.yml; do
+    while IFS= read -r id; do
+      [ -n "$id" ] || {
+        echo "${wf##*/}: a step runs .bin/claude -p without an id" >&2
+        return 1
+      }
+      step=$(awk -v id="        id: $id" '/^      - / { if (s) exit; buf = "" } { buf = buf $0 "\n" } $0 == id { s = 1 } END { if (s) printf "%s", buf }' "$wf")
+      tools=Read,Grep,Glob
+      [[ ${wf##*/}:$id != drift.yml:gc-agent ]] || tools=Read,Grep,Glob,Edit
+      [ "$(grep -c '\.bin/claude -p' <<<"$step")" -eq 1 ]
+      for flag in --bare --restricted --strict-mcp-config "--tools $tools --" "--disallowedTools 'mcp__*'" \
+        '--permission-mode dontAsk' '--settings "$d/settings.json"' '--no-session-persistence' '--output-format json' \
+        '--model "$REVIEW_MODEL"' '--max-turns "$REVIEW_MAX_TURNS"' '--max-budget-usd "$REVIEW_MAX_BUDGET_USD"' \
+        'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"' 'timeout -k 30 "${REVIEW_MAX_MINUTES}m"' \
+        'if [[ $code == 124 || $code == 137 ]]; then' '::notice title='; do
+        [[ $step == *"$flag"* ]] || {
+          echo "${wf##*/} step $id lacks: $flag" >&2
+          return 1
+        }
+      done
+      grep -qx '  REVIEW_MAX_MINUTES: "[0-9][0-9]*".*' "$wf"
+      seen="$seen ${wf##*/}:$id"
+    done < <(awk '/^      - / { id = "" } /^        id: / { id = $2 } /\.bin\/claude -p/ { print id }' "$wf")
+  done
+  for want in drift.yml:agent drift.yml:gc-agent pr-review.yml:agent; do
+    [[ " $seen " == *" $want "* ]] || {
+      echo "no .bin/claude -p found in $want (seen:$seen)" >&2
+      return 1
+    }
+  done
+}

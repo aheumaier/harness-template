@@ -11,7 +11,8 @@
 #       when the check breaks (exit 2 or more), not when it finds something (exit 1).
 #   agent-gc.sh targets <findings> <targets-out>
 #       writes the findings agent-gc may fix to <targets-out>: lines `<file>[:<line>]: … [<rule>]` of a rule in
-#       RULES, naming a tracked *.md file outside the protected paths that is no AGENTS.md or CLAUDE.md, from at
+#       RULES, naming a tracked *.md file outside the protected paths that is no AGENTS.md or CLAUDE.md and no
+#       history or generated Markdown (NOT_GUIDE_RE: ADRs, exec plans, specs, generated docs, fixtures), from at
 #       most REVIEW_GC_MAX_FILES files. Prints `<findings kept> <files kept> <findings left>` on stdout.
 #   agent-gc.sh prompt <targets>
 #       the agent's prompt on stdout: a fixed CI preamble, then the findings as data between nonce lines
@@ -59,6 +60,10 @@ AGENT_SCRIPT=agent-gc
 # a reviewer's new grade, not a new date; the other QUALITY.md rules gate check-all, so main has no findings.
 RULES="docs-links-resolve"
 FINDING_RE="^([A-Za-z0-9_.][A-Za-z0-9_./-]*\\.md)(:[0-9]+)?: .+ \\[(${RULES// /|})\\]\$"
+# Markdown that records history or is generated, not a guide anyone follows: a broken link there is history
+# (an ADR, a plan, a spec) or is regenerated, so agent-gc leaves it. Twin of notGuideRE in
+# apps/api/tools/harness/orphans.go: change both.
+NOT_GUIDE_RE='^(docs/(adr|exec-plans|generated)/|specs/|\.specify/)|(^|/)fixtures/'
 HARNESS="${HARNESS:-$ROOT/.bin/harness}"
 usage="usage: agent-gc.sh findings | targets <findings> <targets-out> | prompt <targets> | schema | settings <targets> [deny-dir...] | lock <targets> | baseline <out> | added <out> | screen <file...> | confined <targets> <baseline> | result <exit> <out.json> <stderr> | patch <findings> <targets> <patch-out> | apply <targets> <patch> | body <targets> <patch>"
 
@@ -88,10 +93,10 @@ target_files() {
   printf '%s' "$files"
 }
 
-# fixable <file> <protected-list>: 0 when the file is tracked, not protected and no agent guide (an AGENTS.md
-# or CLAUDE.md instructs every agent, so a human edits it).
+# fixable <file> <protected-list>: 0 when the file is tracked, not protected, no agent guide (an AGENTS.md
+# or CLAUDE.md instructs every agent, so a human edits it) and no history or generated Markdown (NOT_GUIDE_RE).
 fixable() {
-  [[ $1 != *..* && ${1##*/} != AGENTS.md && ${1##*/} != CLAUDE.md ]] && ! listed "$1" "$2" &&
+  [[ $1 != *..* && ${1##*/} != AGENTS.md && ${1##*/} != CLAUDE.md && ! $1 =~ $NOT_GUIDE_RE ]] && ! listed "$1" "$2" &&
     [[ $(git -C "$ROOT" ls-files -- "$1") == "$1" ]]
 }
 
@@ -306,7 +311,7 @@ apply() {
   # The targets and the patch come from an artifact: checked again against this checkout's protected paths.
   protected=$(protected_files)
   while IFS= read -r f; do
-    fixable "$f" "$protected" || die "target '$f' is protected, an agent guide or not tracked"
+    fixable "$f" "$protected" || die "target '$f' is protected, an agent guide, history or generated Markdown, or not tracked"
   done <<<"$files"
   patch_files "$p" "$files" >/dev/null
   summary=$(cd "$ROOT" && git apply --summary -- "$p") || die "$p is not a patch git can read"

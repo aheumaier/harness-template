@@ -44,7 +44,9 @@ those two lines into a decision the Phase 3 slices can build on.
   ([harness-config-not-loosened](../harness/rules.md#harness-config-not-loosened)).
 - **A finding class accepted twice becomes a computational rule** (ratchet from failure).
   - A finding counts as **accepted** when the PR or tree it names changes because of it, and that change
-    links the finding (comment or issue URL). A finding nobody acts on is not counted.
+    links the finding (comment or issue URL). The local reviewers (`code-reviewer`, `architecture-reviewer`,
+    `reuse-reviewer`) produce no URL: their finding counts as accepted when the fixing commit's message quotes
+    the finding line and names its class. A finding nobody acts on is not counted.
   - **First acceptance:** the author of the fixing change adds a row to the
     [tech-debt tracker](../exec-plans/tech-debt-tracker.md). The row names the finding class and links the
     finding.
@@ -71,8 +73,9 @@ those two lines into a decision the Phase 3 slices can build on.
     held by a non-admin identity outside every branch-protection bypass and without Workflows or
     Administration permission; write collaborators are trusted with the key, not with this token.
   - **One CI agent contract.** Every agent that runs in CI (`pr-review.yml`, P3.2; the scheduled reviews and
-    `agent-gc` in `drift.yml`, P3.3 and P3.4) shares `scripts/harness/ci-agent.sh` and the same flags, checked by each workflow's
-    bats test: the pinned `.bin/claude` ([ADR 0016](0016-tool-supply-chain.md)) as `claude -p` in a `run:`
+    `agent-gc` in `drift.yml`, P3.3 and P3.4) shares `scripts/harness/ci-agent.sh` and the same flags, checked by
+    `scripts/test/pr-review.bats` (a sweep over every `.bin/claude -p` in `.github/workflows/*.yml`, where only
+    agent-gc's step may add Edit), `scheduled-review.bats` and `agent-gc.bats`: the pinned `.bin/claude` ([ADR 0016](0016-tool-supply-chain.md)) as `claude -p` in a `run:`
     step, never a marketplace action, with `--bare --restricted --strict-mcp-config --tools Read,Grep,Glob
     --disallowedTools 'mcp__*' --permission-mode dontAsk --no-session-persistence --output-format json`,
     `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and a `--settings` file that blocks reads outside the
@@ -87,7 +90,8 @@ those two lines into a decision the Phase 3 slices can build on.
   - The agent step holds no write token. Posting the comment or opening the PR is a separate step with its
     own narrowly scoped token, and it treats agent output as text, never as commands.
   - An agent that writes (`agent-gc`) works on a branch, never pushes to `main`, never edits a protected path
-    (`scripts/harness/protected-paths.txt`) or an `AGENTS.md` or `CLAUDE.md`, and its PR passes the same required checks and code-owner
+    (`scripts/harness/protected-paths.txt`), an `AGENTS.md` or `CLAUDE.md`, or history or generated Markdown
+    (an ADR, an exec plan, a spec, a generated doc), and its PR passes the same required checks and code-owner
     review as any other.
 - **Local reviewer calls are workflow steps, not gates.** These are the calls `CLAUDE.md` and the exec-plan
   loop make before a change is called done. The author weighs the findings, and "done" still means

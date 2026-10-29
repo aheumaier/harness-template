@@ -182,12 +182,33 @@ func layerSegments(glob string) ([]string, error) {
 	return segs, nil
 }
 
+// isDomainDir reports whether a directory directly under the domains' parent is a domain: every one but
+// platform, the shared plumbing (AGENTS.md#layer-rule). analyzers/domainiso has its own copy of this
+// definition (TD-55).
+func isDomainDir(name string) bool { return name != "platform" }
+
+// domainsDir is the domains' parent directory, repo-relative and without a trailing `/`: LAYER_GLOB without
+// its two `*` segments, inside API_DIR (the Makefile's DOMAINS_DIR). A LAYER_GLOB of another shape is an
+// error, so its readers fail closed.
+func (l layout) domainsDir() (string, error) {
+	segs, err := layerSegments(l.get("LAYER_GLOB"))
+	if err != nil {
+		return "", fmt.Errorf("%s:%d: LAYER_GLOB=%s: %v (run make layout-check)", layoutFile, l.lines["LAYER_GLOB"], l.get("LAYER_GLOB"), err)
+	}
+	return l.layerDir(segs), nil
+}
+
+// layerDir is the directory the literal LAYER_GLOB segments name, inside API_DIR.
+func (l layout) layerDir(segs []string) string {
+	return l.apiPath(strings.Join(segs[:len(segs)-2], "/"))
+}
+
 // layerPackages counts the directories under API_DIR that match the LAYER_GLOB segments and hold a git-known
 // .go file, and lists the flat packages: <layer dir>/<pkg> with a .go file of its own, which domainiso skips
-// (it needs a domain and a layer). <layer dir>/platform is shared plumbing, not a domain: domainiso skips it
-// too, so it is never flat; its packages count, since a tree without a domain yet (the template) is valid.
+// (it needs a domain and a layer). <layer dir>/platform is no domain (isDomainDir): domainiso skips it too, so
+// it is never flat; its packages count, since a tree without a domain yet (the template) is valid.
 func (l layout) layerPackages(root string, segs []string) (int, []string, error) {
-	prefix := l.apiPath(strings.Join(segs[:len(segs)-2], "/"))
+	prefix := l.layerDir(segs)
 	if fi, err := os.Stat(filepath.Join(root, prefix)); err != nil || !fi.IsDir() {
 		return 0, nil, nil // also keeps git ls-files -o from warning about a missing directory
 	}
@@ -201,7 +222,7 @@ func (l layout) layerPackages(root string, segs []string) (int, []string, error)
 		switch {
 		case len(rest) == 2:
 			dirs[path.Dir(f)] = true
-		case len(rest) == 1 && rest[0] != "platform":
+		case len(rest) == 1 && isDomainDir(rest[0]):
 			flat[path.Dir(f)] = true
 		}
 	}

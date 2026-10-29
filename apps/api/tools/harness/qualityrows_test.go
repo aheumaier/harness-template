@@ -20,15 +20,25 @@ func qualityTestRow(domain, grades, updated string) string {
 	return "| " + domain + " | " + grades + " | t | AGENTS.md | " + updated + " | n |"
 }
 
-func qualityTestLink(d string) string { return "[" + d + "](../apps/api/internal/" + d + "/AGENTS.md)" }
+// templateDomains is the domains' parent directory templateLayout declares.
+const templateDomains = "apps/api/internal/"
 
-// qualityTestRepo is a git repo with QUALITY.md holding rows and a file under apps/api/internal/<d>/ per domain.
+func qualityTestLink(d string) string { return "[" + d + "](../" + templateDomains + d + "/AGENTS.md)" }
+
+// qualityTestRepo is a git repo with the template layout, QUALITY.md holding rows and a file under
+// apps/api/internal/<d>/ per domain.
 func qualityTestRepo(t *testing.T, rows, domains []string) string {
 	t.Helper()
+	return qualityLayoutRepo(t, templateLayout, templateDomains, rows, domains)
+}
+
+// qualityLayoutRepo is qualityTestRepo with layout.env holding layout and each domain's file under dir.
+func qualityLayoutRepo(t *testing.T, layout []string, dir string, rows, domains []string) string {
+	t.Helper()
 	lines := append(append([]string{qualityTestHeader, qualityTestSep}, rows...), qualityTestMarker, "", "Grades: …")
-	files := map[string][]string{qualityFile: lines}
+	files := map[string][]string{qualityFile: lines, layoutFile: layout}
 	for _, d := range domains {
-		files[domainsDir+d+"/x.go"] = []string{"package x"}
+		files[dir+d+"/x.go"] = []string{"package x"}
 	}
 	return linkRepo(t, files)
 }
@@ -102,6 +112,49 @@ func TestQualityShape(t *testing.T) {
 	}
 }
 
+// With the domains moved (LAYER_GLOB=pkg/domains/*/*), rows are demanded and links checked under the new
+// directory, and a directory under the old apps/api/internal/ is no domain.
+func TestQualityShapeFollowsLayout(t *testing.T) {
+	const dir = "apps/api/pkg/domains/"
+	root := qualityLayoutRepo(t, withLayout("LAYER_GLOB", "pkg/domains/*/*"), dir, []string{
+		qualityTestRow(qualityTestLink("billing"), "A | A | A | A", "2026-10-29"),
+	}, []string{"billing", "orders", "platform"})
+	writeLines(t, root, templateDomains+"users/x.go", "package x")
+	wantFindings(t, func(w io.Writer) (bool, error) { return qualityShape(root, w) }, []string{
+		"docs/QUALITY.md:3: Domain link [billing](../apps/api/internal/billing/AGENTS.md) does not point at its domain: write [billing](../" + dir + "billing/AGENTS.md) [docs-quality-rows-well-formed]",
+		"docs/QUALITY.md:4: domain orders (" + dir + "orders/) has no row: add one before the marker and grade it [docs-quality-rows-match-domains]",
+	})
+}
+
+// The shape mode reads the domains' directory from layout.env, so it fails closed without a usable one; the
+// age check needs no domain and still runs.
+func TestQualityShapeFailsClosedOnLayout(t *testing.T) {
+	today := time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name   string
+		layout []string // nil: no layout.env
+		want   string
+	}{
+		{"no layout.env", nil, "no such file"},
+		{"LAYER_GLOB without the layer", withLayout("LAYER_GLOB", "internal/*"), "LAYER_GLOB=internal/*: not <dir>"},
+		{"missing key", withLayout("LAYER_GLOB", ""), "missing LAYER_GLOB"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lines := []string{qualityTestHeader, qualityTestSep, qualityTestRow("billing", "A | A | A | A", "2026-10-29"), qualityTestMarker}
+			files := map[string][]string{qualityFile: lines, templateDomains + "billing/x.go": {"package x"}}
+			if tt.layout != nil {
+				files[layoutFile] = tt.layout
+			}
+			root := linkRepo(t, files)
+			if _, err := qualityShape(root, io.Discard); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("want an error containing %q, got %v", tt.want, err)
+			}
+			wantFindings(t, func(w io.Writer) (bool, error) { return qualityFresh(root, today, w) }, nil)
+		})
+	}
+}
+
 func TestQualityFresh(t *testing.T) {
 	// 2026-10-30 locally, 2026-10-29 23:30 in UTC: the rows are measured against the UTC date.
 	today := time.Date(2026, 10, 30, 0, 30, 0, 0, time.FixedZone("CET", 3600))
@@ -164,7 +217,7 @@ func TestQualityRowTemplateMatchesHeader(t *testing.T) {
 	if table == nil {
 		t.Fatalf("%s has no line starting with `| Domain |`", qualityFile)
 	}
-	root := linkRepo(t, map[string][]string{qualityFile: table, domainsDir + "billing_run/AGENTS.md": {"# billing_run"}})
+	root := linkRepo(t, map[string][]string{qualityFile: table, layoutFile: templateLayout, templateDomains + "billing_run/AGENTS.md": {"# billing_run"}})
 	today := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
 	wantFindings(t, func(w io.Writer) (bool, error) { return qualityShape(root, w) }, nil)
 	wantFindings(t, func(w io.Writer) (bool, error) { return qualityFresh(root, today, w) }, nil)

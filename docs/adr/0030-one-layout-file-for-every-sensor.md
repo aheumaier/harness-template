@@ -21,7 +21,7 @@ the repo root.
   - `scripts/harness/layout.sh` for the scripts (sourced), and with `--print` for the Makefile
     (`$(shell …)` plus `$(eval)` of the validated `KEY=value` lines) and CI (`>>"$GITHUB_ENV"`);
   - `apps/api/tools/harness/layout.go` for `.bin/harness` (`layout-check`, integrity-check's excludes from
-    `GENERATED_GLOBS`).
+    `GENERATED_GLOBS`, quality-rows' domains directory from `API_DIR` and `LAYER_GLOB`).
 
   Both accept only the known keys, each once, each value from `[A-Za-z0-9_./*@+-]` with no empty list entry.
   A missing file, an unknown, repeated or missing key, or a bad value stops the reader with
