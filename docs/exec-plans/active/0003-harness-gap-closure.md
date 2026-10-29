@@ -109,7 +109,7 @@ They comment, never fail (Phase 3, ADR).
 | # | Phase | Exit criterion | State |
 |---|-------|----------------|-------|
 | 0 | Quick wins: Trivy, pre-commit, structured-logging lints, doc truth | secrets and JS/nested-Go vulns are detected; `rules-fixture-claims` is green; every drift item above is fixed | implemented |
-| 1 | Runtime legibility (G1) | NFR-O1 met: logs by request ID and a p95 latency, per worktree, via `make` | proposed |
+| 1 | Runtime legibility (G1) | NFR-O1 met: logs by request ID and a p95 latency, per worktree, via `make` | implemented |
 | 2 | Behaviour harness (G2) | NFR-B1 and NFR-B2 met; coverage reported per package; weekly mutation score in the drift issue | proposed |
 | 3 | Inferential sensors and garbage collection (G3, G4, G8, G11) | reviewer comments on every PR (advisory); scheduled reviews and `agent-gc` open issues/PRs; QUALITY.md has a staleness check; orphan scripts, dead Go code and clones fail `check-all`; `reuse-reviewer` exists | proposed |
 | 4 | Taste lints and harness lifecycle (G5, G7, G9, G10, G12) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue; `adoption-probe` green on a root-module fixture | proposed |
@@ -876,3 +876,22 @@ give it a sensor. Each touches protected paths.
   duplicated in drift.yml with drift; the confinement test needs a real key (dummy keys are rejected
   before tools load). Human: run `.bin/claude --help` once against the pinned flags, add the dedicated key
   and run the confinement test.
+- 2026-10-29: Phase 1 gate. `check-all` red only on harness-integrity and specs, `harness-selftest` 47/47,
+  `test-integration` and `test-obs` green (3f9fe1d). Reviews of 55a6915, 4e2d8bd, b43eeaf, 5b7e649,
+  db4b1c1 and 1ec83b1: code 11, architecture 7. Fixed in d908681: `obs-e2e.sh` no longer sets the OTEL
+  exporters and endpoint itself, so `test-obs` tests the worktree's own defaults (green after the change),
+  and exits 2 when it cannot run; `harness rename` ignores the new module path in its leftover scan (the
+  reviewer's `aheumaier/harness-template` token would have missed the SSH clone URL, which the rename turns
+  into `aheumaier/<name>`); `test-integration` unsets every `OTEL_*`; `db-reset` reuses `down`; the
+  obs-query restart hint and exit codes; compose's `OBS_IMAGE` message; ADR 0017 in present tense plus who
+  owns the `OTEL_*` defaults (setup alone, frozen per worktree, not derived live: one owner without moving
+  them); ARCHITECTURE.md codemap. Rejected: a run of the documented `rate(…[5m])` p95 in `test-obs` (a
+  one-shot process has too few samples for `rate`, so it would be empty, not wrong; the skill's query is for
+  a long-running `make dev`); a success-path cleanup bats case (it needs a fake API that listens and answers;
+  every real `test-obs` run in check-all exercises that path); one stack probe and the obs-query constants
+  test (TD-41); `make logs` falling back to `.tmp/dev/api.log` (optional, a second output shape to keep in
+  step). Noticed (protected, `.claude/`): the query-runtime skill hard-codes "every 5 s", and AGENTS.md and
+  CLAUDE.md should name `make test-obs` and the skill. Sensor candidates: `otel-env-single-owner`,
+  `obs-query-matches-code`. `make check` warned bats at 84.9 s against its 5 s budget (NFR-H5, warn only; 59–66 s
+  before P1.5). Exit criterion: met, by `make test-obs` reading one request's access line, server span and
+  p95 back through `make logs`, `traces` and `metrics` on this worktree's own stack; Phase 1 implemented.
