@@ -15,7 +15,28 @@ linters:
     - forbidigo
     - sloglint
     - gosec # rules.md#go-sec: all checks at gosec's defaults, tests included
+    - funlen # rules.md#code-function-length (ADR 0024)
+    - gocognit # rules.md#code-complexity (ADR 0024)
+    - revive # rules.md#code-parameters, rules.md#code-file-length (ADR 0024): only the two rules below
   settings:
+    # ADR 0024: each threshold is the worst value at P4.2's base (1b7aa0f, re-verified at 0bd8958) and only
+    # goes down; never raise one.
+    # rules.md#code-function-length: statements, not lines (worst: telemetry.go (*Telemetry).setup, 35)
+    funlen:
+      lines: -1
+      statements: 35
+    # rules.md#code-complexity: cognitive complexity (worst: approvaltest.go Verify and telemetry.go setup, 13)
+    gocognit:
+      min-complexity: 13
+    # Only these two rules: revive's defaults (exported, var-naming, …) are the naming style ADR 0024 keeps out.
+    revive:
+      rules:
+        # rules.md#code-parameters (worst: approvaltest.go Verify and problem.go Write, 4; a variadic counts as one)
+        - name: argument-limit
+          arguments: [4]
+        # rules.md#code-file-length: every line, as wc -l counts (worst over all files, tests included: approvaltest.go, 205)
+        - name: file-length-limit
+          arguments: [{ max: 205, skipComments: false, skipBlankLines: false }]
     custom:
       noctxroot:
         type: module
@@ -33,7 +54,7 @@ linters:
         - pattern: ^log\.
           pkg: ^log$
           msg: "[go-structured-logging] std log package outside platform. Fix: log through the injected *slog.Logger (logging.New in platform) with key-value pairs or slog.Attr values, or return the error. See docs/harness/rules.md#go-structured-logging"
-    # rules.md#go-structured-logging: either key-value pairs or slog.Attr values per call, never both; no key-case check yet (plan 0003, P4.1)
+    # rules.md#go-structured-logging: either key-value pairs or slog.Attr values per call, never both; no key-case check (naming style, ADR 0024)
     sloglint:
       no-mixed-args: true
     depguard:
@@ -74,6 +95,12 @@ linters:
       - path: internal/platform/
         linters: [forbidigo]
         text: "std log package outside platform"
+      # ADR 0024: tests are exempt from the per-function limits and stay under code-file-length
+      - path: _test\.go
+        linters: [funlen, gocognit]
+      - path: _test\.go
+        linters: [revive]
+        text: "argument-limit"
 
 formatters:
   enable:

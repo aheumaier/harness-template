@@ -46,6 +46,23 @@ export default tseslint.config(
     },
   },
 
+  // ADR 0024 size and complexity limits (rules.md#code-function-length, #code-complexity, #code-parameters,
+  // #code-file-length). ESLint 10.13's documented defaults while the web code is a scaffold; they only go down.
+  // Every line counts (skipBlankLines and skipComments false, as in apps/api/.golangci.yml).
+  {
+    rules: {
+      'max-lines-per-function': ['error', { max: 50, skipBlankLines: false, skipComments: false }],
+      complexity: ['error', 20],
+      'max-params': ['error', 3],
+      'max-lines': ['error', { max: 300, skipBlankLines: false, skipComments: false }],
+    },
+  },
+  // Tests, Playwright journeys included, are exempt from the per-function limits and stay under max-lines.
+  {
+    files: ['**/*.test.{ts,tsx}', '**/*.e2e.ts'],
+    rules: { 'max-lines-per-function': 'off', complexity: 'off', 'max-params': 'off' },
+  },
+
   // web-domain-pure: packages/domain runs anywhere (tests, workers, server) — no browser globals.
   {
     files: ['packages/domain/**/*.ts'],

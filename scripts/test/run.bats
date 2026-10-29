@@ -32,6 +32,71 @@ setup() {
   has 'Fix B.'
 }
 
+SIZE=code-function-length,code-complexity,code-parameters,code-file-length
+GO_IDS=rule-a,go-sec,go-structured-logging,go-format,$SIZE # as lint-go passes them
+WEB_IDS=rule-a,web-lint,$SIZE                              # as lint-web passes them
+
+# remediations <ids>: a "Fix <id>." remediation in the sandbox rules.md for each id that has none yet.
+remediations() {
+  local id ids
+  IFS=',' read -ra ids <<<"$1"
+  for id in "${ids[@]}"; do
+    grep -qx "### $id" "$SANDBOX/docs/harness/rules.md" ||
+      printf '%s\n' '' "### $id" "- **Remediation:** Fix $id." >>"$SANDBOX/docs/harness/rules.md"
+  done
+}
+
+# recipe_of <ids> <finding> <rule-id>: a failure printing only <finding> shows exactly <rule-id>'s remediation.
+recipe_of() {
+  remediations "$1"
+  printf '%s\n' "$2" >"$SANDBOX/finding"
+  local status=0
+  "$RUN" lint "$1" -- bash -c 'cat "$0"; exit 1' "$SANDBOX/finding" 2>"$SANDBOX/out" || status=$?
+  [ "$status" -eq 1 ]
+  if ! grep -qx "remediation: Fix $3." "$SANDBOX/out" || [ "$(grep -c '^remediation:' "$SANDBOX/out")" -ne 1 ]; then
+    printf 'expected only the remediation of %s for: %s\nactual output:\n' "$3" "$2" >&2
+    cat "$SANDBOX/out" >&2
+    return 1
+  fi
+}
+
+@test "maps each golangci finding that cannot carry its rule id to that rule alone (ADR 0024)" {
+  # Lines as golangci-lint prints them (copied from a run over the selftest fixtures and probes).
+  recipe_of "$GO_IDS" "internal/fx/service/service.go:4:6: Function 'FixtureTooLong' has too many statements (36 > 35) (funlen)" code-function-length
+  recipe_of "$GO_IDS" 'internal/fx/service/service.go:5:1: cognitive complexity 14 of func `FixtureTooComplex` is high (> 13) (gocognit)' code-complexity
+  recipe_of "$GO_IDS" 'internal/fx/service/service.go:5:1: argument-limit: maximum number of arguments per function exceeded; max 4 but got 5 (revive)' code-parameters
+  recipe_of "$GO_IDS" 'internal/fx/service/service.go:206: file-length-limit: file length is 206 lines, which exceeds the limit of 205 (revive)' code-file-length
+  recipe_of "$GO_IDS" 'internal/fx/service/e.go:6:46: G304: Potential file inclusion via variable (gosec)' go-sec
+  recipe_of "$GO_IDS" 'internal/fx/service/f.go:6:50: key-value pairs and attributes should not be mixed (sloglint)' go-structured-logging
+  recipe_of "$GO_IDS" 'internal/fx/service/g.go:5:1: File is not properly formatted (gofmt)' go-format
+}
+
+@test "maps each ESLint finding to its rule alone; web-lint takes the unmapped ones (ADR 0024)" {
+  # Lines as ESLint's stylish format prints them; max-lines must not match max-lines-per-function, nor the reverse.
+  recipe_of "$WEB_IDS" "  2:8  error  Function 'fixtureTooComplex' has a complexity of 21. Maximum allowed is 20  complexity" code-complexity
+  recipe_of "$WEB_IDS" "  2:8  error  Function 'fixtureTooManyParams' has too many parameters (4). Maximum allowed is 3  max-params" code-parameters
+  recipe_of "$WEB_IDS" "  1:8  error  Function 'fixtureTooLong' has too many lines (51). Maximum allowed is 50  max-lines-per-function" code-function-length
+  recipe_of "$WEB_IDS" '  301:1  error  File has too many lines (301). Maximum allowed is 300  max-lines' code-file-length
+  recipe_of "$WEB_IDS" '  2:16  error  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any' web-lint
+  # A finding that names another given rule is that rule's, not web-lint's.
+  recipe_of "$WEB_IDS,web-x" "  1:1  error  [web-x] fetch is not allowed  no-restricted-globals" web-x
+}
+
+@test "prints a split recipe only when its finding is there, even when nothing is named (ADR 0024)" {
+  remediations "$GO_IDS,$WEB_IDS"
+  run -1 "$RUN" golangci "$GO_IDS" -- bash -c "echo 'x.go:1:1: Error return value is not checked (errcheck)'; exit 1"
+  has 'Fix A.'
+  run ! grep -qE 'Fix (code|go)-' <<<"$output"
+  # web-lint is the catch-all, so it stays in the fallback (e.g. ESLint crashing before any finding).
+  run -2 "$RUN" eslint "$WEB_IDS" -- bash -c 'echo "Oops! Something went wrong!"; exit 2'
+  has 'Fix A.'
+  has 'Fix web-lint.'
+  run ! grep -q 'Fix code-' <<<"$output"
+  # When every rule given has a pattern (the pre-commit hook's go-format alone), they all print.
+  run -1 "$RUN" golangci-fmt go-format -- bash -c 'echo "--- x.go.orig"; exit 1'
+  has 'Fix go-format.'
+}
+
 @test "runs in --dir and truncates long output" {
   HARNESS_MAX_LINES=2 run -1 "$RUN" sensor rule-a --dir sub -- bash -c 'seq 6; exit 1'
   has 'cwd: sub'

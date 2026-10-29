@@ -28,6 +28,9 @@ API  := apps/api
 scoped = scope="$$(scripts/harness/affected.sh $(1))" || scope="$(2)"; [[ -n "$$scope" ]] || \
 	{ echo "$@: skipped, nothing it checks is affected (make check-all runs it)"; exit 0; };
 GCL  := .bin/golangci-lint-custom
+# ADR 0024's size and complexity limits, one rule id per measure, checked by lint-go and lint-web. The linters'
+# messages cannot carry the id: run.sh maps each finding to its id, so only that measure's split recipe prints.
+SIZE_RULES := code-function-length,code-complexity,code-parameters,code-file-length
 ANALYZERS_SRC := $(shell find $(API)/tools/analyzers -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
 HARNESS     := .bin/harness
 HARNESS_SRC := $(shell find $(API)/tools/harness -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
@@ -192,7 +195,7 @@ fmt: $(GCL) ## Auto-format Go and shell code
 	@shfmt -w $(SH_FILES)
 
 lint-go: $(GCL)
-	@$(call scoped,go,./...) $(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-test-helpers-only-in-tests,go-domain-isolation,go-structured-logging,go-sec,go-format --dir $(API) -- ../../$(GCL) run $$scope
+	@$(call scoped,go,./...) $(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-test-helpers-only-in-tests,go-domain-isolation,go-structured-logging,go-sec,go-format,$(SIZE_RULES) --dir $(API) -- ../../$(GCL) run $$scope
 
 arch-go:
 	@$(RUN) go-arch-lint go-layers --dir $(API) -- go-arch-lint check --output-color=false
@@ -215,7 +218,7 @@ deadcode-go: ## Unreachable Go functions (drift.yml; deadcode exits 0, so fail o
 ##@ Web sensors (apps/web, packages/*)
 .PHONY: lint-web arch-web typecheck-web test-web knip
 lint-web:
-	@$(call scoped,web,.) $(RUN) eslint web-no-direct-http,web-domain-pure,web-lint -- eslint --max-warnings=0 $$scope
+	@$(call scoped,web,.) $(RUN) eslint web-no-direct-http,web-domain-pure,web-lint,$(SIZE_RULES) -- eslint --max-warnings=0 $$scope
 
 arch-web:
 	@$(call scoped,web,apps packages) $(RUN) dependency-cruiser web-domain-pure,web-no-cross-app -- depcruise $$scope --config .dependency-cruiser.cjs --output-type err $(DEPCRUISE_CACHE)

@@ -60,21 +60,21 @@ whose `fixture.conf` tests that rule, or says `none (<reason>)` ([rules-fixture-
 ### go-structured-logging
 - **Rule:** No `fmt.Print`/`Printf`/`Println` anywhere in the API module, tests included (the invariant `internal/platform/logging/logging.go` states; `fmt.Fprint*` to an explicit writer stays allowed), no std `log` package outside `internal/platform`, and no `slog` call that mixes key-value pairs and `slog.Attr` values (plan 0003 Q4). Not covered, so review owns them: `fmt.Fprint*` to `os.Stdout` or `os.Stderr`, `os.Stdout.Write`/`os.Stderr.Write`, and the builtin `print`/`println`. Suppress with `//nolint:forbidigo // reason: … (rule: go-structured-logging)` (or `nolint:sloglint`).
 - **Why:** Agents read the running app through its JSON logs; unstructured lines on stdout cannot be filtered by request ID or level, and mixed slog args are easy to misalign.
-- **Sensor:** golangci-lint `forbidigo` (by package path, `analyze-types`) and `sloglint` (`no-mixed-args`, no key-case check yet: plan 0003 P4.1), `make lint-go` (the per-edit hook runs the same linters but does not list this rule id yet, so it prints the other `lint-go` rules' remediations instead of this one). sloglint's message cannot carry the rule id, so a sloglint-only failure prints every `lint-go` remediation, and one next to another rule's finding prints only that rule's.
+- **Sensor:** golangci-lint `forbidigo` (by package path, `analyze-types`) and `sloglint` (`no-mixed-args`; no key-case check, naming style stays out: [ADR 0024](../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md)), `make lint-go` (the per-edit hook runs the same linters but does not list this rule id yet, so it prints the other `lint-go` rules' remediations instead of this one). sloglint's message cannot carry the rule id, so `run.sh` maps a line ending in `(sloglint)` to this rule (`finding_pattern`) and prints this remediation, also next to another rule's finding.
 - **Remediation:** Log through the injected `*slog.Logger` (built by `logging.New` in platform) with either key-value pairs or `slog.Attr` values in one call, not both, or return the error to the caller instead of printing it.
 - **Fixture:** `fixtures/go-structured-logging-fmt-print`, `fixtures/go-structured-logging-slog-mixed-args` · Status: team-convention ([ADR 0015](../adr/0015-anticipated-rules-and-nfr-classes-b-o.md))
 
 ### go-sec
 - **Rule:** No gosec finding in the API module (SAST: file paths built from variables, some subprocess calls built from variables, weak crypto or randomness, unchecked integer conversions, hard-coded credentials, servers without timeouts, …), tests included, since a test can still leak a credential or shell out unsafely (plan 0003 Q6). Generated code is excluded. Suppress a false positive on its line only, with `//nolint:gosec // reason: … (rule: go-sec)`; never disable a gosec check globally. gosec does not catch every subprocess call built from variables: G204 in the pinned gosec does not fire on `exec.Command(name)` with `name` a function parameter (exec plan 0003, A13), so review owns every `exec.Command`. Typical fixes: `os.Root` or a fixed root plus `filepath.Clean` for paths, a fixed argv for `exec.Command`, `crypto/rand`, bounds-checked conversions, credentials from config, `ReadHeaderTimeout` on servers.
 - **Why:** Agents write code faster than humans review it; a computational SAST sensor catches the common Go security mistakes before review does (Böckeler, SAST as a computational sensor).
-- **Sensor:** golangci-lint `gosec` with all checks at its defaults, `make lint-go` (the per-edit hook runs the same linters but does not list this rule id yet, so it prints the other `lint-go` rules' remediations instead of this one). Semgrep stays out until a domain needs what gosec cannot cover. gosec's message (`G304: … (gosec)`) cannot carry the rule id, so a gosec-only failure prints every `lint-go` remediation, and one next to another rule's finding prints only that rule's. The separate modules `tools/analyzers` and `tools/harness` are not linted by `lint-go`.
+- **Sensor:** golangci-lint `gosec` with all checks at its defaults, `make lint-go` (the per-edit hook runs the same linters but does not list this rule id yet, so it prints the other `lint-go` rules' remediations instead of this one). Semgrep stays out until a domain needs what gosec cannot cover. gosec's message (`G304: … (gosec)`) cannot carry the rule id, so `run.sh` maps a line ending in `(gosec)` to this rule (`finding_pattern`) and prints this remediation, also next to another rule's finding. The separate modules `tools/analyzers` and `tools/harness` are not linted by `lint-go`.
 - **Remediation:** Fix what the finding's `G<nnn>` id names (see the gosec rule list); for a false positive add `//nolint:gosec // reason: … (rule: go-sec)` on that line only.
 - **Fixture:** `fixtures/go-sec-file-inclusion` · Status: team-convention ([ADR 0015](../adr/0015-anticipated-rules-and-nfr-classes-b-o.md))
 
 ### go-format
 - **Rule:** Go code is `gofmt`/`goimports` formatted (local prefix `github.com/aheumaier/harness-template`).
 - **Why:** Formatting noise hides real diffs from reviewers and agents.
-- **Sensor:** golangci-lint formatters, `make lint-go`; the `pre-commit` git hook (`scripts/harness/pre-commit.sh`) on the staged Go files (`golangci-lint fmt --diff`).
+- **Sensor:** golangci-lint formatters, `make lint-go` (`run.sh` maps a line ending in `(gofmt)` or `(goimports)` to this rule); the `pre-commit` git hook (`scripts/harness/pre-commit.sh`) on the staged Go files (`golangci-lint fmt --diff`).
 - **Remediation:** Run `make fmt`.
 - **Fixture:** none (formatter, auto-fixable) · Status: seed
 
@@ -220,7 +220,7 @@ whose `fixture.conf` tests that rule, or says `none (<reason>)` ([rules-fixture-
 ### web-lint
 - **Rule:** TypeScript passes `typescript-eslint` `strictTypeChecked` and `react-hooks` recommended, with zero warnings and no unused disable directives.
 - **Why:** Type-aware lint catches unsafe `any` flows and hook-order bugs that tsc accepts.
-- **Sensor:** ESLint, `make lint-web`; fast-check hook per edited file.
+- **Sensor:** ESLint, `make lint-web`; fast-check hook per edited file. `run.sh` maps every ESLint finding that no other `lint-web` rule names or maps (the four size rules) to this rule, so its remediation also prints next to a size finding.
 - **Remediation:** Fix the reported line; do not add `eslint-disable` (harness-integrity rejects disables without a reason and rule reference).
 - **Fixture:** `fixtures/web-lint-dependent-workspace` · Status: seed
 
@@ -251,6 +251,38 @@ whose `fixture.conf` tests that rule, or says `none (<reason>)` ([rules-fixture-
 - **Sensor:** knip (`knip.json`), `make knip` (check-all, drift.yml).
 - **Remediation:** Delete the unused file/export/dependency; if it is used in a way knip cannot see, configure it in `knip.json` and say why in the PR.
 - **Fixture:** `fixtures/web-unused-file` · Status: seed
+
+## Size and complexity (apps/api, apps/web, packages/*)
+
+Maintainability sensors, not style ([ADR 0024](../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md)): each bounds how much code an agent must hold in one read to change it safely. One rule per measure, checked in Go by golangci-lint (`apps/api/.golangci.yml`, `make lint-go`, the `apps/api` module only, not `tools/analyzers` or `tools/harness`) and in TypeScript by ESLint core rules (`eslint.config.mjs`, `make lint-web`). Generated code is excluded. The Go thresholds are the worst value at P4.2's base `1b7aa0f`, re-verified at `0bd8958` (per-function limits: worst non-test function; file length: worst file, tests included); the TS thresholds are ESLint 10.13's documented defaults while the web code is a scaffold. Thresholds only go down, by a harness PR once the code that set them is split; raising one needs an ADR that supersedes 0024. Tests (`*_test.go`, `*.test.ts`, `*.test.tsx`, and the Playwright journeys `*.e2e.ts`, which are tests too) are exempt from the three per-function limits and stay under the file-length limit; test setup that is not a test (`playwright.config.ts`, `e2e/global-setup.ts`) stays under all four. The linters' messages cannot carry the rule id, so `run.sh` maps each finding to its rule (`finding_pattern`: golangci's linter name, revive's rule name, ESLint's rule name) and prints only that measure's split recipe; a failure without such a finding never prints a split recipe. The per-edit hook (`fast-check.sh`) runs the same linters but does not list these rule ids yet, so it prints the other lint rules' remediations instead. golangci reports one finding per line, so a function over two limits shows the second after the first is fixed. A unit that truly cannot be split takes a suppression on its line, e.g. `//nolint:funlen // reason: … (rule: code-function-length)` or `// eslint-disable-next-line max-params -- reason: … (rule: code-parameters)`.
+
+### code-function-length
+- **Rule:** No function longer than its threshold: Go at most 35 statements (`funlen`, statements only, line check off); TS at most 50 lines including blanks and comments (`max-lines-per-function`). Tests exempt.
+- **Why:** A long function makes the agent hold every step at once to change one; a statement count does not change with formatting or long literals ([ADR 0024](../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md)).
+- **Sensor:** golangci-lint `funlen` (`make lint-go`, threshold set by `internal/platform/telemetry/telemetry.go` `(*Telemetry).setup`); ESLint `max-lines-per-function` (`make lint-web`).
+- **Remediation:** Extract each step the function performs into a named helper in the same file, kept next to its caller, so the function reads as a list of calls.
+- **Fixture:** `fixtures/go-function-too-long`, `fixtures/web-function-too-long` · Status: team-convention ([ADR 0024](../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md))
+
+### code-complexity
+- **Rule:** No function more complex than its threshold: Go cognitive complexity at most 13 (`gocognit`); TS cyclomatic complexity at most 20 (`complexity`). Tests exempt.
+- **Why:** Nested branches are what make a function hard to read and to change without breaking a case; cognitive complexity penalises nesting ([ADR 0024](../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md)).
+- **Sensor:** golangci-lint `gocognit` (`make lint-go`, threshold set by `internal/platform/approvaltest/approvaltest.go` `Verify` and `telemetry.go` `(*Telemetry).setup`); ESLint `complexity` (`make lint-web`).
+- **Remediation:** Return early for error and edge cases instead of nesting `else`, move each branch body of a long `if`/`switch` into a function named after the case, and replace a flag parameter with two functions.
+- **Fixture:** `fixtures/go-function-too-complex`, `fixtures/web-function-too-complex` · Status: team-convention ([ADR 0024](../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md))
+
+### code-parameters
+- **Rule:** No function with more parameters than its threshold: Go at most 4, a variadic counting as one (`revive` `argument-limit`); TS at most 3 (`max-params`). Tests exempt.
+- **Why:** Long parameter lists are easy to pass in the wrong order and hide the values that belong together ([ADR 0024](../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md)).
+- **Sensor:** golangci-lint `revive` `argument-limit` (`make lint-go`, threshold set by `approvaltest.go` `Verify` and `internal/platform/problem/problem.go` `Write`; tests excluded by a text-matched `exclusions.rules` entry); ESLint `max-params` (`make lint-web`).
+- **Remediation:** Group parameters that travel together into a struct (Go) or an object parameter (TS), or make them fields of the receiver they belong to; use an options struct or functional options for optional values.
+- **Fixture:** `fixtures/go-too-many-params`, `fixtures/web-too-many-params` · Status: team-convention ([ADR 0024](../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md))
+
+### code-file-length
+- **Rule:** No file longer than its threshold, every line counted as `wc -l` does: Go at most 205 lines (`revive` `file-length-limit`); TS/JS at most 300 lines (`max-lines`). Tests included.
+- **Why:** A file is the unit an agent reads to learn a responsibility; one that holds several makes every change read them all ([ADR 0024](../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md)).
+- **Sensor:** golangci-lint `revive` `file-length-limit` (`make lint-go`, threshold set by `internal/platform/approvaltest/approvaltest.go`, which is protected, so lowering it is a harness PR); ESLint `max-lines` (`make lint-web`).
+- **Remediation:** Split the file by responsibility into sibling files in the same package or directory (`handlers.go`, `handlers_export.go`) with no new package and no change to the import graph; in TS, move a component's helpers into their own module next to it.
+- **Fixture:** `fixtures/go-file-too-long`, `fixtures/web-file-too-long` · Status: team-convention ([ADR 0024](../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md))
 
 ## Generated code
 
