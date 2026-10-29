@@ -27,7 +27,24 @@ var (
 	// History keeps the name it was written under; README.md describes the template itself; this file and
 	// its test hold the template identity on purpose.
 	renameSkipped = regexp.MustCompile(`^(docs/adr/|docs/exec-plans/|README\.md$|apps/api/tools/harness/rename(_test)?\.go$)`)
+	// The rename is the moment a repo stops being the template: from then on template sync
+	// (scripts/harness/sync-check.sh, ADR 0026) compares it with the template's URL, written here verbatim,
+	// neither renamed nor reported as a leftover.
+	upstreamFile = "scripts/tool-versions.env"
+	upstreamLine = "HARNESS_UPSTREAM=https://" + templateModule
+	upstreamRe   = regexp.MustCompile(`(?m)^HARNESS_UPSTREAM=.*$`)
 )
+
+// setUpstream points HARNESS_UPSTREAM in tool-versions.env at the template, appending the line if missing.
+func setUpstream(s string) string {
+	if upstreamRe.MatchString(s) {
+		return upstreamRe.ReplaceAllLiteralString(s, upstreamLine)
+	}
+	if s != "" && !strings.HasSuffix(s, "\n") {
+		s += "\n"
+	}
+	return s + upstreamLine + "\n"
+}
 
 type renamer struct {
 	*strings.Replacer
@@ -56,6 +73,7 @@ func newRenamer(name, module, owner string) renamer {
 func (r renamer) leftovers(s string) []int {
 	var lines []int
 	s = strings.ReplaceAll(s, r.module, "")
+	s = strings.ReplaceAll(s, upstreamLine, "")
 	for i, l := range strings.Split(s, "\n") {
 		for _, tok := range r.leftover {
 			if strings.Contains(l, tok) {
@@ -134,6 +152,9 @@ func renameRepo(root, name, module, owner string, write bool, stdout io.Writer) 
 			continue // binary
 		}
 		out := r.Replace(string(b))
+		if f == upstreamFile {
+			out = setUpstream(out) // after the rewrite: the template's URL stays the template's
+		}
 		for _, n := range r.leftovers(out) {
 			left = append(left, fmt.Sprintf("%s:%d", f, n))
 		}

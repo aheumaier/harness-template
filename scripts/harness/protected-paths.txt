@@ -30,6 +30,7 @@ Makefile config
 .github/CODEOWNERS config
 scripts/harness/protected-paths.txt config
 scripts/tool-versions.env config
+.harness-version config
 scripts/github-branch-protection.sh config
 scripts/install-tools.sh config
 scripts/gen-schema-doc.sh config

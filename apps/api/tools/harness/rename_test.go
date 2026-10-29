@@ -37,6 +37,41 @@ func TestRenamer(t *testing.T) {
 	}
 }
 
+// The rename points template sync at the template (ADR 0026): written after the rewrite, never renamed, never
+// a leftover, and a second run changes nothing.
+func TestRenameSetsUpstream(t *testing.T) {
+	root := linkRepo(t, map[string][]string{
+		upstreamFile:   {"# harness-template sync", "GO_TOOLCHAIN=go1", "HARNESS_UPSTREAM="},
+		"package.json": {`{"name": "harness-template"}`},
+	})
+	gitT(t, root, "add", "-A")
+	args := []string{"-write", root, "acme-shop", "github.com/acme/shop", "@acme"}
+	code, out := renameRun(t, args...)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	want := "# acme-shop sync\nGO_TOOLCHAIN=go1\nHARNESS_UPSTREAM=https://github.com/aheumaier/harness-template\n"
+	if b, err := os.ReadFile(filepath.Join(root, upstreamFile)); err != nil || string(b) != want {
+		t.Errorf("%s = %q, %v; want %q", upstreamFile, b, err, want)
+	}
+	if strings.Contains(out, "still hold") {
+		t.Errorf("upstream line reported as a leftover: %s", out)
+	}
+	if code, out := renameRun(t, args...); code != 0 || !strings.Contains(out, "0 files") {
+		t.Errorf("second run not a no-op: exit %d: %s", code, out)
+	}
+	for in, want := range map[string]string{
+		"A=1\n":                      "A=1\n" + upstreamLine + "\n", // a missing line is appended
+		"A=1":                        "A=1\n" + upstreamLine + "\n",
+		"HARNESS_UPSTREAM=x\nB=2\n":  upstreamLine + "\nB=2\n",
+		"HARNESS_UPSTREAM=\n# end\n": upstreamLine + "\n# end\n",
+	} {
+		if got := setUpstream(in); got != want {
+			t.Errorf("setUpstream(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestRenameRepo(t *testing.T) {
 	root := linkRepo(t, map[string][]string{
 		"apps/api/go.mod":                    {"module github.com/aheumaier/harness-template/apps/api"},

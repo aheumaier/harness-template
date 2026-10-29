@@ -26,6 +26,7 @@ tsconfig*.json              @aheumaier
 /scripts/test/              @aheumaier
 /scripts/git-hooks/         @aheumaier
 /scripts/tool-versions.env  @aheumaier
+/.harness-version           @aheumaier
 /scripts/install-tools.sh   @aheumaier
 /scripts/gen-schema-doc.sh  @aheumaier
 /scripts/github-branch-protection.sh  @aheumaier

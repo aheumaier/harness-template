@@ -1,0 +1,4 @@
+# Template sync (docs/harness/rules.md#harness-upstream-in-sync): the upstream template commit whose harness
+# files this repo last took. make harness-sync-check lists what changed upstream since. Change it only in the
+# harness PR that ports those changes.
+071e2b9410ea4a4439124ade578a5dd46c44f2cd

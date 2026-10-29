@@ -1,5 +1,6 @@
 # Harness file (protected). Weekly sweep for drift that accumulates without any single PR causing it:
-# dead code, known vulnerabilities in dependencies, a stale schema doc, dead doc links, test coverage that
+# dead code, known vulnerabilities in dependencies, a stale schema doc, dead doc links, harness files behind the
+# template (make harness-sync-check; anonymous fetch, so a private template exits 2), test coverage that
 # fell since the last run, mutants that survived in the week's changes, and the advisory findings of three
 # read-only review agents (security, data handling, modularity; ci.md#scheduled-reviews). Findings go to one
 # open issue labelled `drift` (created, or commented on). When enabled, agent-gc proposes fixes for the doc
@@ -277,7 +278,7 @@ jobs:
           report="$RUNNER_TEMP/drift.md"
           fence='```'
           : >"$report"
-          for target in deadcode-go knip vuln-go vuln-deps docs-links; do
+          for target in deadcode-go knip vuln-go vuln-deps docs-links harness-sync-check; do
             if ! out="$(make "$target" 2>&1)"; then
               printf '### make %s\n\n%s\n%s\n%s\n\n' "$target" "$fence" "$out" "$fence" >>"$report"
             fi

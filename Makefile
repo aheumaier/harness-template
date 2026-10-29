@@ -318,12 +318,17 @@ vuln-deps: $(GCL) ## Known vulns in pnpm-lock.yaml and every go.mod (fetches the
 	@$(RUN) trivy-vuln deps-no-known-vulns -- scripts/harness/trivy.sh vuln
 
 ##@ CI and harness integrity (.github/, protected harness files)
-.PHONY: lint-ci harness-integrity commits specs
+.PHONY: lint-ci harness-integrity harness-sync-check commits specs
 lint-ci: ## actionlint (+ shellcheck on run: blocks) on .github/workflows
 	@$(RUN) actionlint ci-workflows-valid -- actionlint -no-color
 
 harness-integrity: $(HARNESS) ## Added suppressions carry a reason; harness configs are not loosened (vs BASE_REF)
 	@$(RUN) integrity harness-suppression-reason,harness-config-not-loosened -- env BASE_REF="$(BASE_REF)" $(HARNESS) integrity-check .
+
+# Reads the network (fetches HARNESS_UPSTREAM), so not in check or check-all: drift.yml runs it weekly. The URL
+# comes from scripts/tool-versions.env; a command-line HARNESS_UPSTREAM=<url> reaches the script by make's export.
+harness-sync-check: ## Harness files changed upstream since .harness-version and not taken here (HARNESS_UPSTREAM in tool-versions.env or on the command line; empty: the template); applies nothing
+	@$(RUN) harness-sync harness-upstream-in-sync -- scripts/harness/sync-check.sh
 
 # PR_TITLE reaches these from the pull_request_target job as an env var (ADR 0011): never write $(PR_TITLE)
 # in a recipe, make would expand a title like `$(shell …)` in a job that holds the base branch's checkout.

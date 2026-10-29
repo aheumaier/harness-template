@@ -53,7 +53,9 @@ Claude Code hooks fail closed.
 ## (a) New project
 
 1. **Create the repo** from this template, using GitHub's "Use this template" or a fresh clone with new
-   history.
+   history. Write the template commit you copied from to `.harness-version`, so
+   [template sync](#keeping-up-with-the-template) can tell what you have not taken yet (step 3 points
+   `HARNESS_UPSTREAM` at the template).
 2. **Set up and prove green:**
    ```sh
    make setup
@@ -79,6 +81,9 @@ Claude Code hooks fail closed.
      [ARCHITECTURE.md](ARCHITECTURE.md); both are protected, so a human does it.
    - **MODULE is the repository path.** It also becomes the OpenAPI `url: https://<MODULE>` and every
      `https://github.com/aheumaier/harness-template/...` link, so use `host.tld/owner/repo`.
+   - **Template sync:** it also writes `HARNESS_UPSTREAM=https://github.com/aheumaier/harness-template` to
+     `scripts/tool-versions.env`, the one line it neither renames nor reports: from here on the repo is a
+     product that [template sync](#keeping-up-with-the-template) compares with the template.
    - **Leftovers:** the tool lists every path and line that still holds `harness-template` or `aheumaier`
      in a form it doesn't rename (an SSH remote, a file name). Fix those by hand.
    - **Running it again:** a second run changes nothing. A value that contains a template token
@@ -121,7 +126,7 @@ The harness has three kinds of parts:
   - the guide layout and `AGENTS.md`/`CLAUDE.md` pairs;
   - the rules.md format (rule, why, sensor, remediation, fixture);
   - in `scripts/harness/`: `run.sh`, `unchanged.sh`, `determinism.sh`, `check-commits.sh`, `timing.sh`,
-    `nfr-report.sh`, `merge-base.sh`, `trivy.sh`, `hook-bootstrap.sh`, and `selftest.sh` except its
+    `nfr-report.sh`, `merge-base.sh`, `trivy.sh`, `hook-bootstrap.sh`, `sync-check.sh`, and `selftest.sh` except its
     `node_modules` copy and its `atlas migrate hash` call;
   - in `.claude/hooks/`: `protect-harness.sh`, `guard-bash.sh` and `only-make-check.sh`;
   - the Go harness tool in `apps/api/tools/harness/`, except the two path excludes in `integritycheck.go`;
@@ -135,11 +140,13 @@ The harness has three kinds of parts:
   - their linter configs;
   - the generators (oapi-codegen, sqlc, orval, atlas).
 
-There is no adoption script and no template sync yet (see "Keeping up with the template" below). Adopt by
-hand, in one reviewed harness PR:
+There is no adoption script; once adopted, [template sync](#keeping-up-with-the-template) reports what the
+template changed since. Adopt by hand, in one reviewed harness PR:
 
 1. **Branch** in the existing repo, for example `harness/adopt`. Note the template commit you copy from, in the
-   PR description and in an ADR.
+   PR description, in an ADR and in `.harness-version`. Set `HARNESS_UPSTREAM` in `scripts/tool-versions.env`
+   to the template's git URL by hand: step 4 may not run `make rename`, and an empty value means "this
+   repository is the template", so template sync would stay silent.
 2. **Build the hooks' parser first.** The template's Claude Code hooks fail closed while `.bin/harness` is
    missing. Every Bash call is then blocked, and without `HARNESS_EDIT=1` every edit too, except `make setup`
    and `make .bin/harness` ([hook-bootstrap.sh](scripts/harness/hook-bootstrap.sh)). The block message says to
@@ -317,15 +324,25 @@ hand, in one reviewed harness PR:
 
 ## Keeping up with the template
 
-Template drift is not automated yet. [Exec plan 0003](docs/exec-plans/active/0003-harness-gap-closure.md) (P4.3)
-plans two pieces:
+Template sync reports drift and never applies anything ([ADR 0026](docs/adr/0026-template-sync-is-a-drift-report.md),
+[rule](docs/harness/rules.md#harness-upstream-in-sync)):
 
-- a `.harness-version` marker;
-- `make harness-sync-check`, which diffs the protected paths against an upstream tag and never applies
-  anything.
+- `.harness-version` holds the template commit this repo was copied from, or last synced to. Use the commit
+  you actually copied: a newer one hides the changes in between. `# declined <path>: <why>` lines in it skip
+  harness files you chose not to take.
+- `HARNESS_UPSTREAM` in `scripts/tool-versions.env` is the template's git URL, written by `make rename` (by
+  hand in a brownfield adoption). Empty means this repository is the template: the check prints a notice and
+  exits 0. `make harness-sync-check HARNESS_UPSTREAM=<url>` overrides it for one run.
+- `make harness-sync-check` fetches the upstream's default branch anonymously into a temp repo and lists each
+  protected path (except `.harness-version`) that changed there since the marker and differs here, marking
+  files you changed too or no longer have. The script exits 0 when in sync, 1 when behind, and 2 when it
+  cannot check (a malformed marker, a refused URL such as one with credentials in it, a failed fetch, a marker
+  not in upstream's history); make reports 1 and 2 alike as its exit 2. It reads the network, so it is not
+  in `make check` or `check-all`; the weekly drift run includes it, where a private template exits 2 (run it
+  locally with your credentials).
 
-Until then, compare the protected paths against the template commit you recorded, and port changes in a harness
-PR.
+To catch up, port the listed files (or decline them) in a harness PR, then write the upstream commit the
+report names to `.harness-version`.
 
 ## Where next
 
