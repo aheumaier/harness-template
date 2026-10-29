@@ -107,8 +107,11 @@ PR; **–** needs none.
   from `OTEL_{TRACES,METRICS,LOGS}_EXPORTER` and `OTEL_EXPORTER_OTLP_ENDPOINT`, validated in config; RED
   metrics per route via otelhttp; logs through an otelslog bridge;
   [ADR 0021](../../adr/0021-telemetry-export-over-otlp-http.md) proposed; defaults stay `none` until P1.4
-- [ ] P1.4 — H — `compose.yaml` profile `obs` on the worktree's port block; `make obs-up`, `make logs`,
-  `make metrics`
+- [x] P1.4 — 5b7e649 — done — the agent could not read its own telemetry → compose profile `obs`
+  (pinned `grafana/otel-lgtm`, `127.0.0.1` ports +3..+7 of the worktree block); `make obs-up`/`obs-down`/
+  `down`, `make logs REQUEST_ID=…|QUERY=…`, `make traces ID=…`, `make metrics QUERY=…`
+  (`scripts/obs-query.sh`, jq pinned in `.bin/`); NFR-O1 met by hand (p95 `/healthz` 4.75 ms). Open: no
+  `check-all` test for NFR-O1 yet (TD-32)
 - [ ] P1.5 — H — `make dev` writes structured logs to `.tmp/dev/*.log`; skill `query-runtime`
 - [x] P2.1 — 6884b56 — a scaffolded domain had no tests → `new-domain.sh` generates a service test (fake
   store), a handler test (strict server + `httptest`) and an integration test, green on generation; the CI
@@ -708,3 +711,20 @@ code: `deadcode` and knip do that without false positives from entry points they
   fast-check hook does not run `approved-check` on `testdata/approved/*.json` edits; an
   `api-approved-change-declared` PR-template rule; the P2.1 scaffold could emit an approval test once TD-30
   is paid. harness-tests 5.8–6.7 s against its 5 s budget (NFR-H5).
+- 2026-10-29: P1.4 integrated (5b7e649, rebased from lane 7b5f0a8; tracker conflict merged, TD-32 between
+  TD-33 and TD-31). Reviewed once, fixed in one retry; final shape: ADR 0017 amends ADR 0008 (port block
+  +0..+7, `reserved_ports` reads every `*_PORT`, `.env.local` reused) and records that `jq` is a pinned
+  download, that `make dev` turns the exporters off when nothing listens on `OTLP_PORT` (restart dev after
+  `make obs-up`), and who owns an image reference (`POSTGRES_IMAGE` frozen per worktree in `.env.local`
+  because of its volume, `OBS_IMAGE` read live from `tool-versions.env`, name:tag@digest); SECURITY.md
+  names the loopback-only obs ports, unauthenticated OTLP and Grafana admin/admin; 16 bats tests for
+  `obs-query.sh` against canned responses (TD-32). Verified by hand in the lane: `make logs
+  REQUEST_ID=orch-check-2` → 1 line with its trace ID, `make traces ID=…` → the server span and its
+  `pool.acquire` child, `make metrics QUERY='histogram_quantile(0.95, …)'` → 4.75 ms for `/healthz` (NaN
+  until enough requests); NFR-O1's Today cell updated. Deferred: the NFR-O1 `check-all` integration test
+  (pulls the 2.58 GB image), decided in P1.5 or at the Phase 1 gate. Hand-off: every existing worktree
+  reruns `make setup` once (new ports and `OTEL_*` in `.env.local`); compose outside make is unsupported
+  (`OBS_IMAGE` comes from make); a `$` in a make command-line value needs `$$` or the env form;
+  `POSTGRES_IMAGE` stays tag-only (digest pin is a human TODO); jq 1.8.2 is from 2026-06-20. Noticed
+  (protected): add the obs targets to AGENTS.md's "Also:" line; sensor candidates
+  `compose-env-provided` and `compose-ports-loopback-from-block`.
