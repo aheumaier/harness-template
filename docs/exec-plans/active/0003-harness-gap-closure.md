@@ -195,7 +195,9 @@ PR; **–** needs none.
   `check-links` found and opens one small PR (advisory, ADR 0019 amended), confined to its target files, no
   protected path, AGENTS.md or CLAUDE.md; off until `AGENT_GC_ENABLED` and the `agent-gc` environment's
   `AGENT_GC_TOKEN` are set (TD-50)
-- [ ] P3.5 — H — QUALITY.md grades per domain and layer, `Updated:` date, staleness check in drift
+- [x] P3.5 — 5be0ad6 — done — QUALITY rows unchecked → `make docs-quality-shape` (deterministic, in `check-all`
+  and the generator-probe) and age-only `make docs-quality` in drift; rows per backend domain and layer with
+  `Updated` (ADR 0028; frontend not graded TD-56, domain list twice TD-55)
 - [ ] P3.6 — H — `repo-no-orphan-scripts` (unreferenced scripts and make targets); `deadcode-go` into
   `check-all`
 - [x] P3.7 — 8e4f77b — done — no clone detection → `repo-no-clones`: golangci `dupl` threshold 26 per package
@@ -431,8 +433,8 @@ the feedback.
 - **P3.3 — scheduled reviews.** Weekly security, data-handling and modularity reviews (Böckeler's three).
   Each is a skill in `.claude/skills/` and appends a section to the drift issue.
 - **P3.4 — `agent-gc`.** Turn on the stub in `drift.yml` once P3.1 is accepted. It opens small fix-up PRs for
-  findings of the computational doc checks (Q3, broken links, stale QUALITY rows) and never touches protected
-  paths.
+  findings of the computational doc checks (Q3, broken links; stale QUALITY rows only once a grading agent
+  exists, ADR 0028) and never touches protected paths.
 - **P3.5 — quality grades.** `docs/QUALITY.md` grades per domain *and* layer, each row with an `Updated:`
   date. The drift run flags rows older than 30 days or rows for deleted domains. `new-domain.sh` already
   writes the row marker (`harness:quality-rows`).
@@ -1031,3 +1033,25 @@ give it a sensor. Each touches protected paths.
   dirty tree. Post-commit security review: jscpd's import `ignorePattern` can span newlines and `format` lacks
   `jsx`, so a shaped TS clone can evade the sensor (TD-53). Lane `check` green, `harness-selftest` 59/59, `lint-ci`, `knip` and `clones-web` green,
   `check-all` red only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
+- 2026-10-29: P3.5 done (5be0ad6). `.bin/harness quality-rows` with one table parser and two modes: `-no-clock`
+  (`make docs-quality-shape`, rules `docs-quality-rows-well-formed` and `docs-quality-rows-match-domains`) and the
+  clock mode (`make docs-quality`, `docs-quality-row-fresh`, age only, UTC, 30 days). Deviation from the plan's
+  "the drift run flags rows older than 30 days or rows for deleted domains": the deterministic half (shape,
+  deleted and missing domains) gates `check-all` and the required generator-probe; only the age check is
+  drift-only, because a clock-dependent sensor in a required job breaks NFR-R1 and only the domain's reviewer can
+  re-grade a row (ADR 0028). This reverses the P3.4 Log note that P3.5's staleness check must join agent-gc's
+  `RULES`: agent-gc does not fix QUALITY rows until a grading agent exists (P3.4 bullet amended). `new-domain.sh`
+  writes today into the scaffolded row; `TestQualityRowTemplateMatchesHeader` renders the real template under
+  the real header. Fixtures `docs-quality-row-malformed`, `-missing`, `-orphan` (shape) and `-stale` (age).
+  Review: architecture CHANGES (9, plus a template-parser test and a deterministic half), code CHANGES (13); the
+  blocker was the clock sensor in the generator-probe; all fixed in one retry. Rebase onto 6a6a435: Makefile
+  `check-all` list (clones-web and docs-quality-shape both kept), ADR index, tracker, ci.md drift row and
+  drift.yml (header and Sweep targets: harness-sync-check and docs-quality both kept; two markers there were
+  missed at first and caught by `lint-ci`, then rechecked).
+  Noticed: `.claude/agents/code-reviewer.md:33` should ask for a grade per layer (protected); harness-integrity
+  scans untracked binaries built in the tree; `harness-tests` 6.3 s over its 5 s budget after the new tests and
+  bats over budget already (budgets untouched); agent-gc's "drop the link" fix would leave a bare domain name,
+  which the shape check accepts. Post-commit security review: the marker is matched as a substring and the age
+  check skips unparsable rows (TD-54). Lane `check` green, `harness-selftest` 63/63, `lint-ci`, `docs-quality-shape`,
+  `docs-quality` and `clones-web` green, `check-all` red only on harness-integrity, `test-integration`,
+  `test-obs` and `e2e` green.
