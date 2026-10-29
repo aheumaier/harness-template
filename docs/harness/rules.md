@@ -466,6 +466,27 @@ In CI these run in the `pr-conventions` job of `harness-integrity.yml` (base bra
 - **Remediation:** Create `CLAUDE.md` next to the `AGENTS.md` the message names, containing the line `@AGENTS.md`; put shared guidance in `AGENTS.md`, never only in `CLAUDE.md`.
 - **Fixture:** `fixtures/docs-agents-without-claude` · Status: seed
 
+### docs-quality-rows-well-formed
+- **Rule:** Every row of `docs/QUALITY.md` between the table header and the `harness:quality-rows` marker has one cell per header column (no `|` inside a cell); its `Domain` is a domain name or `[<domain>](../apps/api/internal/<domain>/AGENTS.md)` (link text and target name the same domain); each layer (`model`, `store`, `service`, `api`) is graded `A`–`F` or `–` (en dash U+2013: not graded yet; a hyphen is not); and `Updated` is a real date written `YYYY-MM-DD`.
+- **Why:** The grades tell an agent which layers it can change safely, and the age check and the domain match can only read a row that parses; a hyphen for "not graded" or a link to another domain's guide reads right to a human and wrong to every tool (exec plan 0003 P3.5, after OpenAI's per-domain and per-layer quality grades).
+- **Sensor:** `.bin/harness quality-rows -no-clock` (`apps/api/tools/harness/qualityrows.go`; `make docs-quality-shape`, part of `make check-all`; the CI generator probe runs it on the row a fresh `make new-domain` writes). Deterministic: it reads no clock. `TestQualityRowTemplateMatchesHeader` (`make check`, via `test-harness`) renders the generator's row template under the real header and checks that both modes accept it.
+- **Remediation:** Make the row match the header named in the message: one cell per column, the domain's link as written above, grades `A`–`F` or `–` by the legend under the table, `Updated` as `YYYY-MM-DD`.
+- **Fixture:** `fixtures/docs-quality-row-malformed` · Status: team-convention ([ADR 0028](../adr/0028-quality-grades-per-domain-and-layer.md))
+
+### docs-quality-rows-match-domains
+- **Rule:** `docs/QUALITY.md` has exactly one row per backend domain: none for a name without a git-known file under `apps/api/internal/<domain>/` (`platform` is no domain), none missing for a domain, none twice.
+- **Why:** A row for a deleted domain grades code that no longer exists, and a missing row hides a domain from the grades (and from [docs-quality-row-fresh](#docs-quality-row-fresh)), so deleting a stale row cannot silence the age check. Deleting a domain also breaks its row's link to the domain's `AGENTS.md`, so [docs-links-resolve](#docs-links-resolve) usually turns `make check` red first; this rule names the real fix and also covers a row without that link.
+- **Sensor:** `.bin/harness quality-rows -no-clock` (`apps/api/tools/harness/qualityrows.go`; `make docs-quality-shape`, part of `make check-all` and the CI generator probe), with [docs-quality-rows-well-formed](#docs-quality-rows-well-formed) in one pass over the file.
+- **Remediation:** Delete the row of a domain that is gone, merge a second row into the first, or add the missing domain's row before the `harness:quality-rows` marker (as `make new-domain` does) and grade it.
+- **Fixture:** `fixtures/docs-quality-row-orphan`, `fixtures/docs-quality-row-missing` · Status: team-convention ([ADR 0028](../adr/0028-quality-grades-per-domain-and-layer.md))
+
+### docs-quality-row-fresh
+- **Rule:** The `Updated` date of every well-formed `docs/QUALITY.md` row is at most 30 days before today's UTC date and not after it.
+- **Why:** A grade nobody has looked at for a month describes code that has since changed, and it reads as current.
+- **Sensor:** `.bin/harness quality-rows` (`apps/api/tools/harness/qualityrows.go`; `make docs-quality`), run by the weekly `drift.yml` sweep only; its findings go to the `drift` issue. Never in `make check`, `make check-all` or a required CI job: the same tree turns red with time, and only the domain's reviewer can grade a row again, so the author of an unrelated PR could not fix it ([ADR 0028](../adr/0028-quality-grades-per-domain-and-layer.md)). Rows that are not well-formed are left to [docs-quality-rows-well-formed](#docs-quality-rows-well-formed).
+- **Remediation:** Grade the row again (each layer `A`–`F` by the legend under the table) and set `Updated` to today; never change only the date.
+- **Fixture:** `fixtures/docs-quality-row-stale` · Status: team-convention ([ADR 0028](../adr/0028-quality-grades-per-domain-and-layer.md))
+
 ### rules-fixture-claims
 - **Rule:** Every `### <rule-id>` in this file is unique (one heading per id) and has one `**Fixture:**` line, either `none (<reason>)` (free text, may name other rules' fixtures and tests) or one or more `` `fixtures/<dir>` `` joined by `, `, optionally followed by `; ` and backticked test paths. Each named dir is a git-known `scripts/harness/fixtures/<dir>/fixture.conf` whose `RULE=` is that rule's id; each test path matches a git-known file.
 - **Why:** The selftest ([ADR 0009](../adr/0009-harness-selftest.md)) proves only the fixtures that exist; a line claiming coverage that is not there makes this guide promise a tested sensor that nothing tests (exec plan 0003 found seven such lines).

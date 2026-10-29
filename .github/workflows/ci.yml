@@ -93,6 +93,9 @@ jobs:
       - run: make setup
       - run: make new-domain NAME=zzz_probe
       - run: make check
+      # The generated docs/QUALITY.md row is well-formed and matches its domain (ADR 0028). Deterministic: the
+      # 30-day age check reads the clock, so only drift.yml runs it.
+      - run: make docs-quality-shape
       # Every Test* of scripts/templates/new-domain ran and passed against make setup's Postgres, none skipped
       # (go test -json; scripts/harness/scaffold-tests.sh).
       - name: The probe's service, handler and integration tests ran and passed (NFR-B1)

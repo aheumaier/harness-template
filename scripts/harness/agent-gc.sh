@@ -55,7 +55,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 AGENT_SCRIPT=agent-gc
 # The rules whose findings agent-gc fixes. rules-fixture-claims is not one: its findings are in the protected
-# rules.md. P3.5's QUALITY.md staleness check may join once it exists, if its findings are in unprotected files.
+# rules.md. Nor is docs-quality-row-fresh (ADR 0028): until a grading agent exists, a stale QUALITY.md row needs
+# a reviewer's new grade, not a new date; the other QUALITY.md rules gate check-all, so main has no findings.
 RULES="docs-links-resolve"
 FINDING_RE="^([A-Za-z0-9_.][A-Za-z0-9_./-]*\\.md)(:[0-9]+)?: .+ \\[(${RULES// /|})\\]\$"
 HARNESS="${HARNESS:-$ROOT/.bin/harness}"

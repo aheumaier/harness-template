@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 # scripts/new-domain.sh: name and template validation happen before any file is touched, and every template
 # renders. Runs on a sandbox copy, so a regression cannot scaffold into the real repo. The full generator run
-# is covered by the CI probe (make new-domain NAME=zzz_probe && make check && make test-integration).
+# is covered by the CI probe (make new-domain NAME=zzz_probe, then make check, make docs-quality-shape and
+# make test-scaffold NAME=zzz_probe).
 bats_require_minimum_version 1.5.0
 load helpers
 
@@ -38,9 +39,15 @@ setup() {
 # Rendered with the generator's placeholders (keep in step with render() in new-domain.sh): every template
 # is used, fills in completely, and its Go parses and is gofmt-clean. The CI generator probe covers the rest.
 @test "every template is used, fills in completely and renders valid Go" {
-  local t f gofmt script="$REPO/scripts/new-domain.sh" dir="$REPO/scripts/templates/new-domain"
+  local t f gofmt today script="$REPO/scripts/new-domain.sh" dir="$REPO/scripts/templates/new-domain"
   local rendered="$BATS_TEST_TMPDIR/rendered"
   gofmt="$(go env GOROOT)/bin/gofmt"
+  # The generator's own date command: the QUALITY.md row's Updated (rules.md#docs-quality-rows-well-formed).
+  today="$(eval "$(sed -n 's/^today="\$(\(.*\))".*/\1/p' "$script")")"
+  [[ "$today" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || {
+    echo "new-domain.sh's today is not YYYY-MM-DD: '$today'" >&2
+    return 1
+  }
   mkdir -p "$rendered"
   while read -r f; do
     [ -f "$dir/$f" ] || {
@@ -55,7 +62,8 @@ setup() {
       return 1
     }
     sed -e 's|__NAME__|billing_run|g' -e 's|__KEBAB__|billing-run|g' -e 's|__PASCAL__|BillingRun|g' \
-      -e 's|__CAMEL__|billingRun|g' -e 's|__MOD__|example.com/app|g' "$t" >"$rendered/${f%.tmpl}"
+      -e 's|__CAMEL__|billingRun|g' -e 's|__MOD__|example.com/app|g' -e "s|__TODAY__|$today|g" \
+      "$t" >"$rendered/${f%.tmpl}"
     ! grep -nE '__[A-Z][A-Z0-9_]*__' "$rendered/${f%.tmpl}" || {
       echo "unfilled placeholder in $f" >&2
       return 1

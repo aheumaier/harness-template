@@ -37,6 +37,7 @@ MOD="$(cd apps/api && go list -m)"
 kebab="${name//_/-}"
 pascal="$(awk -F_ '{ for (i = 1; i <= NF; i++) printf "%s%s", toupper(substr($i, 1, 1)), substr($i, 2) }' <<<"$name")"
 camel="$(tr '[:upper:]' '[:lower:]' <<<"${pascal:0:1}")${pascal:1}"
+today="$(date -u +%Y-%m-%d)" # the QUALITY.md row's Updated date (rules.md#docs-quality-row-fresh)
 
 ROUTES=apps/api/cmd/api/routes.go SPEC=api/openapi.yaml SQLC=apps/api/sqlc.yaml QUALITY=docs/QUALITY.md
 dirty="$(git status --porcelain -- "$ROUTES" "$SPEC" "$SQLC" "$QUALITY")"
@@ -47,13 +48,13 @@ for f in "$ROUTES" "$SPEC" "$QUALITY"; do grep -q 'harness:' "$f" || die "genera
 TEMPLATES=scripts/templates/new-domain PLACEHOLDER='__[A-Z][A-Z0-9_]*__'
 [[ -d "$TEMPLATES" ]] || die "$TEMPLATES missing"
 
-# render <template>: the template on stdout with __NAME__, __KEBAB__, __PASCAL__, __CAMEL__ and __MOD__ filled
-# in. Fails on a missing template or a placeholder it does not know (fail closed).
+# render <template>: the template on stdout with __NAME__, __KEBAB__, __PASCAL__, __CAMEL__, __MOD__ and
+# __TODAY__ filled in. Fails on a missing template or a placeholder it does not know (fail closed).
 render() {
   local t="$TEMPLATES/$1" out
   [[ -f "$t" ]] || die "template $t missing"
   out="$(sed -e "s|__NAME__|$name|g" -e "s|__KEBAB__|$kebab|g" -e "s|__PASCAL__|$pascal|g" \
-    -e "s|__CAMEL__|$camel|g" -e "s|__MOD__|$MOD|g" "$t")" || die "cannot render $t"
+    -e "s|__CAMEL__|$camel|g" -e "s|__MOD__|$MOD|g" -e "s|__TODAY__|$today|g" "$t")" || die "cannot render $t"
   ! grep -qE "$PLACEHOLDER" <<<"$out" || die "unknown placeholder in $t: $(grep -oE "$PLACEHOLDER" <<<"$out" | head -1)"
   printf '%s\n' "$out"
 }

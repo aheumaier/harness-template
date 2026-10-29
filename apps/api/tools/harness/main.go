@@ -6,6 +6,11 @@
 //	harness guard-bash <root>      PreToolUse guard for Bash commands (.claude/hooks/guard-bash.sh)
 //	harness check-links <root>     docs-links-resolve, docs-claude-imports-agents (make docs-links)
 //	harness fixture-claims <root>  rules-fixture-claims (make fixture-claims)
+//	harness quality-rows -no-clock <root>
+//	                               docs-quality-rows-well-formed, docs-quality-rows-match-domains
+//	                               (make docs-quality-shape, check-all)
+//	harness quality-rows <root>    docs-quality-row-fresh against today's UTC date (make docs-quality,
+//	                               drift only: it reads the clock)
 //	harness approved-check <root>  api-approved-match-contract (make approved-check)
 //	harness integrity-check <root> harness-suppression-reason, harness-config-not-loosened (make
 //	                               harness-integrity; env BASE_REF, HARNESS_ROOT, HARNESS_CHANGE_APPROVED)
@@ -21,13 +26,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 )
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness check-links <root> | harness fixture-claims <root> | harness approved-check <root> | harness integrity-check <root> | harness rename [-write] <root> <name> <module> <owner>"
+const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness check-links <root> | harness fixture-claims <root> | harness quality-rows [-no-clock] <root> | harness approved-check <root> | harness integrity-check <root> | harness rename [-write] <root> <name> <module> <owner>"
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
@@ -84,6 +90,26 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		switch {
 		case err != nil:
 			fmt.Fprintf(stderr, "harness fixture-claims: %v\n", err)
+			return 2
+		case bad:
+			return 1
+		}
+		return 0
+	case "quality-rows":
+		var bad bool
+		var err error
+		switch {
+		case len(args) == 3 && args[1] == "-no-clock":
+			bad, err = qualityShape(args[2], stdout)
+		case len(args) == 2:
+			bad, err = qualityFresh(args[1], time.Now(), stdout)
+		default:
+			fmt.Fprintln(stderr, usage)
+			return 2
+		}
+		switch {
+		case err != nil:
+			fmt.Fprintf(stderr, "harness quality-rows: %v\n", err)
 			return 2
 		case bad:
 			return 1

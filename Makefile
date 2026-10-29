@@ -88,7 +88,7 @@ check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=
 CHECK_ALL_SKIP ?=
 check-all: export HARNESS_SCOPE := full
 check-all: check ##Everything: check + integration, contract, migration, security, dead code, clones, e2e
-	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go vuln-deps lint-migrations squawk migrations-append-only lint-api contract-check knip clones-web harness-integrity commits specs)
+	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go vuln-deps lint-migrations squawk migrations-append-only lint-api contract-check knip clones-web docs-quality-shape harness-integrity commits specs)
 	@$(MAKE) -k test-integration test-obs e2e
 
 harness-selftest: $(HARNESS) ## Every fixture in scripts/harness/fixtures must be rejected by its sensor (FIXTURE=name for one)
@@ -348,9 +348,18 @@ specs: ## spec-kit specs/ are well formed; feat changes to apps/ or api/ come wi
 	@$(RUN) specs specs-structure,specs-required-for-features -- env BASE_REF="$(BASE_REF)" scripts/harness/check-specs.sh
 
 ##@ Docs
-.PHONY: docs-links fixture-claims
+.PHONY: docs-links docs-quality-shape docs-quality fixture-claims
 docs-links: $(HARNESS) ## Relative links and anchors in Markdown resolve; every AGENTS.md has a CLAUDE.md importing it
 	@$(RUN) check-links docs-links-resolve,docs-claude-imports-agents -- $(HARNESS) check-links .
+
+# Deterministic (reads no clock): in check-all and the CI generator probe (ADR 0028).
+docs-quality-shape: $(HARNESS) ## docs/QUALITY.md has one well-formed row per domain, graded per layer
+	@$(RUN) quality-shape docs-quality-rows-well-formed,docs-quality-rows-match-domains -- $(HARNESS) quality-rows -no-clock .
+
+# Reads the clock, and only the domain's reviewer can re-grade a row, so a PR's author could not fix it: the
+# weekly drift sweep runs it, never check or check-all (ADR 0028).
+docs-quality: $(HARNESS) ## docs/QUALITY.md rows were graded in the last 30 days (drift only)
+	@$(RUN) quality-fresh docs-quality-row-fresh -- $(HARNESS) quality-rows .
 
 # In make check, runs only when rules.md, a fixture or another harness file changed (rules.md#harness-scope).
 fixture-claims: $(HARNESS) ## Every rules.md Fixture line names fixtures that exist and test that rule, or none (<reason>)

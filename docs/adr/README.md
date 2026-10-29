@@ -32,3 +32,4 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0025](0025-browser-e2e-is-the-nfr-b2-sensor.md) | Browser e2e is the NFR-B2 sensor; its browser is installed only where e2e runs | proposed |
 | [0026](0026-template-sync-is-a-drift-report.md) | Template sync is a weekly drift report that never applies anything | proposed |
 | [0027](0027-token-clones-are-a-maintainability-sensor.md) | Token clones are a maintainability sensor (extends 0024) | proposed |
+| [0028](0028-quality-grades-per-domain-and-layer.md) | Quality grades are kept per domain and layer; check-all gates their shape, the weekly drift run their age | proposed |
