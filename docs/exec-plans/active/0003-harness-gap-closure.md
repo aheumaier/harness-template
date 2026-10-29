@@ -228,7 +228,9 @@ PR; **–** needs none.
 - [x] P4.8 — 70e8066 — done — `make rename` demanded a dotted module → it takes a bare module, a one-element
   host or `MODULE=skip` (keeps the template's module root), strips the module as a whole word when looking
   for leftovers, and needs a usable layout.env; TD-23 closed
-- [ ] P4.9 — H — protected paths and CODEOWNERS name the harness's own workflows, not `.github/*`
+- [x] P4.9 — dbaaa39 — done — protected paths and CODEOWNERS name the harness's 8 workflows,
+  `actions/setup`, CODEOWNERS and the PR template; product workflows stay owner-reviewed; ADR 0035, TD-24
+  paid, TD-95..97
 - [ ] P4.10 — H — CI `adoption-probe`: README §(b) on a root-`go.mod` fixture
 - [ ] P4.11 — H — reviewer catches seen twice become rules (`Status: earned`, ADR 0019) with fixtures
 - [ ] P4.12 — H — `evasion-reviewer` agent for sensor slices; a retry gets a diff-only re-review
@@ -1214,3 +1216,22 @@ found only after integration.
   harness-integrity, `test-integration`, `test-obs` and `e2e` green. Noticed, not fixed: the Baselines step
   needs `zip`/`unzip` on the runner; 13 failing drift weeks in a row let the ledger artifact expire, so the
   90-day history restarts; a zero-byte ledger artifact is treated as absent, not recorded.
+- 2026-10-29: P4.4 security follow-up (0b9708e). An automated security review of the P4.4 commit: `ci-timings.sh`
+  unzipped fork-controllable artifacts whole in the drift job. It now extracts only `timings.jsonl` (`unzip -p`)
+  and drops artifacts of fork PR runs (head repository != repository); drift.yml's timings check uses
+  `find -type f`. Same-repository PR rows are still trusted by shape only (ADR 0032, ci.md).
+- 2026-10-29: P4.9 done (dbaaa39). The 8 workflows (the plan named 6; coverage.yml and pr-review.yml carry
+  the harness header too), `.github/actions/setup/*`, CODEOWNERS and the PR template are listed by name;
+  codeowners.bats keeps list, first-line header and per-file CODEOWNERS lines equal and every named file
+  tracked; TestIntegrityCheckRealListSparesProductWorkflows runs the real list. Review: code CHANGES (8)
+  and architecture CHANGES (7), both naming a HIGH: a product job named after a required check could stand
+  in for it without label or owner review (branch protection matches any Actions app). Fixed in one retry:
+  CODEOWNERS keeps `/.github/workflows/` and `/.github/actions/` owner-reviewed, ADR 0035 (amends ADR 0010),
+  TD-95 (required-check name collision sensor), TD-96 (label actor check), TD-97 (listed workflows use only
+  listed local actions); README step 3 no longer copies `.github/` whole; reuse finding (shared list parsing
+  in codeowners.bats) fixed. Rebase onto the P4.4 commits: ADR index conflicted, both rows kept. Lane
+  `check` green, `harness-selftest` 69/69, `check-all` red only on harness-integrity, `test-integration`,
+  `test-obs` and `e2e` green. Hand-off: AGENTS.md golden principle 5 still says `.github/**`; proposed
+  wording "`.github/` workflows and actions named in `scripts/harness/protected-paths.txt`". Noticed: a
+  product workflow can use `pull_request_target` or broad `permissions:` gated only by owner review; input
+  for P4.12's evasion review.
