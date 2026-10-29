@@ -3,7 +3,9 @@
 CI runs the same `make` targets you run locally; a workflow adds no checks of its own. If CI is red, the
 same target is red on your machine (with `BASE_REF=origin/main` for diff-based sensors). CI sets
 `HARNESS_SCOPE=full`, so every sensor runs; a local `make check` skips those whose inputs did not change
-([harness-scope](rules.md#harness-scope)).
+([harness-scope](rules.md#harness-scope)). Inferential sensors are the exception
+([ADR 0019](../adr/0019-inferential-sensors-are-advisory.md)): `pr-review.yml` runs an agent that no `make`
+target runs, and it never blocks.
 
 ## Workflows (`.github/workflows/`)
 
@@ -13,6 +15,7 @@ same target is red on your machine (with `BASE_REF=origin/main` for diff-based s
 | | | `harness-selftest` | every fixture rejected by its sensor ([rules.md](rules.md)) | yes |
 | | | `generator-probe` | `make new-domain NAME=zzz_probe && make check`, then the probe's generated service, handler and integration tests (`make test-integration`, NFR-B1); discards the probe and asserts a clean tree | yes |
 | `coverage.yml` | PR, push to main | `coverage` | `make setup && make coverage` into the job summary ([coverage](#coverage)); `continue-on-error`, a report, not a sensor | no |
+| `pr-review.yml` | PR (`pull_request`, never `pull_request_target`) | `review`, `comment` | the `code-reviewer` prompt, headless, on the PR's diff → one top-level PR comment, replaced on each push ([PR review](#pr-review)); an inferential sensor, advisory ([ADR 0019](../adr/0019-inferential-sensors-are-advisory.md)) | no |
 | `contract-gate.yml` | PR via `pull_request_target` (incl. label changes) | `api-no-breaking-change` | the **base branch's** `make contract-check` against the PR's spec when `api/openapi.yaml` changed (oasdiff, red only on breaking changes) | yes |
 | `harness-integrity.yml` | PR via `pull_request_target` (incl. label and title changes) | `harness-integrity` | the **base branch's** `make harness-integrity` against the PR head (`HARNESS_ROOT`) | yes |
 | | | `pr-conventions` | the **base branch's** `make commits specs` against the PR head and title (Conventional Commits, PR title ≤ 90 characters, spec-kit specs) | yes |
@@ -75,6 +78,50 @@ not a sensor: no rule id, in neither `make check` (minutes, and its window reads
   gets a mutation entry only when it cannot measure: a failing `make mutation` adds its output, a step that
   hit the cap one line pointing at the step log.
 - A threshold or ratchet needs its own ADR, justified by a finding.
+
+## PR review
+
+`pr-review.yml` runs the [`code-reviewer`](../../.claude/agents/code-reviewer.md) prompt on every PR with
+Claude Code (pinned with sha256 in `scripts/tool-versions.env`, installed by `scripts/install-tools.sh
+claude`) and posts its verdict and findings as one top-level PR comment. It is an inferential sensor
+([ADR 0019](../adr/0019-inferential-sensors-are-advisory.md)): a finding is a suggestion, never a red job,
+and neither job is a required check. A top-level comment opens no review thread, so
+`required_conversation_resolution` never waits on it.
+
+- **Trust boundary: write-access collaborators are trusted with the key.** On `pull_request` GitHub runs the
+  PR's own copy of the workflow, with the secret, so anyone who can push a branch can edit it to print or
+  spend the key in that run; a red `harness-integrity` does not stop the run. The key must therefore be a
+  dedicated Anthropic workspace key with a hard spend limit, used for nothing else. Optional hardening: an
+  `environment:` with required reviewers on the `review` job, so a human releases the key for each run.
+- **Untrusted diff.** The workspace is the PR's base commit (prompt, scripts, protected-path list); the head
+  is read with `git diff` only, and the diff reaches the agent between nonce-tagged delimiters as data. The
+  gate step builds the prompt and the agent's settings without the key; the agent step runs only `claude` and
+  the leak screen, with a `contents: read` token. The agent runs with `--bare --restricted --tools
+  Read,Grep,Glob --disallowedTools 'mcp__*' --strict-mcp-config --permission-mode dontAsk`, every flag in the
+  [CLI reference](https://code.claude.com/docs/en/cli-reference): no shell, web or MCP tool, and file tools
+  confined to the working directories. Its `--settings` file (`pr-review.sh settings`) also blocks reads outside
+  the working directory and denies Read under `/proc`, `/etc`, the runner's temp, tool cache and config dirs.
+  A separate `comment` job with `pull-requests: write` and no secret posts the text, fenced so no mention,
+  link or image in it renders. The workflow header lists every invariant and `scripts/test/pr-review.bats`
+  checks them; keep them in any edit.
+- **Leak screen** (`pr-review.sh screen`): output holding the key verbatim, or `sk-ant-` in any case, is
+  withheld with a warning. It is a backstop for a verbatim leak, not the main control: an encoded key passes
+  it. The tool confinement above is the control.
+- **Skips with a notice** when the `ANTHROPIC_API_KEY` repository secret is missing, on a fork (no secrets),
+  a draft, a base commit without `pr-review.sh`, an empty or harness-only diff (every path, both sides of a
+  rename, in `scripts/harness/protected-paths.txt`, where the code-owner review applies), a diff over the size
+  cap, or when the agent stops (API error, turn or budget cap; the notice gives the exit code, the error and
+  the last stderr lines). Only a successful JSON result is posted, so a cap message never is.
+- **Red only on harness breakage**: the agent did not start (no JSON result: a bad flag, a broken install),
+  or a commit is missing (fetch depth, or a head lost to a force-push race). Never on a finding.
+- **Cost cap per run**: the `REVIEW_*` values at the top of the workflow (diff size, turns, US dollars,
+  model); a new push cancels the running review. The workflow is protected, so raising a cap needs the
+  `harness-change-approved` label.
+- **Dry run** of what the agent gets: `scripts/harness/pr-review.sh prompt <(git diff main...)`.
+- **Turning it on** is a human step, after ADR 0019 is accepted: run `.bin/claude --help` and a
+  confinement test with a dummy key, then add the `ANTHROPIC_API_KEY` repository secret
+  ([TD-38](../exec-plans/tech-debt-tracker.md)). Until then every run skips.
+- A finding class accepted twice becomes a computational rule ([ADR 0019](../adr/0019-inferential-sensors-are-advisory.md)).
 
 ## Label waivers
 

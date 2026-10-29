@@ -15,7 +15,7 @@ loosening and needs a human, [harness-config-not-loosened](rules.md#harness-conf
 Latency NFRs warn and alert but never fail a build: wall time depends on the machine, and a sensor that fails
 under load would itself break NFR-R1. Reliability NFRs fail, because a wrong verdict is the one thing a sensor
 must not produce. Inferential sensors get **no** blocking NFR: an LLM verdict is not reproducible, so it
-cannot meet NFR-R1. They comment, never fail.
+cannot meet NFR-R1. They comment, never fail ([ADR 0019](../adr/0019-inferential-sensors-are-advisory.md)).
 
 The rows come from [exec plan 0002](../exec-plans/active/0002-fast-reliable-harness.md) (NFR-H1–H7, NFR-R1–R5)
 and [exec plan 0003](../exec-plans/active/0003-harness-gap-closure.md) (NFR-H8, NFR-H9, NFR-B1, NFR-B2,

@@ -1,0 +1,176 @@
+# Harness file (protected). Advisory PR review: the `code-reviewer` prompt (.claude/agents/code-reviewer.md)
+# runs headless on the PR's diff and posts one top-level PR comment (exec plan 0003 P3.2,
+# docs/harness/ci.md#pr-review). An inferential sensor (docs/adr/0019-inferential-sensors-are-advisory.md):
+# never a required check, and a finding never turns a job red. When the agent cannot run (no
+# ANTHROPIC_API_KEY secret, a fork, a draft, an API error, a cap reached) the job prints a notice and skips.
+# Harness breakage turns it red: the agent did not start (bad flag, broken install), or a commit is missing
+# (the head lost to a force-push race included).
+#
+# Trust boundary: write-access collaborators are trusted with the key. On `pull_request` GitHub runs the PR's
+# own copy of this file, with the secret: anyone who can push a branch here can edit it to print or use the
+# key in that run (a red harness-integrity check does not stop the run). So ANTHROPIC_API_KEY must be a
+# dedicated Anthropic workspace key with a hard spend limit, used for nothing else. Optional hardening: an
+# `environment:` with required reviewers on the review job, so a human releases the key per run.
+#
+# The diff is untrusted input to an agent that holds the key (prompt injection, secret exfiltration). Safe
+# against PR content, as opposed to PR authors with write access, only while all of these hold (ADR 0010, 0019):
+#   - `pull_request`, never `pull_request_target`: ADR 0010 keeps every secret away from pull_request_target.
+#     Forks get no secrets on pull_request, so the gate step skips them.
+#   - the workspace is the PR's base commit: the prompt, scripts/harness/pr-review.sh, protected-paths.txt and
+#     the Claude Code pin come from there. The head commit arrives with checkout's full history and is read
+#     with `git diff` only, never checked out or executed; the diff reaches the agent as data. The gate step
+#     checks fork, draft and secret before it calls any base script, and skips a base without pr-review.sh
+#     (the PR that adds this file). Change the script's interface and this file in separate PRs.
+#   - the review job holds `contents: read` only; the key is in the env of the agent step alone, which runs
+#     only `claude` and the leak screen. The agent's flags (all in the CLI reference): --bare, --restricted
+#     (no command or code tools, no WebFetch, file tools confined to the working directories, only --settings
+#     loaded), --tools Read,Grep,Glob, --disallowedTools 'mcp__*', --strict-mcp-config, --permission-mode
+#     dontAsk; the --settings file blocks reads outside the working directory and denies Read under /proc,
+#     /etc, the runner's temp, tool cache and config dirs (`pr-review.sh settings`).
+#   - `pr-review.sh screen` withholds output holding the key verbatim or an `sk-ant-` prefix: a backstop for
+#     a verbatim leak, not the control (an encoded key passes it; the confinement above is the control).
+#   - the comment job holds `pull-requests: write`, no checkout and no secret. It posts the body as a file
+#     (`-F body=@`), never through `run:` interpolation, and the body shows the agent's text as one fenced
+#     block, so no mention, link or image in it renders.
+#   - only base.sha, head.sha, the PR number, booleans, the agent's exit code and the caps below reach `run:`
+#     blocks, via env; no `${{ }}` inside a `run:` block (scripts/test/pr-review.bats checks these invariants).
+# A PR that edits this file changes a `config` path, so harness-integrity stays red until a human adds the
+# label (ADR 0010, Consequences).
+#
+# Cost cap per run (ADR 0019: raising one is a harness-config change, rule harness-config-not-loosened): the
+# REVIEW_* values below; harness-only PRs are skipped (the code-owner review applies); a new push cancels a
+# superseded run.
+name: pr-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash # -eo pipefail: a failed `gh api` in a pipe must not pass as "no comment yet"
+
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  REVIEW_MODEL: claude-sonnet-5-5
+  REVIEW_MAX_DIFF_BYTES: "100000"
+  REVIEW_MAX_TURNS: "20"
+  REVIEW_MAX_BUDGET_USD: "1.00"
+
+jobs:
+  review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      body: ${{ steps.publish.outputs.body }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (base commit)
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0 # every branch, so the head commit is here to diff (never checked out)
+          persist-credentials: false
+
+      - name: Gate (fork, draft, secret, harness-only, diff size) and prompt
+        id: gate
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }} # a boolean: the key's value never reaches this step
+          MAX_DIFF_BYTES: ${{ env.REVIEW_MAX_DIFF_BYTES }}
+        run: |
+          skip() { echo "::notice title=pr-review skipped::$1"; exit 0; }
+          [[ $FORK == false ]] || skip "the PR comes from a fork, which gets no secrets"
+          [[ $DRAFT == false ]] || skip "the PR is a draft; marking it ready for review runs the review"
+          [[ $HAS_KEY == true ]] || skip "the ANTHROPIC_API_KEY repository secret is not set (docs/harness/ci.md#pr-review)"
+          [[ -x scripts/harness/pr-review.sh ]] || skip "base commit has no pr-review.sh"
+          d=.cache/pr-review
+          mkdir -p "$d"
+          verdict=$(scripts/harness/pr-review.sh gate "$BASE_SHA" "$HEAD_SHA" "$d/pr.diff")
+          [[ $verdict == run ]] || skip "${verdict#skip: }"
+          scripts/harness/pr-review.sh prompt "$d/pr.diff" >"$d/prompt.txt"
+          scripts/harness/pr-review.sh settings "$RUNNER_TEMP" "$RUNNER_TOOL_CACHE" \
+            "$HOME/.claude" "$HOME/.config" "$HOME/.ssh" "$HOME/runners" >"$d/settings.json"
+          echo "run=true" >>"$GITHUB_OUTPUT"
+
+      - name: Install Claude Code (pinned, sha256-verified)
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          scripts/install-tools.sh claude
+          .bin/claude --version
+
+      - name: Review (agent and leak screen only; read-only token, no shell)
+        id: agent
+        if: steps.gate.outputs.run == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" # no auto-update, telemetry or error reporting
+        run: |
+          d=.cache/pr-review
+          code=0
+          .bin/claude -p --bare --restricted --strict-mcp-config --tools Read,Grep,Glob --disallowedTools 'mcp__*' \
+            --permission-mode dontAsk --settings "$d/settings.json" --no-session-persistence \
+            --output-format json --model "$REVIEW_MODEL" \
+            --max-turns "$REVIEW_MAX_TURNS" --max-budget-usd "$REVIEW_MAX_BUDGET_USD" \
+            <"$d/prompt.txt" >"$d/out.json" 2>"$d/err.txt" || code=$?
+          echo "exit=$code" >>"$GITHUB_OUTPUT"
+          rc=0
+          scripts/harness/pr-review.sh screen "$d/out.json" "$d/err.txt" || rc=$?
+          case $rc in
+            0) echo "screened=true" >>"$GITHUB_OUTPUT" ;;
+            1)
+              rm -f "$d/out.json" "$d/err.txt"
+              echo "::warning title=pr-review withheld::the agent output holds the API key or an sk-ant- prefix; nothing posted (rotate the key if it is the key)"
+              ;;
+            *) exit "$rc" ;;
+          esac
+
+      - name: Comment body
+        id: publish
+        if: steps.agent.outputs.screened == 'true'
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          AGENT_EXIT: ${{ steps.agent.outputs.exit }}
+        run: |
+          d=.cache/pr-review
+          verdict=$(scripts/harness/pr-review.sh result "$AGENT_EXIT" "$d/out.json" "$d/err.txt" "$d/review.md")
+          if [[ $verdict != review ]]; then
+            echo "::notice title=pr-review skipped::${verdict#skip: }"
+            exit 0
+          fi
+          scripts/harness/pr-review.sh comment "$d/review.md" "$HEAD_SHA" >"$d/comment.md"
+          eof="EOF_$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
+          { echo "body<<$eof"; cat "$d/comment.md"; echo "$eof"; } >>"$GITHUB_OUTPUT"
+
+  comment:
+    needs: review
+    if: needs.review.outputs.body != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Post or replace the one review comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BODY: ${{ needs.review.outputs.body }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          body="$RUNNER_TEMP/pr-review.md"
+          printf '%s\n' "$BODY" >"$body"
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- pr-review -->"))) | .id' |
+            tail -n 1)
+          if [[ -n $id ]]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F "body=@$body" >/dev/null
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F "body=@$body" >/dev/null
+          fi

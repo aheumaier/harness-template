@@ -58,8 +58,16 @@ those two lines into a decision the Phase 3 slices can build on.
 - **Untrusted input, least privilege.** A diff, an issue or a doc is data to the agent, never instructions.
   - In CI the agent runs on `pull_request`, never `pull_request_target`. [ADR 0010](0010-base-branch-gates.md),
     invariant 3, keeps every secret away from `pull_request_target`, and an agent needs one. Forks get no
-    secrets on `pull_request`, so the job skips them. The diff reaches the agent as data, from a base-branch
-    checkout of the prompt and workflow. P3.2 defines the details.
+    secrets on `pull_request`, so the job skips them. The diff reaches the agent as data. The prompt and the
+    scripts come from a base-branch checkout; the workflow file does not: on `pull_request` GitHub runs the
+    PR's own copy of it. P3.2 defines the details.
+  - **Write-access collaborators are trusted with the key.** Because the PR's copy of the workflow runs with
+    the secret, anyone who can push a branch can edit it to read or spend the key in that run; a red
+    `harness-integrity` check does not stop the run. So the key is a dedicated Anthropic workspace key with a
+    hard spend limit, used for nothing else, and an `environment:` with required reviewers is optional
+    hardening. The confinement above protects against PR content (prompt injection), not against PR authors
+    with write access. This is no blocking NFR: ADR 0015's line "Inferential sensors get no blocking NFR"
+    applies as written.
   - The agent step holds no write token. Posting the comment or opening the PR is a separate step with its
     own narrowly scoped token, and it treats agent output as text, never as commands.
   - An agent that writes (`agent-gc`) works on a branch, never pushes to `main`, never edits a protected path

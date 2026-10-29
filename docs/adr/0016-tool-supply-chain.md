@@ -25,6 +25,11 @@ the nested `go.mod`s `govulncheck` does not reach.
   partial file.
 - **Scanners run only as pinned release binaries from `.bin/`**, locally and in CI (`make setup`, then
   `.bin/trivy`). Never `trivy-action`, `setup-trivy` or a Trivy container image.
+- **CI agent runtimes are sha256-pinned native binaries too**, installed only by an explicit
+  `install-tools.sh <tool>` mode (today `install-tools.sh claude`, for `pr-review.yml`, exec plan 0003 P3.2):
+  never by `make tools`, which every worktree runs, never by a marketplace action and never from npm.
+  Claude Code's provenance check compares the pins with the sha256 values in the release's `manifest.json`
+  (fetched over TLS from `downloads.claude.ai`); its signature is not verified.
 - **Every version bump needs a human provenance check**, recorded in the PR: the new pins against upstream's
   checksums (Trivy: the release's `checksums.txt` and its cosign signature; Atlas: ariga's `.sha256` files;
   ShellCheck publishes none, so the GitHub asset digests). No cosign at install time: it would need its own

@@ -19,17 +19,6 @@ goinstall() { # name module@version
   stamp "$name" "$ver"
 }
 
-goinstall golangci-lint github.com/golangci/golangci-lint/v2/cmd/golangci-lint@"$GOLANGCI_LINT_VERSION"
-goinstall go-arch-lint github.com/fe3dback/go-arch-lint@"$GO_ARCH_LINT_VERSION"
-goinstall govulncheck golang.org/x/vuln/cmd/govulncheck@"$GOVULNCHECK_VERSION"
-goinstall deadcode golang.org/x/tools/cmd/deadcode@"$DEADCODE_VERSION"
-goinstall sqlc github.com/sqlc-dev/sqlc/cmd/sqlc@"$SQLC_VERSION"
-goinstall oapi-codegen github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@"$OAPI_CODEGEN_VERSION"
-goinstall oasdiff github.com/oasdiff/oasdiff@"$OASDIFF_VERSION"
-goinstall shfmt mvdan.cc/sh/v3/cmd/shfmt@"$SHFMT_VERSION"
-goinstall actionlint github.com/rhysd/actionlint/cmd/actionlint@"$ACTIONLINT_VERSION"
-goinstall gremlins github.com/go-gremlins/gremlins/cmd/gremlins@"$GREMLINS_VERSION"
-
 # Downloaded binaries: os darwin|linux, arch amd64|arm64; anything else has no sha256 pin.
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 arch=$(uname -m)
@@ -63,6 +52,32 @@ download() { # name url: fetch into $BIN/.dl-<name>, verify against <NAME>_SHA25
     exit 1
   }
 }
+
+# Claude Code, for the CI reviewer only (.github/workflows/pr-review.yml, exec plan 0003 P3.2): installed by
+# `install-tools.sh claude` alone, never by `make tools`, which every worktree runs. Its pins match the
+# release's manifest.json. Its platform names say x64 where the other tools say amd64.
+if [[ "${1:-}" == claude ]]; then
+  if ! stamp_ok claude "$CLAUDE_CODE_VERSION"; then
+    echo "installing claude $CLAUDE_CODE_VERSION" >&2
+    a=$arch && [[ $a == amd64 ]] && a=x64
+    download claude_code "https://downloads.claude.ai/claude-code-releases/${CLAUDE_CODE_VERSION}/${os}-${a}/claude"
+    mv "$BIN/.dl-claude_code" "$BIN/claude"
+    chmod +x "$BIN/claude"
+    stamp claude "$CLAUDE_CODE_VERSION"
+  fi
+  exit 0
+fi
+
+goinstall golangci-lint github.com/golangci/golangci-lint/v2/cmd/golangci-lint@"$GOLANGCI_LINT_VERSION"
+goinstall go-arch-lint github.com/fe3dback/go-arch-lint@"$GO_ARCH_LINT_VERSION"
+goinstall govulncheck golang.org/x/vuln/cmd/govulncheck@"$GOVULNCHECK_VERSION"
+goinstall deadcode golang.org/x/tools/cmd/deadcode@"$DEADCODE_VERSION"
+goinstall sqlc github.com/sqlc-dev/sqlc/cmd/sqlc@"$SQLC_VERSION"
+goinstall oapi-codegen github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@"$OAPI_CODEGEN_VERSION"
+goinstall oasdiff github.com/oasdiff/oasdiff@"$OASDIFF_VERSION"
+goinstall shfmt mvdan.cc/sh/v3/cmd/shfmt@"$SHFMT_VERSION"
+goinstall actionlint github.com/rhysd/actionlint/cmd/actionlint@"$ACTIONLINT_VERSION"
+goinstall gremlins github.com/go-gremlins/gremlins/cmd/gremlins@"$GREMLINS_VERSION"
 
 if ! stamp_ok atlas "$ATLAS_VERSION"; then
   echo "installing atlas (community edition) $ATLAS_VERSION" >&2
