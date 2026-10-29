@@ -224,7 +224,9 @@ PR; **–** needs none.
   `make layout-check` (`harness-layout-valid`) in `make check`; `.claude/hooks/fast-check.sh` keeps the template
   layout until a human `.claude` PR (TD-66), as does `make new-domain` (TD-67) (ADR 0030)
 - [ ] P4.7 — H — stack profiles: `HARNESS_STACK=go,db,web` selects sensors, tool installs and fixtures
-- [ ] P4.8 — H — `make rename` accepts a bare Go module or `MODULE=skip`
+- [x] P4.8 — 70e8066 — done — `make rename` demanded a dotted module → it takes a bare module, a one-element
+  host or `MODULE=skip` (keeps the template's module root), strips the module as a whole word when looking
+  for leftovers, and needs a usable layout.env; TD-23 closed
 - [ ] P4.9 — H — protected paths and CODEOWNERS name the harness's own workflows, not `.github/*`
 - [ ] P4.10 — H — CI `adoption-probe`: README §(b) on a root-`go.mod` fixture
 - [ ] P4.11 — H — reviewer catches seen twice become rules (`Status: earned`, ADR 0019) with fixtures
@@ -1190,3 +1192,13 @@ found only after integration.
   `.claude/agents/code-reviewer.md:33` should read "Suggest a grade (A–F, or – if not graded yet) for each
   layer (`model`, `store`, `service`, `api`) of each touched domain per docs/QUALITY.md, for a human to
   write into its row with a new `Updated` date; never edit docs/QUALITY.md yourself."
+- 2026-10-29: P4.8 done (70e8066). `checkRenameArgs` takes `^(host|bare)(/elem)*$` and refuses malformed
+  names, owners and modules with one error each; `moduleArg` maps `skip` to the template module, whose owner
+  leftovers other than the template's own URL are still reported; `stripModule` strips the module only as a
+  whole word, so a short module such as `harness` hides no leftover. Documented, not detected: a bare module
+  rewrites `http://`, `pkg.go.dev/` and `go install …@latest` forms of the template URL unreported. Not fixed:
+  a bare module named `aheumaier` would hide `git@github.com:aheumaier/…` leftovers. Review: code CHANGES (8:
+  TestRenameArgs proved nothing, skip guard, dotted one-element module, identity pair, short module,
+  malformed layout, two README lines), fixed in one retry with mutation evidence. Rebase onto ee79ecb clean.
+  Lane `check` green, `harness-selftest` 69/69, `check-all` red only on harness-integrity, `test-integration`,
+  `test-obs` and `e2e` green.
