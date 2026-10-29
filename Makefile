@@ -103,7 +103,7 @@ db-reset: ## Drop this worktree's database volume (and the obs stack), recreate,
 
 check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=60s any: NFR-H3/H4): format, lint, arch, unit tests, secrets, gen-check
 	@$(if $(STACK_OFF),echo "STACK=$(STACK) leaves out: $(sort $(STACK_OFF)) (ADR 0033)" >&2,true)
-	@$(MAKE) -k -j4 $(call stacked,layout-check lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned fixture-claims approved-check lint-web arch-web typecheck-web test-web)
+	@$(MAKE) -k -j4 $(call stacked,layout-check lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned fixture-claims rule-lists approved-check lint-web arch-web typecheck-web test-web)
 	@$(MAKE) gen-check
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
@@ -239,7 +239,7 @@ test-analyzers:
 	@$(RUN) analyzer-tests go-tests-pass --dir $(API_DIR)/tools/analyzers -- go test $(GO_TEST_COUNT) ./...
 
 test-harness:
-	@$(RUN) harness-tests go-tests-pass --dir $(API_DIR)/tools/harness -- go test $(GO_TEST_COUNT) ./...
+	@$(RUN) harness-tests go-tests-pass,harness-reads-layout --dir $(API_DIR)/tools/harness -- go test $(GO_TEST_COUNT) ./...
 
 vuln-go:
 	@$(RUN) govulncheck go-no-known-vulns --dir $(API_DIR) -- govulncheck ./...
@@ -379,7 +379,7 @@ specs: ## spec-kit specs/ are well formed; feat changes to PRODUCT_GLOBS (layout
 	@$(RUN) specs specs-structure,specs-required-for-features -- env BASE_REF="$(BASE_REF)" scripts/harness/check-specs.sh
 
 ##@ Docs
-.PHONY: docs-links references-pinned docs-quality-shape docs-quality fixture-claims
+.PHONY: docs-links references-pinned docs-quality-shape docs-quality fixture-claims rule-lists
 docs-links: $(HARNESS) ## Relative links and anchors in Markdown resolve; every AGENTS.md has a CLAUDE.md importing it
 	@$(RUN) check-links docs-links-resolve,docs-claude-imports-agents -- $(HARNESS) check-links .
 
@@ -400,6 +400,12 @@ fixture-claims: $(HARNESS) ## Every rules.md Fixture line names fixtures that ex
 	@if scripts/harness/unchanged.sh docs/harness/rules.md 'scripts/harness/fixtures/*'; then \
 	  echo "$@: skipped, neither rules.md nor a fixture changed (make check-all runs it)"; \
 	else $(RUN) fixture-claims rules-fixture-claims -- $(HARNESS) fixture-claims .; fi
+
+# In make check, runs only when rules.md or a harness file changed: the review agents it reads are harness files.
+rule-lists: $(HARNESS) ## The review agents' Skip lists name only rules.md ids, and every rule of a section they skip
+	@if scripts/harness/unchanged.sh docs/harness/rules.md; then \
+	  echo "$@: skipped, neither rules.md nor a harness file changed (make check-all runs it)"; \
+	else $(RUN) rule-lists harness-rule-lists-match -- $(HARNESS) rule-lists .; fi
 
 ##@ Generation
 .PHONY: gen gen-check gen-sqlc gen-atlas-sum gen-oapi gen-api-client

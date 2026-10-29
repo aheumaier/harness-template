@@ -77,7 +77,7 @@ type qualityChecker struct {
 }
 
 func (c *qualityChecker) report(line int, rule, format string, a ...any) {
-	fmt.Fprintf(c.out, "%s:%d: %s [%s]\n", qualityFile, line, fmt.Sprintf(format, a...), rule)
+	printFinding(c.out, qualityFile, line, rule, format, a...)
 	c.bad = true
 }
 

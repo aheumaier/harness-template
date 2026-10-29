@@ -15,7 +15,8 @@ do, skip or report.
 ## Skip
 
 - What a sensor already catches (`docs/harness/rules.md`):
-  - copy-pasted code within one Go package (`dupl`) or anywhere in TS/JS (`jscpd`), rule `repo-no-clones`;
+  - copy-pasted code within one Go package (`dupl`) or anywhere in TS/JS (`jscpd`), every rule under
+    `## Duplication`: `repo-no-clones`;
     a Go clone across packages or domains is in scope (TD-52);
   - unreachable or unused code: `go-no-dead-code`, `web-no-dead-code` (deadcode, knip);
   - scripts and make targets nothing calls: `repo-no-orphan-scripts`;

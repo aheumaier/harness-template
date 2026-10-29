@@ -83,6 +83,7 @@ finding_pattern() { # rule-id -> ERE matching a tool finding of that rule, or no
     go-sec) echo '\(gosec\)$' ;;
     go-structured-logging) echo '\(sloglint\)$' ;;
     go-format) echo '\((gofmt|goimports)\)$' ;;
+    harness-reads-layout) echo '\[harness-reads-layout\]$' ;;                            # not dead: keeps its remediation off other go test failures
     web-lint) echo '^[[:space:]]+[0-9]+:[0-9]+[[:space:]]+(error|warning)[[:space:]]' ;; # any ESLint finding
   esac
 }

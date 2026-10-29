@@ -14,8 +14,6 @@ package main
 // check). Fails closed (exit 2) when rules.md is missing or holds no rules.
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -44,8 +42,40 @@ type claimChecker struct {
 }
 
 func (c *claimChecker) report(line int, format string, a ...any) {
-	fmt.Fprintf(c.out, "%s:%d: %s [rules-fixture-claims]\n", rulesFile, line, fmt.Sprintf(format, a...))
+	printFinding(c.out, rulesFile, line, "rules-fixture-claims", format, a...)
 	c.bad = true
+}
+
+// ruleHeading is one `### <rule-id>` heading of rules.md: the id, the `## ` section it sits in (that heading's
+// text before any ` (`), its line, and first: the line of an earlier heading with the same id (0 for none).
+type ruleHeading struct {
+	id, section string
+	line, first int
+}
+
+// ruleHeadings lists rules.md's `### <rule-id>` headings in order; an error when there is none.
+func ruleHeadings(src []byte) ([]ruleHeading, error) {
+	var (
+		rules   []ruleHeading
+		section string
+		seen    = map[string]int{} // rule id → line of its first heading
+	)
+	for i, line := range strings.Split(string(src), "\n") {
+		switch {
+		case strings.HasPrefix(line, "### "):
+			id := strings.TrimSpace(line[4:])
+			rules = append(rules, ruleHeading{id: id, section: section, line: i + 1, first: seen[id]})
+			if seen[id] == 0 {
+				seen[id] = i + 1
+			}
+		case strings.HasPrefix(line, "## "):
+			section, _, _ = strings.Cut(strings.TrimSpace(line[3:]), " (")
+		}
+	}
+	if len(rules) == 0 {
+		return nil, fmt.Errorf("%s has no `### <rule-id>` sections", rulesFile)
+	}
+	return rules, nil
 }
 
 // fixtureClaims prints one line per finding to stdout and reports whether there was any. root is the repo.
@@ -54,36 +84,38 @@ func fixtureClaims(root string, stdout io.Writer) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	headings, err := ruleHeadings(src)
+	if err != nil {
+		return false, err
+	}
 	c := &claimChecker{root: root, out: stdout}
 	if c.fixtures, err = fixtureRules(root); err != nil {
 		return false, err
+	}
+	at := map[int]ruleHeading{} // line → the rule heading there
+	for _, h := range headings {
+		at[h.line] = h
 	}
 
 	var (
 		rule             string // the enclosing `### <id>`, "" outside one
 		ruleLine, claims int
-		rules            int
-		firstLine        = map[string]int{} // rule id → line of its first `### <id>`
 	)
 	endRule := func() {
 		if rule != "" && claims == 0 {
 			c.report(ruleLine, "%s: no `- **Fixture:**` line", rule)
 		}
 	}
-	sc := bufio.NewScanner(bytes.NewReader(src))
-	sc.Buffer(nil, 1<<20)
-	for n := 1; sc.Scan(); n++ {
-		line := sc.Text()
+	for i, line := range strings.Split(string(src), "\n") {
+		n := i + 1
+		h, isRule := at[n]
 		switch {
-		case strings.HasPrefix(line, "### "):
+		case isRule:
 			endRule()
-			rule, ruleLine, claims = strings.TrimSpace(line[4:]), n, 0
-			rules++
+			rule, ruleLine, claims = h.id, n, 0
 			// Anchors, run.sh's remediation lookup and fixture RULE= all resolve an id to one section.
-			if first, dup := firstLine[rule]; dup {
-				c.report(n, "%s: a second `### %s` heading (first at line %d; rule ids are unique)", rule, rule, first)
-			} else {
-				firstLine[rule] = n
+			if h.first != 0 {
+				c.report(n, "%s: a second `### %s` heading (first at line %d; rule ids are unique)", rule, rule, h.first)
 			}
 		case strings.HasPrefix(line, "#"):
 			endRule()
@@ -103,13 +135,7 @@ func fixtureClaims(root string, stdout io.Writer) (bool, error) {
 			}
 		}
 	}
-	if err := sc.Err(); err != nil {
-		return false, err
-	}
 	endRule()
-	if rules == 0 {
-		return false, fmt.Errorf("%s has no `### <rule-id>` sections", rulesFile)
-	}
 	return c.bad, nil
 }
 

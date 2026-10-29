@@ -342,6 +342,7 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      ```sh
      make harness-selftest
      make fixture-claims
+     make rule-lists
      ```
      `make harness-selftest` cannot be green until the dropped fixtures are gone. It asserts each fixture's
      `EXPECT` pattern, and a fixture for a missing `apps/web` fails for the wrong reason.

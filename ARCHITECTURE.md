@@ -33,7 +33,7 @@ flowchart LR
 | `apps/api/db/migrations` | Atlas versioned migrations + `atlas.sum`. Append only. |
 | `apps/api/db/queries` | sqlc queries, one file per domain. |
 | `apps/api/tools/analyzers` | Custom go/analysis linters (`noctxroot`, `domainiso`), a nested module built into `.bin/golangci-lint-custom`. |
-| `apps/api/tools/harness` | The parsing parts of hooks and sensors ([ADR 0012](docs/adr/0012-parsing-sensors-in-go.md)): hook input, `guard-bash`, `check-links`, `fixture-claims`, `quality-rows`, `orphans`, `approved-check`, `integrity-check`, `rename` (`make rename`); a nested module built into `.bin/harness`. |
+| `apps/api/tools/harness` | The parsing parts of hooks and sensors ([ADR 0012](docs/adr/0012-parsing-sensors-in-go.md)): hook input, `guard-bash`, `check-links`, `fixture-claims`, `rule-lists`, `quality-rows`, `orphans`, `approved-check`, `integrity-check`, `rename` (`make rename`); a nested module built into `.bin/harness`. |
 | `apps/web` | Vite + React app. Talks to the API only through `@harness-template/api-client`. |
 | `packages/api-client` | Generated hooks and zod schemas (`src/gen/`, never edited) + hand-written `src/index.ts` (`problemOf`). |
 | `packages/domain` | Pure TypeScript domain logic shared by apps: no React, no browser APIs, no HTTP. |

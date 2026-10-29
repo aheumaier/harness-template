@@ -6,6 +6,7 @@
 //	harness guard-bash <root>      PreToolUse guard for Bash commands (.claude/hooks/guard-bash.sh)
 //	harness check-links <root>     docs-links-resolve, docs-claude-imports-agents (make docs-links)
 //	harness fixture-claims <root>  rules-fixture-claims (make fixture-claims)
+//	harness rule-lists <root>      harness-rule-lists-match: skip lists in review agents (make rule-lists)
 //	harness orphans <root>         repo-no-orphan-scripts (make orphans, check-all)
 //	harness quality-rows -no-clock <root>
 //	                               docs-quality-rows-well-formed, docs-quality-rows-match-domains
@@ -37,17 +38,23 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness check-links <root> | harness fixture-claims <root> | harness orphans <root> | harness quality-rows [-no-clock] <root> | harness references-pinned <root> | harness approved-check <root> | harness layout-check <root> | harness integrity-check <root> | harness rename [-write] <root> <name> <module|skip> <owner>"
+const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness check-links <root> | harness fixture-claims <root> | harness rule-lists <root> | harness orphans <root> | harness quality-rows [-no-clock] <root> | harness references-pinned <root> | harness approved-check <root> | harness layout-check <root> | harness integrity-check <root> | harness rename [-write] <root> <name> <module|skip> <owner>"
 
 // rootSensors are the sensors run as `harness <name> <root>`: findings on stdout, whether there was any, and an
 // error when they cannot run.
 var rootSensors = map[string]func(root string, stdout io.Writer) (bool, error){
 	"check-links":       checkLinks,
 	"fixture-claims":    fixtureClaims,
+	"rule-lists":        ruleLists,
 	"orphans":           orphans,
 	"references-pinned": referencesPinned,
 	"approved-check":    approvedCheck,
 	"layout-check":      layoutCheck,
+}
+
+// printFinding prints one sensor finding as `<file>:<line>: <message> [<rule>]`, the line run.sh maps to the rule.
+func printFinding(out io.Writer, file string, line int, rule, format string, a ...any) {
+	fmt.Fprintf(out, "%s:%d: %s [%s]\n", file, line, fmt.Sprintf(format, a...), rule)
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -84,7 +91,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stderr, "guard-bash: blocked: %v\n", err)
 		return 2
-	case "check-links", "fixture-claims", "orphans", "references-pinned", "approved-check", "layout-check":
+	case "check-links", "fixture-claims", "rule-lists", "orphans", "references-pinned", "approved-check", "layout-check":
 		if len(args) != 2 {
 			break
 		}
