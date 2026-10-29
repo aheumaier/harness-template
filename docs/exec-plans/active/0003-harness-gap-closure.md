@@ -239,7 +239,8 @@ PR; **–** needs none.
   paid, TD-95..97
 - [ ] P4.10 — H — CI `adoption-probe`: README §(b) on a root-`go.mod` fixture
 - [ ] P4.11 — H — reviewer catches seen twice become rules (`Status: earned`, ADR 0019) with fixtures
-- [ ] P4.12 — H — `evasion-reviewer` agent for sensor slices; a retry gets a diff-only re-review
+- [x] P4.12 — 8445e4d — done — `evasion-reviewer` agent for sensor slices; ADR 0019 amended, TD-107..110;
+  the diff-only re-review and §5c wiring are hand-off proposals
 - [ ] P5.1 — H — `specs-scenarios-tested`: each acceptance scenario has a test that names its id, or an exemption
   with a reason
 - [ ] P5.2 — H — upstream specs and contract consumers in `layout.env`; weekly upstream drift via oasdiff;
@@ -1332,3 +1333,14 @@ gates for contract, migration and harness changes. Four are not.
   harness-integrity, `test-integration`, `test-obs` and `e2e` green. Hand-off: `make -n check-all`,
   `make -n e2e` and `make -n test-obs` still run obs-e2e and Playwright (the Makefile is protected);
   the PR needs the `harness-change-approved` label.
+- 2026-10-29: P4.12 done (8445e4d). `.claude/agents/evasion-reviewer.md`: read-only, plants bypasses in a
+  throwaway `git worktree` with hooks off, cost cap 4 sensors × 30 attempts, 45 min; findings are
+  `evasion:<rule-id>:<class>` and advisory (ADR 0019 gains a Decision bullet; ADR 0034 stays unused).
+  Acceptance on 3edf728's diff with the pre-retry prompt: 9 of the 11 TD-75..78 bypasses reproduced; not
+  rerun on the final prompt. Review: code-reviewer CHANGES (1 high: TD-107 named the wrong scratch path;
+  6 medium, 8 low), reuse 6 items, 5 accepted, 1 rejected (TD-108 adds no code, so no SH_FILES idiom);
+  all fixed in one retry. A mktemp copy was dropped because guard-bash refuses `rm -r` outside the
+  project. Gaps TD-107..110. Lane `check` green, `harness-selftest` green, `check-all` red only on
+  harness-integrity. Hand-off: the agent's proposed loop-prompt §5c/§5d text (run it on sensor slices;
+  a retry gets a diff-only re-review), the slice-rule line and the CLAUDE.md review row; the PR needs
+  the `harness-change-approved` label.
