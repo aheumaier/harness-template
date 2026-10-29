@@ -5,7 +5,8 @@
 #   obs-query.sh logs     REQUEST_ID=<id> | QUERY=<LogQL> [SINCE=1h] [LIMIT=100]: JSON lines, oldest first
 #   obs-query.sh metrics  QUERY=<PromQL>: one series per line, `{labels} value`
 #   obs-query.sh traces   ID=<32 hex trace id>: one JSON line per span, in start order
-# Exit codes: 0 found (for a QUERY also: nothing matched), 1 error, 3 the REQUEST_ID or trace ID has no records.
+# Exit codes, for direct calls: 0 found (for a QUERY also: nothing matched), 1 error, 3 the REQUEST_ID or trace
+# ID has no records. Through make every failure is make's exit 2: the message on stderr tells them apart.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 JQ="$ROOT/.bin/jq"
@@ -26,12 +27,12 @@ port() { # NAME_PORT: the value, or fail with the fix
 
 # not_found <message>: the looked-up ID has no records; exit 3.
 not_found() {
-  echo "$1 (a make dev started before make obs-up exports nothing: restart make dev)" >&2
+  echo "$1 (an API started before make obs-up exports nothing: if that is make dev, restart make dev)" >&2
   exit 3
 }
 
 # get <port> <path> [curl args...]: the body on stdout. Exits 1 when the stack is down or answers non-2xx
-# (printing the server's error), 4 on a 404.
+# (printing the server's error), 4 on a 404 (internal: callers turn it into 3 or 1).
 get() {
   local p=$1 path=$2 out rc=0 code
   shift 2

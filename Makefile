@@ -66,7 +66,8 @@ db-migrate: db-up ## Apply pending migrations to this worktree's Postgres
 	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
 
 db-reset: ## Drop this worktree's database volume (and the obs stack), recreate, migrate
-	@$(WITH_ENV) docker compose --progress quiet --profile obs down -v && docker compose --progress quiet up -d --wait db
+	@$(MAKE) --no-print-directory down
+	@$(WITH_ENV) docker compose --progress quiet up -d --wait db
 	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
 
 check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=60s any: NFR-H3/H4): format, lint, arch, unit tests, secrets, gen-check
@@ -246,8 +247,7 @@ schema-doc-fresh:
 	@$(RUN) schema-doc db-schema-doc-fresh -- scripts/gen-schema-doc.sh --check
 
 test-integration: ## Integration tests against the worktree's Postgres (.env.local)
-	@$(WITH_ENV) unset OTEL_TRACES_EXPORTER OTEL_METRICS_EXPORTER OTEL_LOGS_EXPORTER OTEL_EXPORTER_OTLP_ENDPOINT \
-	  OTEL_METRIC_EXPORT_INTERVAL; $(RUN) go-integration go-tests-pass --dir $(API) -- go test -race -count=1 -tags=integration ./...
+	@$(WITH_ENV) unset "$${!OTEL_@}"; $(RUN) go-integration go-tests-pass --dir $(API) -- go test -race -count=1 -tags=integration ./...
 
 ##@ Shell sensors (scripts/, .claude/hooks/)
 .PHONY: lint-sh fmt-check-sh test-sh

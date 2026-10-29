@@ -45,8 +45,8 @@ Assumption A5 ("~500 MB of RAM") held.
 
 ## Decision
 - **The stack is one `grafana/otel-lgtm` container per worktree**, pinned as `name:tag@sha256:digest` (the
-  tag says the version, the digest pins it). The pin will live in `scripts/tool-versions.env` next to
-  `POSTGRES_IMAGE` (P1.4, a harness change).
+  tag says the version, the digest pins it). The pin is `OBS_IMAGE` in `scripts/tool-versions.env`, next to
+  `POSTGRES_IMAGE`.
 - **Opt-in for the dev loop:** a compose profile `obs`, started by `make obs-up` (P1.4). A `make dev` without
   it pays nothing; `make check-all` pays for it (next bullet). Telemetry is disposable: no named volume.
 - **Required by `make check-all` and CI** (exec plan 0003 P1.5): `make test-obs` proves NFR-O1 against a
@@ -55,7 +55,7 @@ Assumption A5 ("~500 MB of RAM") held.
   of `harness-timings-check-all`). This ADR adopts rule
   [obs-request-queryable](../harness/rules.md#obs-request-queryable) for it.
 - **Ports: one per signal, from the worktree's port block** ([ADR 0008](0008-per-worktree-isolation.md)).
-  Blocks are 10 ports apart and use `+0..+2` today (`DB`, `API`, `WEB`); P1.4 is planned to add:
+  Blocks are 10 ports apart and use `+0..+7`: `DB`, `API`, `WEB` at `+0..+2`, then:
 
   | Offset | Container port | Use |
   |--------|----------------|-----|
@@ -66,19 +66,19 @@ Assumption A5 ("~500 MB of RAM") held.
   | +7 | 3000 | Grafana, for a human; no make target needs it |
 
   OTLP/gRPC (4317) and Pyroscope (4040) stay unpublished. Every port binds to `127.0.0.1` only: OTLP is
-  unauthenticated and Grafana keeps its default `admin`/`admin`. P1.4 must widen `scripts/setup-worktree.sh`
-  in two places, or two worktrees can collide: the free-block probe (today `base..base+2`) and
-  `reserved_ports` (today only `DB|API|WEB`).
+  unauthenticated and Grafana keeps its default `admin`/`admin`. So two worktrees cannot collide,
+  `scripts/setup-worktree.sh` probes `base..base+7` for a free block and reserves every `*_PORT` other
+  worktrees hold.
 - **Readiness:** the compose service's healthcheck tests `/tmp/ready`, so `docker compose up --wait` works as
   it does for `db`.
 - **Access only through `make`:** the agent reaches the stack via `make obs-up`, `make logs REQUEST_ID=…|QUERY=…`,
-  `make metrics QUERY=…` and `make traces ID=…` (P1.4). The targets source the worktree's env file
+  `make metrics QUERY=…` and `make traces ID=…`. The targets source the worktree's env file
   themselves and query with `curl` + `jq`. No guide or skill tells an agent to read the env file;
   `guard-bash` blocks it.
 - **Not the bare collector.** It was the fallback if a threshold failed; none did. It would also leave the
   p95 of NFR-O1 to hand-written `jq` aggregation over OTLP JSON, which PromQL's `histogram_quantile` gives
   for free from P1.3's RED histograms, and trace lookup to grepping files.
-- **`jq` is a pinned download in `.bin/`** (P1.4), installed by `scripts/install-tools.sh` and verified
+- **`jq` is a pinned download in `.bin/`**, installed by `scripts/install-tools.sh` and verified
   against a sha256 per OS/arch like Trivy, Atlas and ShellCheck ([ADR 0016](0016-tool-supply-chain.md));
   never a system `jq`.
 - **`make dev` probes the collector:** when nothing listens on `OTLP_PORT` (or the worktree has none), it
@@ -89,6 +89,12 @@ Assumption A5 ("~500 MB of RAM") held.
   `.env.local` by `make setup`, so a bump never upgrades an existing data volume in place; an image without
   one (`OBS_IMAGE`) is read live from `scripts/tool-versions.env` by `make` and `setup-worktree.sh`, so a bump
   reaches every worktree at its next `make obs-up`.
+- **Who owns the `OTEL_*` defaults:** `scripts/setup-worktree.sh` alone, in the worktree's env file (exporters
+  `otlp`, the endpoint on `OTLP_PORT`, a 5 s metric interval), frozen like the ports. Everything else takes
+  them from there: `make dev` only switches the exporters to `none` when its probe finds no stack,
+  `make test-integration` unsets every `OTEL_*`, and `make test-obs` adds only the API's address and its
+  `service.instance.id`, so it tests the defaults every worktree runs with. A changed default reaches an
+  existing worktree only when `make setup` rewrites its env file (it does when an expected key is missing).
 
 ## Consequences
 - One 2.58 GB image per machine, shared by all worktrees; about 0.53 GiB of Docker VM memory per running

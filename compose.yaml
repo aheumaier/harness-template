@@ -22,7 +22,7 @@ services:
   # binds to 127.0.0.1 only: OTLP is unauthenticated and Grafana keeps admin/admin.
   obs:
     profiles: [obs]
-    image: ${OBS_IMAGE:?run make setup}
+    image: ${OBS_IMAGE:?run through make obs-up (OBS_IMAGE comes from scripts/tool-versions.env)}
     ports:
       - "127.0.0.1:${OTLP_PORT:?run make setup}:4318"
       - "127.0.0.1:${LOKI_PORT:?run make setup}:3100"

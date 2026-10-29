@@ -128,6 +128,15 @@ func TestRenameLeftovers(t *testing.T) {
 		t.Errorf("renamed module reported as leftover: %s", out)
 	}
 
+	// A new module under the template owner's account keeps the owner's name on purpose.
+	code, out = renameRun(t, root, "acme-shop", "github.com/aheumaier/shop", "@acme")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	if strings.Contains(out, "  apps/api/go.mod:1") || !strings.Contains(out, "  docs/remote.md:1\n") {
+		t.Errorf("module under the template owner reported as leftover, or the clone URL missed: %s", out)
+	}
+
 	// A kept module path holds the old name on purpose; only the renamed parts are checked.
 	code, out = renameRun(t, root, "acme-shop", templateModule, "@acme")
 	if code != 0 {

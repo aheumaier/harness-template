@@ -33,13 +33,13 @@ flowchart LR
 | `apps/api/db/migrations` | Atlas versioned migrations + `atlas.sum`. Append only. |
 | `apps/api/db/queries` | sqlc queries, one file per domain. |
 | `apps/api/tools/analyzers` | Custom go/analysis linters (`noctxroot`, `domainiso`), a nested module built into `.bin/golangci-lint-custom`. |
-| `apps/api/tools/harness` | The parsing parts of hooks and sensors ([ADR 0012](docs/adr/0012-parsing-sensors-in-go.md)): hook input, `guard-bash`, `check-links`, `fixture-claims`, `approved-check`, `integrity-check`; a nested module built into `.bin/harness`. |
+| `apps/api/tools/harness` | The parsing parts of hooks and sensors ([ADR 0012](docs/adr/0012-parsing-sensors-in-go.md)): hook input, `guard-bash`, `check-links`, `fixture-claims`, `approved-check`, `integrity-check`, `rename` (`make rename`); a nested module built into `.bin/harness`. |
 | `apps/web` | Vite + React app. Talks to the API only through `@harness-template/api-client`. |
 | `packages/api-client` | Generated hooks and zod schemas (`src/gen/`, never edited) + hand-written `src/index.ts` (`problemOf`). |
 | `packages/domain` | Pure TypeScript domain logic shared by apps: no React, no browser APIs, no HTTP. |
-| `scripts/harness` | Sensors' glue: `run.sh` (uniform failure output with remediation), `gen-check.sh`, `contract-check.sh`, `check-commits.sh`, `check-specs.sh`, `merge-base.sh`, `unchanged.sh` and `affected.sh` (what `make check` skips or scopes in scope `changed`, `HARNESS_SCOPE`, [ADR 0014](docs/adr/0014-make-check-scoped-to-the-change.md)), `timing.sh`, `budgets.txt` and `nfr-report.sh` (latency budgets, timings in `.cache/harness/`, [ADR 0013](docs/adr/0013-harness-nfr-budgets.md)), `determinism.sh`, `hook-bootstrap.sh`, `selftest.sh` + `fixtures/`; `coverage.sh` (coverage trend, [ci.md](docs/harness/ci.md#coverage)) and `mutation.sh` with `gremlins.yaml` (mutation score of the week's changes, [ci.md](docs/harness/ci.md#mutation-testing)), reports, not sensors. |
+| `scripts/harness` | Sensors' glue: `run.sh` (uniform failure output with remediation), `gen-check.sh`, `contract-check.sh`, `check-commits.sh`, `check-specs.sh`, `merge-base.sh`, `unchanged.sh` and `affected.sh` (what `make check` skips or scopes in scope `changed`, `HARNESS_SCOPE`, [ADR 0014](docs/adr/0014-make-check-scoped-to-the-change.md)), `timing.sh`, `budgets.txt` and `nfr-report.sh` (latency budgets, timings in `.cache/harness/`, [ADR 0013](docs/adr/0013-harness-nfr-budgets.md)), `determinism.sh`, `hook-bootstrap.sh`, `selftest.sh` + `fixtures/`, `obs-e2e.sh` (`make test-obs`, NFR-O1), `pr-review.sh` (the advisory CI reviewer, [ci.md](docs/harness/ci.md#pr-review)); `coverage.sh` (coverage trend, [ci.md](docs/harness/ci.md#coverage)) and `mutation.sh` with `gremlins.yaml` (mutation score of the week's changes, [ci.md](docs/harness/ci.md#mutation-testing)), reports, not sensors. |
 | `scripts/git-hooks` | Git hooks installed by `make setup` (`core.hooksPath`): `pre-commit` runs the secret scan and the cheap per-file sensors on the staged content, `commit-msg` checks Conventional Commits. |
-| `scripts/` | `setup-worktree.sh`, `install-tools.sh` (pinned versions in `tool-versions.env`), `new-domain.sh` (its templates in `templates/new-domain/`), `gen-schema-doc.sh`. Shell is code: shellcheck + shfmt (`.shellcheckrc`, `.editorconfig`) and bats tests in `scripts/test/` for these scripts and `.claude/hooks/`. |
+| `scripts/` | `setup-worktree.sh`, `install-tools.sh` (pinned versions in `tool-versions.env`), `new-domain.sh` (its templates in `templates/new-domain/`), `gen-schema-doc.sh`, `obs-query.sh` (`make logs`, `metrics`, `traces`). Shell is code: shellcheck + shfmt (`.shellcheckrc`, `.editorconfig`) and bats tests in `scripts/test/` for these scripts and `.claude/hooks/`. |
 | `docs/` | Rules, ADRs, design docs, exec plans, quality grades, generated schema doc. |
 | `specs/` | Product feature specs (`NNN-slug/`: spec, plan, tasks) written with spec-kit; created by the first `/speckit-specify`. |
 | `.specify/` | Vendored spec-kit 1.1.3 (scripts, templates; never edited) and our `memory/constitution.md` ([ADR 0011](docs/adr/0011-conventional-commits-and-spec-kit.md)). |
@@ -106,8 +106,8 @@ receives the request's `context.Context`.
   `make logs REQUEST_ID=…` (or `QUERY=<LogQL>`), `make traces ID=<trace_id>`, and
   `make metrics QUERY=<PromQL>`, which without `QUERY` fails with an example p95 query; `make obs-down`
   removes it, `make down` removes every container and volume of the worktree. `make test-obs` (in
-  `make check-all`) proves one request can be read back this way (NFR-O1). Without the stack, `make dev`
-  also writes each run's output to `.tmp/dev/api.log` (JSON lines) and `.tmp/dev/web.log`; the
+  `make check-all`) proves one request can be read back this way (NFR-O1). `make dev` always writes each
+  run's output to `.tmp/dev/api.log` (JSON lines) and `.tmp/dev/web.log`, the only log without the stack; the
   [query-runtime](.claude/skills/query-runtime/SKILL.md) skill maps runtime questions to these.
 - **Generated code** is committed; `make gen-check` fails if it is stale or hand-edited.
 

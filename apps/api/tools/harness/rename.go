@@ -31,7 +31,7 @@ var (
 
 type renamer struct {
 	*strings.Replacer
-	keptMod  bool     // the module path stays, so the name inside it is no leftover
+	module   string   // the new module path: it may keep the old name or owner on purpose, so it is no leftover
 	leftover []string // template tokens that should be gone after the rename
 }
 
@@ -41,12 +41,12 @@ type renamer struct {
 func newRenamer(name, module, owner string) renamer {
 	r := renamer{
 		Replacer: strings.NewReplacer(templateModule, module, templateName, name, templateOwner, owner),
-		keptMod:  module == templateModule,
+		module:   module,
 	}
 	if name != templateName {
 		r.leftover = append(r.leftover, templateName)
 	}
-	if !r.keptMod && owner != templateOwner {
+	if module != templateModule && owner != templateOwner {
 		r.leftover = append(r.leftover, strings.TrimPrefix(templateOwner, "@")) // e.g. git@github.com:aheumaier/…
 	}
 	return r
@@ -55,9 +55,7 @@ func newRenamer(name, module, owner string) renamer {
 // leftovers lists the lines of s that still hold a template token: a form the three tokens don't cover.
 func (r renamer) leftovers(s string) []int {
 	var lines []int
-	if r.keptMod {
-		s = strings.ReplaceAll(s, templateModule, "")
-	}
+	s = strings.ReplaceAll(s, r.module, "")
 	for i, l := range strings.Split(s, "\n") {
 		for _, tok := range r.leftover {
 			if strings.Contains(l, tok) {

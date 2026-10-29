@@ -9,16 +9,18 @@
 # Attaches to an obs stack that is already up and leaves it; one it started (make obs-up), it removes.
 #   obs-e2e.sh pull   only makes sure OBS_IMAGE (2.58 GB) is present, so that make test-obs pulls it outside
 #                     the timed test (budgets.txt rows obs-pull and obs-e2e).
-# Needs Docker and this worktree's env (make test-obs loads it); MAKE is the calling make (macOS ships 3.81).
-# Fails closed: a missing prerequisite is a failure with the fix, never a skip.
+# Needs Docker, perl (for a free port) and this worktree's env (make test-obs loads it); MAKE is the calling
+# make (macOS ships 3.81). The API exports with the worktree's own OTEL_* settings (scripts/setup-worktree.sh),
+# so a broken default fails here too. Fails closed, never a skip: exit 1 the request is not queryable, 2 it
+# cannot run (no Docker, image, env or free port), each with the fix.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 JQ="$ROOT/.bin/jq"
 WAIT=60 # seconds each signal may take to arrive
 
-die() {
+die() { # cannot run
   echo "obs-e2e: $*" >&2
-  exit 1
+  exit 2
 }
 
 command -v docker >/dev/null || die "no docker on PATH: install Docker (NFR-O1 reads the obs stack), then rerun"
@@ -65,7 +67,8 @@ fail() {
   for f in "$tmp/err" "$tmp/got" "$tmp/api.log"; do
     [[ -s "$f" ]] && printf -- '--- %s (last 20 lines)\n%s\n' "${f##*/}" "$(tail -n 20 "$f")" >&2
   done
-  die "$1"
+  echo "obs-e2e: $1" >&2
+  exit 1
 }
 
 # poll <name> <function>: reruns the function (stdout in $tmp/out, stderr in $tmp/err) until it succeeds,
@@ -94,9 +97,7 @@ port="$(perl -MIO::Socket::INET -e 'print IO::Socket::INET->new(Listen => 1, Loc
   die "could not find a free port (perl IO::Socket::INET)"
 id="nfr-o1-$(date +%s)-$$"
 # service.instance.id (merged into the resource, exec plan 0003 A16) ties the metric to this process.
-HTTP_ADDR="127.0.0.1:$port" OTEL_TRACES_EXPORTER=otlp OTEL_METRICS_EXPORTER=otlp OTEL_LOGS_EXPORTER=otlp \
-  OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:$OTLP_PORT" OTEL_RESOURCE_ATTRIBUTES="service.instance.id=$id" \
-  "$tmp/api" >"$tmp/api.log" 2>&1 &
+HTTP_ADDR="127.0.0.1:$port" OTEL_RESOURCE_ATTRIBUTES="service.instance.id=$id" "$tmp/api" >"$tmp/api.log" 2>&1 &
 api_pid=$!
 listening() { kill -0 "$api_pid" 2>/dev/null && (: <"/dev/tcp/127.0.0.1/$port") 2>/dev/null; }
 deadline=$((SECONDS + 30))

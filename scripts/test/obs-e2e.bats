@@ -39,14 +39,14 @@ STUB
   ln -s "$(command -v bash)" "$bin/bash"
   ln -s "$(command -v dirname)" "$bin/dirname"
   run env PATH="$bin" "$E2E"
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 2 ]
   has "no docker on PATH: install Docker"
 }
 
 @test "obs-e2e: Docker not running fails with the fix" {
   echo 1 >"$STUB/info-rc"
   run "$E2E"
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 2 ]
   has "Docker is not running: start it"
   [ ! -e "$STUB/docker.calls" ]
   [ ! -e "$STUB/make.calls" ]
@@ -55,7 +55,7 @@ STUB
 @test "obs-e2e: a worktree env without the obs ports fails with make setup" {
   unset OTLP_PORT
   run "$E2E"
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 2 ]
   has "no OTLP_PORT: run make setup"
   [ ! -e "$STUB/docker.calls" ]
   [ ! -e "$STUB/make.calls" ]

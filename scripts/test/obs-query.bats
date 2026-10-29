@@ -116,7 +116,7 @@ JSON
   echo "$loki_empty" >"$STUB/body"
   REQUEST_ID=none run -3 "$Q" logs
   has "no log records of request none in the last 1h"
-  has "restart make dev"
+  has "if that is make dev, restart make dev"
   QUERY='{service_name="api"} |= "x"' run -0 "$Q" logs
   has 'no log records match {service_name="api"} |= "x" in the last 1h'
 }
@@ -204,7 +204,7 @@ JSON
   echo 404 >"$STUB/code"
   ID=bf0b04498d8d0bef59cff061eb57efe4 run -3 "$Q" traces
   has "no trace bf0b04498d8d0bef59cff061eb57efe4: spans arrive a few seconds after the request"
-  has "restart make dev"
+  has "if that is make dev, restart make dev"
   rm "$STUB/code"
   echo '{"trace":{},"metrics":{}}' >"$STUB/body"
   ID=bf0b04498d8d0bef59cff061eb57efe4 run -3 "$Q" traces
