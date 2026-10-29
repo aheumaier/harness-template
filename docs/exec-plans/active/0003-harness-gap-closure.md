@@ -191,7 +191,7 @@ PR; **–** needs none.
   `check-all`
 - [ ] P3.7 — H — clone detection: golangci `dupl` (Go) and `jscpd` (TS) with thresholds, in `check-all`
 - [ ] P3.8 — H — `reuse-reviewer` agent: does the diff re-implement something that exists?
-- [ ] P4.1 — – — ADR amending core belief 3: size and complexity limits as sensors, not style
+- [x] P4.1 — – — ADR amending core belief 3: size and complexity limits as sensors, not style
 - [ ] P4.2 — H — Go: `funlen`, `cyclop`/`gocognit`, file length; TS: `max-lines`, `complexity`, `max-params`
 - [ ] P4.3 — H — template version marker (`.harness-version`) + `make harness-sync-check` against upstream
 - [ ] P4.4 — H — per-rule fire counts in `timings.jsonl`; drift issue lists rules that never fired in 90 days
@@ -895,3 +895,14 @@ give it a sensor. Each touches protected paths.
   `obs-query-matches-code`. `make check` warned bats at 84.9 s against its 5 s budget (NFR-H5, warn only; 59–66 s
   before P1.5). Exit criterion: met, by `make test-obs` reading one request's access line, server span and
   p95 back through `make logs`, `traces` and `metrics` on this worktree's own stack; Phase 1 implemented.
+- 2026-10-29: P4.1 integrated (20c1021, rebased from the lane onto 0430737): ADR 0024 (proposed) adopts
+  function length, file length, complexity and parameter count as `team-convention` maintainability sensors,
+  core belief 3 names the exception. Deviation from "start at today's worst": TS uses the ESLint defaults
+  (50 lines, complexity 20, 3 parameters, 300 lines) while the web app is a scaffold, because today's worst
+  (15/5/1/62) plus "never raised" would force a suppression on the next ordinary component; Go is re-measured
+  at P4.2's base (file length over all linted files, tests included). Tests are exempt from the per-function
+  limits; revive runs with only `argument-limit` and `file-length-limit`; plan Q4's sloglint key-case check is
+  not adopted. Code review: 10 findings, all fixed in one retry. Lane `check` green, `harness-selftest` 47/47.
+  Noticed: golangci does not lint `tools/harness` or `tools/analyzers`; P4.2 (which needs P4.1) rewrites the
+  `.golangci.yml:36` comment and wires one recipe per measure in `run.sh` (protected); the Phase 4 exit needs
+  ADR 0024 accepted by a human.
