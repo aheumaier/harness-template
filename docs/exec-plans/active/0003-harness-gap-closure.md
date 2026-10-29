@@ -184,7 +184,7 @@ PR; **–** needs none.
   `pull_request` and posts one advisory comment (never a required check); sha256-pinned Claude Code via
   `install-tools.sh claude`, read-only tools, pinned model, turn and budget caps; inert with a notice until
   the `ANTHROPIC_API_KEY` secret exists (TD-38); ADR 0016 and 0019 amended; TD-39 added
-- [ ] P3.3 — H — scheduled security, data-handling and modularity reviews → drift issue
+- [x] P3.3 — H — scheduled security, data-handling and modularity reviews → drift issue
 - [ ] P3.4 — H — enable `agent-gc`: doc-gardening PRs for drift the computational checks found
 - [ ] P3.5 — H — QUALITY.md grades per domain and layer, `Updated:` date, staleness check in drift
 - [ ] P3.6 — H — `repo-no-orphan-scripts` (unreferenced scripts and make targets); `deadcode-go` into
@@ -906,3 +906,16 @@ give it a sensor. Each touches protected paths.
   Noticed: golangci does not lint `tools/harness` or `tools/analyzers`; P4.2 (which needs P4.1) rewrites the
   `.golangci.yml:36` comment and wires one recipe per measure in `run.sh` (protected); the Phase 4 exit needs
   ADR 0024 accepted by a human.
+- 2026-10-29: P3.3 integrated (f5b5d27, rebased from the lane onto 1b7aa0f; one conflict, the tracker's
+  TD-40/TD-41 rows, both kept). drift.yml runs three read-only review agents (skills `review-security`,
+  `review-data-handling`, `review-modularity`) on schedule or default-branch workflow_dispatch and appends
+  their fenced findings to the drift issue; `scripts/harness/ci-agent.sh` is the CI agent contract shared with
+  `pr-review.sh` (ADR 0019 amendment). Reviews: code and architecture, A1–A10 and C1–C18, all fixed in one
+  retry (base-action replaced by the pinned `.bin/claude`; `${{ }}` kept out of `run:`; red only when the
+  agent did not start or returned no findings array, caps and API errors a notice; minutes cap via
+  `timeout -k 30` so it is a notice, not a red step). Deviation: TD-40 covers only `harness-nfr.yml`'s
+  `head -c` cut, since drift.yml's was fixed here. Lane `check` green, `harness-selftest` 47/47, `lint-ci`
+  green, `check-all` red only on harness-integrity and specs, `test-integration` and `test-obs` green.
+  `.bin/claude` was never executed: human TODO after the secret is set, one workflow_dispatch drift run on the
+  default branch (TD-38, ci.md "Turning it on"). Sensor candidates: `agent-skip-list-ids-exist`,
+  `ci-no-marketplace-agent-runtime`, `ci-agent-job-least-privilege`.
