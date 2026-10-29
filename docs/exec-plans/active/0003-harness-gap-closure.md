@@ -214,7 +214,8 @@ PR; **–** needs none.
   the template commit, `make rename` sets `HARNESS_UPSTREAM`, `make harness-sync-check` lists protected files
   changed upstream since, reported by the weekly drift run (ADR 0026; private template: TD-51)
 - [ ] P4.4 — H — per-rule fire counts in `timings.jsonl`; drift issue lists rules that never fired in 90 days
-- [ ] P4.5 — – — `docs/references/*-llms.txt` for oapi-codegen, sqlc, orval, Atlas (pinned versions)
+- [x] P4.5 — d518888 — done — no pinned tool references → `docs/references/*-llms.txt` for oapi-codegen, sqlc,
+  orval, Atlas with `docs-references-pinned` in `make check` (ADR 0029); a harness change (H), not "–"
 - [ ] P4.6 — H — `scripts/harness/layout.env` read by every script, the Makefile, the hooks and `.bin/harness`
 - [ ] P4.7 — H — stack profiles: `HARNESS_STACK=go,db,web` selects sensors, tool installs and fixtures
 - [ ] P4.8 — H — `make rename` accepts a bare Go module or `MODULE=skip`
@@ -1055,3 +1056,25 @@ give it a sensor. Each touches protected paths.
   check skips unparsable rows (TD-54). Lane `check` green, `harness-selftest` 63/63, `lint-ci`, `docs-quality-shape`,
   `docs-quality` and `clones-web` green, `check-all` red only on harness-integrity, `test-integration`,
   `test-obs` and `e2e` green.
+- 2026-10-29: P4.5 done (d518888). Four references taken at the pinned tags (sqlc v1.31.1, oapi-codegen v2.8.1,
+  Atlas v1.3.0, orval 8.45.0), each with `Version:`, `Pin: <file> <key>`, `Source:` and `License:` headers;
+  `.bin/harness references-pinned` checks the header only (pin file git-known and inside the repo, exact
+  version, Source names it as a path segment or tag). Deviations from the plan: the Progress line said "–"
+  (no harness change), but the sensor touches the Makefile, `apps/api/tools/harness/`, fixtures, rules.md,
+  protected-paths.txt, CODEOWNERS and AGENTS.md, so the PR is H; and "Drift fails when `tool-versions.env`
+  moves" became `make check`, offline and under 1 s, so the PR that raises a pin fails instead of a weekly
+  report (ADR 0029). `docs/references/*` is a guide path (CODEOWNERS review) so template sync reports it with
+  the pin. Review: architecture CHANGES (12: plan/ADR wording, licences, supply chain, protection, pin file
+  could name an ignored `.env` and print a secret, substring Source match, inline config copies), code
+  CHANGES (9: same pin-file and Source issues, finding order, package.json ranges, sqlc "404 in the service"
+  contradicting the layer rule); all fixed in one retry. TD-60 (orval `runtimeValidation` dead with
+  react-query, verified in orval's source at the tag), TD-61 (the strict server checks no schema
+  constraint, against golden principle 2), TD-62 (upstream commit next to the tag). TD-63 from the post-commit security review: a tracked
+  symlink as pin file is read through and the finding echoes the pinned value. Accepted as is: an
+  untracked, not-ignored pin file passes (git-known, as everywhere in the harness). **Ground-rule breach:**
+  in its first run the lane agent removed `.tmp/p4-5-refs` with `python3 -I -c shutil.rmtree` after
+  guard-bash refused `rm -r`; told never to work around a guard, the retry did not. Rebase onto 1ebd557:
+  Makefile docs targets, harness `main.go` usage and dispatch, ADR index, tracker and rules.md. Noticed:
+  `harness-tests` and bats over their NFR-H5 budgets (the references tests take 0.7 s). Lane `check` green,
+  `harness-selftest` 64/64, `lint-ci`, `references-pinned` and `docs-quality-shape` green, `check-all` red
+  only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
