@@ -216,7 +216,8 @@ PR; **–** needs none.
 - [x] P4.3 — a91b86d — done — no record of the template a product was cut from → `.harness-version` holds
   the template commit, `make rename` sets `HARNESS_UPSTREAM`, `make harness-sync-check` lists protected files
   changed upstream since, reported by the weekly drift run (ADR 0026; private template: TD-51)
-- [ ] P4.4 — H — per-rule fire counts in `timings.jsonl`; drift issue lists rules that never fired in 90 days
+- [x] P4.4 — bb790ee — done — per-rule fire counts in `timings.jsonl`; the drift Sweep merges them into a
+  90-day rule-fires ledger and lists rules that never fired, for a human to keep or retire; ADR 0032, TD-79..81
 - [x] P4.5 — d518888 — done — no pinned tool references → `docs/references/*-llms.txt` for oapi-codegen, sqlc,
   orval, Atlas with `docs-references-pinned` in `make check` (ADR 0029); a harness change (H), not "–"
 - [x] P4.6 — 449d561 — done — the product layout was hard-coded in every sensor → `scripts/harness/layout.env`
@@ -1202,3 +1203,14 @@ found only after integration.
   malformed layout, two README lines), fixed in one retry with mutation evidence. Rebase onto ee79ecb clean.
   Lane `check` green, `harness-selftest` 69/69, `check-all` red only on harness-integrity, `test-integration`,
   `test-obs` and `e2e` green.
+- 2026-10-29: P4.4 done (bb790ee). `run.sh` writes each rule's finding count to `timings.jsonl`;
+  `scripts/harness/ci-timings.sh` (shared with `nfr-report.sh`) downloads ci.yml's timing artifacts within
+  their retention; `scripts/harness/rule-fires.sh` validates every row and merges them into a v2 ledger
+  deduplicated by artifact id. drift.yml's Baselines step fetches the last ledger (found / fresh / error);
+  a gh error or a failing merge keeps the last ledger as the baseline and uploads none. ADR 0032 amends ADR
+  0013; rules.md says rules also leave. Review: code and architecture CHANGES, fixed in one retry (shared
+  timing reader, ledger dedupe, error states, ADR relation). Rebase onto eb4b28c: rules.md and the tracker
+  conflicted, both sides kept. Lane `check` green, `harness-selftest` 69/69, `check-all` red only on
+  harness-integrity, `test-integration`, `test-obs` and `e2e` green. Noticed, not fixed: the Baselines step
+  needs `zip`/`unzip` on the runner; 13 failing drift weeks in a row let the ledger artifact expire, so the
+  90-day history restarts; a zero-byte ledger artifact is treated as absent, not recorded.
