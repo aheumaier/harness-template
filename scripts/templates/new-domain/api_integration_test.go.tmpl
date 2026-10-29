@@ -1,0 +1,38 @@
+//go:build integration
+
+package api_test
+
+import (
+	"encoding/json"
+	"net/http"
+	"os"
+	"testing"
+
+	"__MOD__/internal/__NAME__/api"
+	"__MOD__/internal/__NAME__/service"
+	"__MOD__/internal/__NAME__/store"
+	"__MOD__/internal/platform/db"
+)
+
+// Runs every layer against the worktree's Postgres (make test-integration loads .env.local). The test wires
+// the layers itself, like cmd/api/routes.go; nothing in api/ proper imports store.
+func TestGet__PASCAL__Status_Postgres(t *testing.T) {
+	url := os.Getenv("DATABASE_URL")
+	if url == "" {
+		t.Fatal("DATABASE_URL not set; run make setup, then make test-integration")
+	}
+	pool, err := db.NewPool(t.Context(), url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+
+	rec := get(t, service.New(store.New(pool)), "/__KEBAB__/status")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /__KEBAB__/status = %d: %s", rec.Code, rec.Body)
+	}
+	var body api.__PASCAL__Status
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.Status != api.Ok {
+		t.Fatalf("body = %s (%v), want status ok", rec.Body, err)
+	}
+}

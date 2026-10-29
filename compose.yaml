@@ -1,5 +1,7 @@
-# Per-worktree Postgres. Project name, image and port come from .env.local (scripts/setup-worktree.sh),
-# so every worktree gets its own container, volume and port. Local development only.
+# Per-worktree Postgres, and an opt-in observability stack (profile obs, `make obs-up`, ADR 0017). Project
+# name, ports and POSTGRES_IMAGE come from .env.local (scripts/setup-worktree.sh), OBS_IMAGE from
+# scripts/tool-versions.env (make and setup-worktree.sh export it), so every worktree gets its own containers,
+# volume and ports. Local development only.
 services:
   db:
     image: ${POSTGRES_IMAGE:?run make setup}
@@ -16,5 +18,21 @@ services:
       retries: 30
     volumes:
       - db:/var/lib/postgresql/data
+  # OTel collector + Loki + Prometheus + Tempo + Grafana. Telemetry is disposable: no named volume. Every port
+  # binds to 127.0.0.1 only: OTLP is unauthenticated and Grafana keeps admin/admin.
+  obs:
+    profiles: [obs]
+    image: ${OBS_IMAGE:?run through make obs-up (OBS_IMAGE comes from scripts/tool-versions.env)}
+    ports:
+      - "127.0.0.1:${OTLP_PORT:?run make setup}:4318"
+      - "127.0.0.1:${LOKI_PORT:?run make setup}:3100"
+      - "127.0.0.1:${PROMETHEUS_PORT:?run make setup}:9090"
+      - "127.0.0.1:${TEMPO_PORT:?run make setup}:3200"
+      - "127.0.0.1:${GRAFANA_PORT:?run make setup}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/ready"]
+      interval: 1s
+      timeout: 3s
+      retries: 120
 volumes:
   db: {}

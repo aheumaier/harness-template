@@ -1,6 +1,6 @@
-# Latency budgets (ADR 0013, exec plan 0002 NFRs), read by scripts/harness/timing.sh after every sensor run
-# (scripts/harness/run.sh) and every hook call (.claude/hooks/*.sh). A run over budget prints one warning
-# line and keeps its exit status (rules.md#harness-latency-budget).
+# Latency budgets (ADR 0013; the NFRs are in docs/harness/nfr.md), read by scripts/harness/timing.sh after
+# every sensor run (scripts/harness/run.sh) and every hook call (.claude/hooks/*.sh). A run over budget prints
+# one warning line and keeps its exit status (rules.md#harness-latency-budget).
 #
 # One row per line: <name> <budget-ms> <nfr-id>. The name is a sensor id (run.sh's first argument) or a hook
 # name; `default` applies to every name without a row. Raising a budget is a loosening and needs a human
@@ -10,5 +10,19 @@ protect-harness 50 NFR-H1
 guard-bash 50 NFR-H1
 only-make-check 50 NFR-H1
 fast-check 1000 NFR-H2
+# The pre-commit git hook on a typical commit, up to 20 staged files (exec plan 0003, NFR-H8). Local only.
+pre-commit 2000 NFR-H8
+# The full-tree secret scan in make check (exec plan 0003, NFR-H9).
+repo-no-secrets 5000 NFR-H9
 # make harness-determinism runs make check twice: twice the NFR-H4 budget.
 determinism 120000 NFR-H4
+# make test-obs in check-all (exec plan 0003 P1.5, proves NFR-O1; its time counts against check-all's NFR-H7).
+# obs-pull: OBS_IMAGE present locally, 0.1 s; a fresh CI runner pulls 2.58 GB, not measured yet.
+# obs-e2e: builds and boots the API, starts the obs stack when it is down (about 4 s once pulled) and waits for a
+# log line, a span and a metric; 15 s measured, warm.
+obs-pull 120000 NFR-H7
+obs-e2e 30000 NFR-H7
+# make e2e in check-all (exec plan 0003 P2.3, proves NFR-B2; its time counts against check-all's NFR-H7).
+# Playwright starting make dev itself, Go build cache warm: 5.4 s; attached to a running make dev: 1.1 s.
+# A cold Go build cache compiles the API first.
+e2e 30000 NFR-H7

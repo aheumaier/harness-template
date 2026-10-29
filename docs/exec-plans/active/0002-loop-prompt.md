@@ -87,8 +87,9 @@ Measure hooks with `HARNESS_EDIT` unset (`env -u HARNESS_EDIT`): it short-circui
   `.github/CODEOWNERS`. `.bin/harness` is a Make target depending on its sources and a prerequisite of
   `check`, `check-all` and `harness-selftest`.
   - Hooks: all four (`protect-harness`, `guard-bash`, `fast-check`, `only-make-check`) read their JSON
-    input through the binary, not `node`. Keep `.claude/hooks/*.sh` as thin wrappers that `exec` the binary, so `.claude/settings.json` does
-    not change. Missing binary → exit 2 with "run make setup"; the guard-bash wrapper lets `make setup` and
+    input through the binary, not `node`. Keep `.claude/hooks/*.sh` as thin wrappers that call the binary
+    without `exec` (so the timing EXIT trap still records the hook, ADR 0012) and `.claude/settings.json`
+    does not change. Missing binary → exit 2 with "run make setup"; the guard-bash wrapper lets `make setup` and
     `make .bin/harness` through in that case. Bats tests cover both paths. No source-time check per call.
   - Ported sensors (P9, P10): delete the old script and its bats file in the same slice, and replace them with
     Go table tests covering every case the bats file had. The script's fixtures must still be rejected.

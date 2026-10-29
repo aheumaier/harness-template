@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/aheumaier/harness-template/apps/api/internal/platform/problem"
+	"github.com/aheumaier/harness-template/apps/api/internal/platform/requestid"
 )
 
 // Pinger is satisfied by *db.Pool.
@@ -34,10 +35,23 @@ func (s *Server) GetHealth(ctx context.Context, _ GetHealthRequestObject) (GetHe
 	defer cancel()
 	if err := s.db.Ping(ctx); err != nil {
 		return GetHealth503ApplicationProblemPlusJSONResponse{ServiceUnavailableApplicationProblemPlusJSONResponse{
-			Type: "about:blank", Title: "Service Unavailable", Status: http.StatusServiceUnavailable, Detail: ptr("database unreachable"),
+			Type: "about:blank", Title: http.StatusText(http.StatusServiceUnavailable), Status: http.StatusServiceUnavailable, Detail: ptr("database unreachable"),
+			Instance: nonEmpty(problem.Instance(ctx)),
 		}}, nil
 	}
-	return GetHealth200JSONResponse{Status: Ok}, nil
+	// The contract requires the header on this response; requestid.Middleware re-applies it on the wire anyway.
+	return GetHealth200JSONResponse{
+		Body:    Health{Status: Ok},
+		Headers: GetHealth200ResponseHeaders{XRequestId: requestid.FromContext(ctx)},
+	}, nil
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// nonEmpty is nil for "", so omitempty drops the field instead of sending an empty string.
+func nonEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}

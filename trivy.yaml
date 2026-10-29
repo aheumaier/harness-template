@@ -1,0 +1,5 @@
+# Harness file (protected). Trivy config for repo-no-secrets and deps-no-known-vulns (docs/harness/rules.md),
+# loaded by scripts/harness/trivy.sh, which scans a copy of the git-known files (never .env.local, .cache/).
+# Nothing is skipped here: the secret scan sees scripts/harness/fixtures/ too (no fixture holds a literal
+# secret; repo-secret-* assemble theirs in apply.sh). Only the vuln scan skips that directory (in trivy.sh).
+scan: {}

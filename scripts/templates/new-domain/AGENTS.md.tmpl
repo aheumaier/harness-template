@@ -1,0 +1,11 @@
+# Domain: __NAME__
+
+- Layers: `model` (types) → `store` (sqlc, generated) → `service` (logic) → `api` (generated strict server + handlers).
+- Contract first: change the `__NAME__` operations in `api/openapi.yaml`, run `make gen`, then implement in `api/api.go`.
+- SQL lives in `apps/api/db/queries/__NAME__.sql`; schema changes are new migrations (`.claude/skills/add-migration`).
+- Other domains call `service` (or use `model`), never `store` or `api` (rules.md#go-domain-isolation).
+- The generated `GET /__KEBAB__/status` stub only proves the wiring: replace it with real operations.
+- Tests: `service/service_test.go` (fake store), `api/api_test.go` (strict server + `httptest`) and
+  `api/api_integration_test.go` (`-tags=integration`, real Postgres, `make test-integration`). Replace them with
+  the real operations' tests; keep one of each kind.
+- Done = `make check` green and the `__NAME__` row in docs/QUALITY.md updated.

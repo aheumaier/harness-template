@@ -12,6 +12,9 @@ linters:
     - depguard
     - noctxroot
     - domainiso
+    - forbidigo
+    - sloglint
+    - gosec # rules.md#go-sec: all checks at gosec's defaults, tests included
   settings:
     custom:
       noctxroot:
@@ -20,6 +23,19 @@ linters:
       domainiso:
         type: module
         description: "no cross-domain store/api imports (rules.md#go-domain-isolation)"
+    # rules.md#go-structured-logging (std log is allowed in platform: see exclusions.rules)
+    forbidigo:
+      analyze-types: true # match by package path, so a variable named `log` or a renamed import is judged by its type
+      forbid:
+        - pattern: ^fmt\.Print(f|ln)?$
+          pkg: ^fmt$
+          msg: "[go-structured-logging] fmt.Print* writes unstructured text to stdout. Fix: log through the injected *slog.Logger (logging.New in platform) with key-value pairs or slog.Attr values, or return the error. See docs/harness/rules.md#go-structured-logging"
+        - pattern: ^log\.
+          pkg: ^log$
+          msg: "[go-structured-logging] std log package outside platform. Fix: log through the injected *slog.Logger (logging.New in platform) with key-value pairs or slog.Attr values, or return the error. See docs/harness/rules.md#go-structured-logging"
+    # rules.md#go-structured-logging: either key-value pairs or slog.Attr values per call, never both; no key-case check yet (plan 0003, P4.1)
+    sloglint:
+      no-mixed-args: true
     depguard:
       rules:
         # rules.md#go-db-only-in-store
@@ -43,8 +59,21 @@ linters:
           deny:
             - pkg: net/http
               desc: "[go-http-only-in-api] net/http belongs in internal/<domain>/api, platform or cmd. Fix: keep transport concerns (status codes, headers, requests) in the api layer and pass plain Go types into the service. See docs/harness/rules.md#go-http-only-in-api"
+        # rules.md#go-test-helpers-only-in-tests (ADR 0022)
+        go-test-helpers-only-in-tests:
+          files:
+            - "$all"
+            - "!$test"
+          deny:
+            - pkg: github.com/aheumaier/harness-template/apps/api/internal/platform/approvaltest
+              desc: "[go-test-helpers-only-in-tests] approvaltest pins responses in handler tests and writes files under testdata/. Fix: import it only from a _test.go file; production code never needs it. See docs/harness/rules.md#go-test-helpers-only-in-tests"
   exclusions:
     generated: strict
+    rules:
+      # rules.md#go-structured-logging: platform may wrap the std log package (e.g. http.Server.ErrorLog); fmt.Print* stays forbidden there
+      - path: internal/platform/
+        linters: [forbidigo]
+        text: "std log package outside platform"
 
 formatters:
   enable:

@@ -20,7 +20,7 @@ export const ServerErrorResponse = zod.object({
   "title": zod.string(),
   "status": zod.int().min(serverErrorResponseStatusMin).max(serverErrorResponseStatusMax),
   "detail": zod.string().optional(),
-  "instance": zod.string().optional()
+  "instance": zod.string().optional().describe('Identifies this occurrence. When set, it is `urn:request-id:<id>`, the request\'s `X-Request-Id`.')
 }).describe('RFC 9457 problem details.')
 
 export type ServerErrorResponse = zod.input<typeof ServerErrorResponse>;

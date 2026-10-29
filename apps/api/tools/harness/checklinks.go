@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -61,19 +60,37 @@ func checkLinks(root string, stdout io.Writer) (bool, error) {
 	return c.bad, nil
 }
 
-// gitFiles lists tracked and untracked, not ignored files matching the pathspecs, without skippedPath and
-// without tracked files deleted from the working tree (`rm docs/x.md` leaves them in ls-files -c): their
-// links are gone, and links to them are reported where they are.
+// gitFiles is gitKnown without skippedPath.
 func gitFiles(root string, pathspecs ...string) ([]string, error) {
-	cmd := exec.Command("git", append([]string{"-C", root, "ls-files", "-z", "-co", "--exclude-standard", "--"}, pathspecs...)...)
-	cmd.Stderr = os.Stderr
-	out, err := cmd.Output()
+	known, err := gitKnown(root, pathspecs...)
 	if err != nil {
-		return nil, fmt.Errorf("git ls-files: %w", err)
+		return nil, err
+	}
+	var files []string
+	for _, f := range known {
+		if !skippedPath.MatchString(f) {
+			files = append(files, f)
+		}
+	}
+	return files, nil
+}
+
+// gitKnown lists tracked and untracked, not ignored files matching the pathspecs, without tracked files
+// deleted from the working tree (`rm docs/x.md` leaves them in ls-files -c): their links are gone, and links
+// to them are reported where they are.
+func gitKnown(root string, pathspecs ...string) ([]string, error) {
+	return lsFiles(root, append([]string{"-co", "--exclude-standard", "--"}, pathspecs...)...)
+}
+
+// lsFiles runs git ls-files with args and keeps the files that still exist in the working tree.
+func lsFiles(root string, args ...string) ([]string, error) {
+	out, err := git(root, append([]string{"ls-files", "-z"}, args...)...)
+	if err != nil {
+		return nil, err
 	}
 	var files []string
 	for _, f := range strings.Split(string(out), "\x00") {
-		if f == "" || skippedPath.MatchString(f) {
+		if f == "" {
 			continue
 		}
 		if _, err := os.Lstat(filepath.Join(root, f)); err == nil {

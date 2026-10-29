@@ -14,7 +14,7 @@ global versions.
 | Command | When |
 |---------|------|
 | `make setup` | Once per clone/worktree: tools, JS deps, this worktree's own Postgres + ports (`.env.local`). Each worktree is fully isolated. |
-| `make check` | After every change. Fast (<60 s warm): format, lint, layers, unit tests, generated code up to date. |
+| `make check` | After every change. Fast (warm): ≤ 10 s without shell or harness changes, ≤ 60 s otherwise ([NFR-H3, NFR-H4](docs/harness/nfr.md)): format, lint, layers, unit tests, generated code up to date. |
 | `make check-all` | Before you open a PR: `check` + migrations, contract, harness integrity, commit messages, specs, vulnerabilities, dead code, integration tests. |
 | `make gen` | After editing `api/openapi.yaml`, `apps/api/db/queries/*.sql` or migrations. Commit the output. |
 | `make new-domain NAME=billing` | To start a new business domain. Never create `apps/api/internal/<domain>/` by hand. |

@@ -1,0 +1,40 @@
+# Harness file (protected): what make mutation measures in apps/api (docs/adr/0023-mutation-testing-is-a-drift-report.md).
+# scripts/harness/mutation.sh passes it with --config, so gremlins reads no other config file, and unsets every
+# GREMLINS_* variable, which would override it. Every key gremlins v0.6.0 reads is set; the mutants are its
+# defaults, made explicit.
+unleash:
+  # With one worker per core, mutants time out because the machine is loaded, not because they hang.
+  workers: 2
+  timeout-coefficient: 10
+  test-cpu: 0
+  integration: false
+  tags: ""
+  coverpkg: ""
+  dry-run: false
+  # A trend, never a gate: no threshold.
+  threshold:
+    efficacy: 0
+    mutant-coverage: 0
+mutants:
+  arithmetic-base:
+    enabled: true
+  conditionals-boundary:
+    enabled: true
+  conditionals-negation:
+    enabled: true
+  increment-decrement:
+    enabled: true
+  invert-negatives:
+    enabled: true
+  invert-assignments:
+    enabled: false
+  invert-bitwise:
+    enabled: false
+  invert-bwassign:
+    enabled: false
+  invert-logical:
+    enabled: false
+  invert-loopctrl:
+    enabled: false
+  remove-self-assignments:
+    enabled: false

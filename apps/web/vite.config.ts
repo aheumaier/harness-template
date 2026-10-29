@@ -13,5 +13,12 @@ export default defineConfig({
     // Same-origin API calls: the generated client uses relative paths (e.g. /healthz).
     proxy: { '/healthz': `http://localhost:${apiPort}` },
   },
-  test: { environment: 'node' },
+  test: {
+    environment: 'node',
+    // `pnpm coverage` (make coverage): scripts/harness/coverage.sh sets the provider and reporter. Include every
+    // source file, so a file no test imports counts as uncovered instead of missing (test files are excluded by
+    // Vitest's default). No `thresholds`: coverage is a trend, not a gate
+    // (docs/adr/0020-test-coverage-is-a-trend.md).
+    coverage: { include: ['src/**'] },
+  },
 });

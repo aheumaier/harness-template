@@ -1,6 +1,40 @@
 # Harness file (protected). Weekly sweep for drift that accumulates without any single PR causing it:
-# dead code, known vulnerabilities in dependencies, a stale schema doc, dead doc links. Findings go to one
+# dead code, known vulnerabilities in dependencies, a stale schema doc, dead doc links, test coverage that
+# fell since the last run, mutants that survived in the week's changes, and the advisory findings of three
+# read-only review agents (security, data handling, modularity; ci.md#scheduled-reviews). Findings go to one
 # open issue labelled `drift` (created, or commented on).
+#
+# Scheduled reviews (exec plan 0003 P3.3), an inferential sensor (docs/adr/0019-inferential-sensors-are-advisory.md):
+# never a required check, and a finding never turns a job red. They share pr-review.yml's CI agent contract
+# (scripts/harness/ci-agent.sh, ADR 0016 and 0019 amendments). A review that cannot run (no ANTHROPIC_API_KEY
+# secret, not the default branch, a cap reached, an API error) leaves a notice and is skipped. Harness breakage
+# turns it red: the agent did not start, or it succeeded without structured findings.
+#
+# Trust boundary: write-access collaborators are trusted with the key. A workflow_dispatch runs the dispatched
+# branch's copy of this file with the repository's secrets: anyone who can push a branch can edit it to print
+# or use the key in that run. The default-branch gate keeps the reviews on reviewed code, but an edited copy
+# can drop it. So ANTHROPIC_API_KEY must be a dedicated Anthropic workspace key with a hard spend limit, used
+# for nothing else (pr-review.yml's key has the same trust). Optional hardening: an `environment:` on the
+# reviews job whose deployment branches are the default branch only, holding the key as an environment
+# secret, so GitHub itself withholds it from any other branch.
+#
+# The repository is untrusted input to an agent that holds the key (prompt injection, secret exfiltration).
+# Safe against repository content only while all of these hold (scripts/test/scheduled-review.bats checks them):
+#   - the reviews job holds `contents: read` and no write token (credentials not persisted); the key is in the
+#     env of the agent step alone, which runs only `claude`, the schema and the leak screen. The agent's flags
+#     are pr-review.yml's: --bare, --restricted, --tools Read,Grep,Glob, --disallowedTools 'mcp__*',
+#     --strict-mcp-config, --permission-mode dontAsk, --no-session-persistence and a --settings file that
+#     blocks reads outside the working directory and denies Read under system and runner dirs and of every
+#     env file (`scheduled-review.sh settings`).
+#   - `scheduled-review.sh screen` withholds output holding the key verbatim or an `sk-ant-` prefix: a backstop,
+#     not the control.
+#   - the artifact is the raw findings JSON; the drift job renders it (`scheduled-review.sh render`, pinned jq)
+#     as one fenced block per review, so no mention, link, image or HTML in it renders. The log shows the
+#     report between ::stop-commands:: markers, so no workflow command in it runs.
+#   - only the matrix entry, booleans, the default branch name, the agent's exit code and the caps below reach
+#     `run:` blocks, via env; no `${{ }}` inside a `run:` block.
+#
+# Cost cap per review (ADR 0019: raising one is a harness-config change): the REVIEW_* values below.
 name: drift
 
 on:
@@ -11,26 +45,214 @@ on:
 permissions:
   contents: read
 
+# One sweep at a time; a second one waits rather than cancelling a run that is writing to the issue.
+concurrency:
+  group: drift
+  cancel-in-progress: false
+
+env:
+  REVIEW_MODEL: claude-sonnet-5-5
+  REVIEW_MAX_TURNS: "40"
+  REVIEW_MAX_BUDGET_USD: "3.00"
+  REVIEW_MAX_MINUTES: "15"
+
 jobs:
-  drift:
+  # The `secrets` context is not allowed in a job's `if:`, hence a job that tests it and holds nothing else.
+  review-gate:
+    permissions: {}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      enabled: ${{ steps.gate.outputs.enabled }}
+    steps:
+      - name: Gate (secret, default branch)
+        id: gate
+        env:
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }} # a boolean: the key's value never reaches this step
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          skip() {
+            echo "::notice title=Scheduled reviews skipped::$1 (docs/harness/ci.md#scheduled-reviews)"
+            echo "enabled=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          }
+          [[ $HAS_KEY == true ]] || skip "the ANTHROPIC_API_KEY repository secret is not set"
+          # A schedule always runs on the default branch, and its payload may lack `repository`.
+          [[ $GITHUB_EVENT_NAME == schedule || $GITHUB_REF_NAME == "$DEFAULT_BRANCH" ]] ||
+            skip "they run on the default branch only"
+          echo "enabled=true" >>"$GITHUB_OUTPUT"
+
+  # One read-only agent per review: the prompt of `make review-prompt REVIEW=<review>`.
+  reviews:
+    needs: review-gate
+    if: needs.review-gate.outputs.enabled == 'true'
     permissions:
       contents: read
-      issues: write
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        review: [security, data-handling, modularity]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Prompt and settings
+        env:
+          REVIEW: ${{ matrix.review }}
+        run: |
+          d=.cache/review
+          mkdir -p "$d"
+          make review-prompt REVIEW="$REVIEW" >"$d/prompt.txt"
+          scripts/harness/scheduled-review.sh settings "$RUNNER_TEMP" "$RUNNER_TOOL_CACHE" \
+            "$HOME/.claude" "$HOME/.config" "$HOME/.ssh" "$HOME/runners" >"$d/settings.json"
+
+      - name: Install Claude Code (pinned, sha256-verified)
+        run: |
+          scripts/install-tools.sh claude
+          .bin/claude --version
+
+      - name: Review (agent and leak screen only; no write token, no shell)
+        id: agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" # no auto-update, telemetry or error reporting
+        run: |
+          d=.cache/review
+          REVIEW_SCHEMA=$(scripts/harness/scheduled-review.sh schema)
+          code=0
+          # The minutes cap is a notice like the others (124: timed out, 137: killed after the grace period).
+          timeout -k 30 "${REVIEW_MAX_MINUTES}m" \
+            .bin/claude -p --bare --restricted --strict-mcp-config --tools Read,Grep,Glob --disallowedTools 'mcp__*' \
+            --permission-mode dontAsk --settings "$d/settings.json" --no-session-persistence \
+            --output-format json --json-schema "$REVIEW_SCHEMA" --model "$REVIEW_MODEL" \
+            --max-turns "$REVIEW_MAX_TURNS" --max-budget-usd "$REVIEW_MAX_BUDGET_USD" \
+            <"$d/prompt.txt" >"$d/out.json" 2>"$d/err.txt" || code=$?
+          if [[ $code == 124 || $code == 137 ]]; then
+            rm -f "$d/out.json" "$d/err.txt"
+            echo "::notice title=Scheduled review skipped::the agent hit the ${REVIEW_MAX_MINUTES}-minute cap"
+            exit 0
+          fi
+          echo "exit=$code" >>"$GITHUB_OUTPUT"
+          rc=0
+          scripts/harness/scheduled-review.sh screen "$d/out.json" "$d/err.txt" || rc=$?
+          case $rc in
+            0) echo "screened=true" >>"$GITHUB_OUTPUT" ;;
+            1)
+              rm -f "$d/out.json" "$d/err.txt"
+              echo "::warning title=Scheduled review withheld::the agent output holds the API key or an sk-ant- prefix; nothing reported (rotate the key if it is the key)"
+              ;;
+            *) exit "$rc" ;;
+          esac
+
+      - name: Findings
+        id: findings
+        if: steps.agent.outputs.screened == 'true'
+        env:
+          REVIEW: ${{ matrix.review }}
+          AGENT_EXIT: ${{ steps.agent.outputs.exit }}
+        run: |
+          d=.cache/review
+          verdict=$(scripts/harness/scheduled-review.sh result "$AGENT_EXIT" "$d/out.json" "$d/err.txt" "$d/$REVIEW.json")
+          if [[ $verdict != findings ]]; then
+            echo "::notice title=Scheduled review skipped::${verdict#skip: }"
+            exit 0
+          fi
+          echo "upload=true" >>"$GITHUB_OUTPUT"
+
+      # The raw findings JSON (screened); the drift job renders it.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.findings.outputs.upload == 'true'
+        with:
+          name: review-${{ matrix.review }}
+          path: .cache/review/${{ matrix.review }}.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+  drift:
+    # After the reviews, whatever their result (skipped, or one of them failed): their sections join this
+    # job's report.
+    needs: [review-gate, reviews]
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: read
+      actions: read # earlier drift runs and their coverage artifacts
+      issues: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # make mutation selects the files changed in the last 7 days from history
       - uses: ./.github/actions/setup
       - run: make setup
+      # The Trivy vulnerability DB for vuln-deps, shared with ci.yml and refreshed once a day.
+      - id: today
+        run: echo "date=$(date -u +%Y-%m-%d)" >>"$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/trivy
+          key: trivy-db-${{ steps.today.outputs.date }}
+          restore-keys: trivy-db-
+      # The baseline for the coverage change (ADR 0020): coverage.tsv of the newest earlier scheduled drift run
+      # that has one, so a manual run never resets the weekly baseline. Any completed run counts when it
+      # uploaded the artifact (a failed review job no longer hides a good baseline). Its own step, because
+      # only it needs a token; the Sweep runs third-party code (pnpm, deadcode, knip, Trivy) and gets none.
+      - name: Coverage baseline
+        id: baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! ids="$(gh run list --workflow drift.yml --branch "$GITHUB_REF_NAME" --event schedule \
+            --status completed --limit 10 --json databaseId --jq '.[].databaseId')"; then
+            echo "::warning::gh run list failed: this drift run reports coverage without the change since the last one"
+            exit 0
+          fi
+          for id in $ids; do
+            if gh run download "$id" --name coverage --dir "$RUNNER_TEMP/coverage-$id" 2>/dev/null &&
+              [[ -s "$RUNNER_TEMP/coverage-$id/coverage.tsv" ]]; then
+              echo "previous=$RUNNER_TEMP/coverage-$id/coverage.tsv" >>"$GITHUB_OUTPUT"
+              break
+            fi
+          done
+      # Mutation testing of the files changed in the last 7 days (ADR 0023, ci.md#mutation-testing), a trend,
+      # never a gate: scores and survivors go to the job summary only; the issue gets an entry only when it
+      # cannot measure (make mutation failed, or this step hit its wall-clock cap; the Sweep reports both).
+      - name: Mutation
+        id: mutation
+        continue-on-error: true
+        timeout-minutes: 20
+        run: |
+          fence='```'
+          if ! out="$(make mutation 2>&1)"; then
+            printf '### make mutation failed\n\n%s\n%s\n%s\n' "$fence" "$out" "$fence" >"$RUNNER_TEMP/mutation.md"
+            exit 1
+          fi
+          printf '%s\n' "$out" >>"$GITHUB_STEP_SUMMARY"
+      # The reviews' raw findings: review-<name>/<name>.json for each review that finished. A pattern that
+      # matches no artifact downloads nothing and succeeds (every review skipped); any other failure is red.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.review-gate.outputs.enabled == 'true'
+        with:
+          pattern: review-*
+          path: ${{ runner.temp }}/reviews
+          merge-multiple: true
       - name: Sweep
         id: sweep
+        env:
+          COVERAGE_BASELINE: ${{ steps.baseline.outputs.previous }}
+          MUTATION_OUTCOME: ${{ steps.mutation.outcome }}
+          REVIEWS_RESULT: ${{ needs.reviews.result }}
         run: |
           report="$RUNNER_TEMP/drift.md"
           fence='```'
           : >"$report"
-          for target in deadcode-go knip vuln-go docs-links; do
+          for target in deadcode-go knip vuln-go vuln-deps docs-links; do
             if ! out="$(make "$target" 2>&1)"; then
               printf '### make %s\n\n%s\n%s\n%s\n\n' "$target" "$fence" "$out" "$fence" >>"$report"
             fi
@@ -40,15 +262,63 @@ jobs:
           elif ! out="$(git diff --exit-code -- docs/generated)"; then
             printf '### docs/generated is stale (run make gen-schema-doc)\n\n%sdiff\n%s\n%s\n\n' "$fence" "$out" "$fence" >>"$report"
           fi
+          # Coverage, a trend, never a gate (ADR 0020): the full table goes to the job summary every week; the
+          # issue gets only the packages whose coverage fell since the baseline. coverage.sh parses the
+          # baseline rather than trusting it.
+          if ! out="$(make coverage COVERAGE_PREVIOUS="$COVERAGE_BASELINE" 2>&1)"; then
+            printf '### make coverage failed\n\n%s\n%s\n%s\n\n' "$fence" "$out" "$fence" >>"$report"
+          else
+            printf '%s\n' "$out" >>"$GITHUB_STEP_SUMMARY"
+            if [[ -n "$COVERAGE_BASELINE" ]]; then
+              out="$(make coverage-fell COVERAGE_PREVIOUS="$COVERAGE_BASELINE" 2>&1)" ||
+                out="$(printf '### make coverage-fell failed\n\n%s\n%s\n%s' "$fence" "$out" "$fence")"
+              [[ -z "$out" ]] || printf '%s\n\n' "$out" >>"$report"
+            fi
+          fi
+          # Mutation (ADR 0023): only a run that could not measure reaches the issue. mutation.md exists when
+          # make mutation failed; without it, the step was killed by its timeout.
+          if [[ -s "$RUNNER_TEMP/mutation.md" ]]; then
+            cat "$RUNNER_TEMP/mutation.md" >>"$report"
+            echo >>"$report"
+          elif [[ "$MUTATION_OUTCOME" != success ]]; then
+            printf '### make mutation did not finish (%s; its step log has the output)\n\n' "$MUTATION_OUTCOME" >>"$report"
+          fi
+          # Scheduled reviews (ci.md#scheduled-reviews), advisory (ADR 0019): last and security first, so the
+          # cut below drops modularity first. render takes the untrusted findings with the pinned jq.
+          for review in security data-handling modularity; do
+            findings="$RUNNER_TEMP/reviews/$review.json"
+            [[ -f "$findings" ]] || continue
+            if ! out="$(PATH="$PWD/.bin:$PATH" scripts/harness/scheduled-review.sh render "$review" "$findings")"; then
+              out="### Scheduled review: $review could not be rendered (scheduled-review.sh render; this run's log has why)"
+            fi
+            [[ -z "$out" ]] || printf '%s\n\n' "$out" >>"$report"
+          done
+          if [[ "$REVIEWS_RESULT" == failure ]]; then
+            printf '### Scheduled reviews: a review job failed (harness breakage; see this run)\n\n' >>"$report"
+          fi
+          # The full report in the log, as text: no line of it is read as a workflow command.
+          token="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+          echo "::stop-commands::$token"
           cat "$report"
-          # GitHub caps an issue body or comment at 65536 characters; the full report is in this log.
+          echo "::$token::"
+          # GitHub caps an issue body or comment at 65536 characters; the cut keeps whole lines, so it never
+          # splits a multi-byte character. The full report is in this log.
           if (($(wc -c <"$report") > 60000)); then
-            head -c 60000 "$report" >"$report.cut"
+            LC_ALL=C awk '{ n += length($0) + 1; if (n > 60000) exit; print }' "$report" >"$report.cut"
             printf '\n\n(truncated; full report in the workflow run log)\n' >>"$report.cut"
             mv "$report.cut" "$report"
           fi
           echo "report=$report" >>"$GITHUB_OUTPUT"
           [[ -s "$report" ]] && echo "found=true" >>"$GITHUB_OUTPUT" || echo "found=false" >>"$GITHUB_OUTPUT"
+      # Next week's baseline for the coverage change (the Makefile's COVERAGE_TSV); kept long enough to survive
+      # a few skipped weeks.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: .cache/coverage/coverage.tsv
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 35
       - name: Open or update the drift issue
         if: steps.sweep.outputs.found == 'true'
         env:

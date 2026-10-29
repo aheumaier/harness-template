@@ -3,9 +3,12 @@
 package problem
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+
+	"github.com/aheumaier/harness-template/apps/api/internal/platform/requestid"
 )
 
 // Problem mirrors components.schemas.Problem in api/openapi.yaml.
@@ -17,20 +20,32 @@ type Problem struct {
 	Instance string `json:"instance,omitempty"`
 }
 
-// Write sends a problem response with Type "about:blank" and the standard status text as Title.
-func Write(w http.ResponseWriter, status int, detail string) {
+// Write sends a problem response with Type "about:blank", the standard status text as Title and the
+// request's Instance.
+func Write(w http.ResponseWriter, r *http.Request, status int, detail string) {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(Problem{Type: "about:blank", Title: http.StatusText(status), Status: status, Detail: detail})
+	_ = json.NewEncoder(w).Encode(Problem{
+		Type: "about:blank", Title: http.StatusText(status), Status: status, Detail: detail, Instance: Instance(r.Context()),
+	})
+}
+
+// Instance identifies this occurrence of a problem: "urn:request-id:<X-Request-Id>" (components.schemas.Problem
+// in api/openapi.yaml), or "" outside a request. Handlers building a generated problem response set it too.
+func Instance(ctx context.Context) string {
+	if id := requestid.FromContext(ctx); id != "" {
+		return "urn:request-id:" + id
+	}
+	return ""
 }
 
 // RequestError handles malformed requests (bad params/body) in generated strict servers.
-func RequestError(w http.ResponseWriter, _ *http.Request, err error) {
-	Write(w, http.StatusBadRequest, err.Error())
+func RequestError(w http.ResponseWriter, r *http.Request, err error) {
+	Write(w, r, http.StatusBadRequest, err.Error())
 }
 
 // ResponseError handles errors returned by handlers. Details are logged, never leaked to clients.
 func ResponseError(w http.ResponseWriter, r *http.Request, err error) {
 	slog.ErrorContext(r.Context(), "unhandled handler error", "err", err, "path", r.URL.Path)
-	Write(w, http.StatusInternalServerError, "")
+	Write(w, r, http.StatusInternalServerError, "")
 }

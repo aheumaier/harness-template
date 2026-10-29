@@ -24,7 +24,8 @@ setup() {
   printf '# docs\n' >"$SANDBOX/docs/x.md"
   sandbox_base
   git -C "$SANDBOX" checkout -qb feature
-  export BASE_REF=main # not the caller's (make check BASE_REF=HEAD would hide committed changes)
+  export BASE_REF=main   # not the caller's (make check BASE_REF=HEAD would hide committed changes)
+  unset MAKEFLAGS MFLAGS # make check-all BASE_REF=origin/main (ci.yml:44) would reach the inner make below via MAKEFLAGS
 }
 
 # is <text>: $output is exactly text (a function: see has in helpers.bash).

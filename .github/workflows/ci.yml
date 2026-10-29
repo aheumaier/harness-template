@@ -31,6 +31,17 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - run: make setup
+      # The system libraries of Playwright's Chromium headless shell for make e2e (unpinned apt via sudo: ADR 0016
+      # known gap, TD-42); the browser itself is in .bin/playwright.
+      - run: apps/web/node_modules/.bin/playwright install-deps chromium-headless-shell
+      # The Trivy vulnerability DB for deps-no-known-vulns (make vuln-deps), refreshed once a day.
+      - id: today
+        run: echo "date=$(date -u +%Y-%m-%d)" >>"$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/trivy
+          key: trivy-db-${{ steps.today.outputs.date }}
+          restore-keys: trivy-db-
       # contract-check, harness-integrity, commits and specs run in their own base-branch workflows, which
       # see the PR title and honour the human label waivers.
       - run: make check-all BASE_REF="$BASE_REF" CHECK_ALL_SKIP="contract-check harness-integrity commits specs"
@@ -44,6 +55,17 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 8
+      # A failed make e2e: its screenshot, page snapshot and trace (.tmp/e2e) and make dev's output (.tmp/dev),
+      # which the web-e2e-journeys remediation names.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: e2e-failure
+          path: |
+            .tmp/e2e
+            .tmp/dev
+          if-no-files-found: ignore
+          retention-days: 3
 
   harness-selftest:
     runs-on: ubuntu-24.04
@@ -57,7 +79,8 @@ jobs:
       - run: make harness-selftest
 
   generator-probe:
-    # The domain generator must keep producing code that passes every fast sensor.
+    # The domain generator must keep producing code that passes every fast sensor, with a passing service,
+    # handler and integration test (NFR-B1).
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -68,6 +91,13 @@ jobs:
       - run: make setup
       - run: make new-domain NAME=zzz_probe
       - run: make check
+      - name: The probe's service, handler and integration tests exist and pass (NFR-B1)
+        # -tags=integration builds the untagged unit tests too, so this runs all three against make setup's Postgres.
+        run: |
+          for t in service/service_test.go api/api_test.go api/api_integration_test.go; do
+            test -s "apps/api/internal/zzz_probe/$t" || { echo "::error::make new-domain generated no $t (NFR-B1)"; exit 1; }
+          done
+          make test-integration
       - name: The probe stays inside the generator's paths
         run: |
           git checkout -- .

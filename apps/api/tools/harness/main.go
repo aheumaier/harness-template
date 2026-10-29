@@ -1,11 +1,16 @@
-// Command harness holds the parts of the harness hooks and sensors that parse input (ADR 0012). The shell
-// scripts stay the entry points and call it; it is built into .bin/harness by make (setup, check).
+// Command harness holds the parts of the harness hooks and sensors that parse input (ADR 0012), plus the
+// one-shot template rename, which needs the same portable file handling. The shell scripts and make stay
+// the entry points and call it; it is built into .bin/harness by make (setup, check).
 //
 //	harness hook-input <field>...  Claude Code hook JSON on stdin → the fields, one per line
 //	harness guard-bash <root>      PreToolUse guard for Bash commands (.claude/hooks/guard-bash.sh)
 //	harness check-links <root>     docs-links-resolve, docs-claude-imports-agents (make docs-links)
+//	harness fixture-claims <root>  rules-fixture-claims (make fixture-claims)
+//	harness approved-check <root>  api-approved-match-contract (make approved-check)
 //	harness integrity-check <root> harness-suppression-reason, harness-config-not-loosened (make
 //	                               harness-integrity; env BASE_REF, HARNESS_ROOT, HARNESS_CHANGE_APPROVED)
+//	harness rename [-write] <root> <name> <module> <owner>
+//	                               rename the template identity once for a new product (make rename)
 //
 // Exit 2 is a block (or unusable input) for Claude Code; the hooks pass it on. Sensors exit 1 on findings
 // and 2 when they cannot run.
@@ -22,7 +27,7 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness check-links <root> | harness integrity-check <root>"
+const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness check-links <root> | harness fixture-claims <root> | harness approved-check <root> | harness integrity-check <root> | harness rename [-write] <root> <name> <module> <owner>"
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
@@ -71,6 +76,32 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return 1
 		}
 		return 0
+	case "fixture-claims":
+		if len(args) != 2 {
+			break
+		}
+		bad, err := fixtureClaims(args[1], stdout)
+		switch {
+		case err != nil:
+			fmt.Fprintf(stderr, "harness fixture-claims: %v\n", err)
+			return 2
+		case bad:
+			return 1
+		}
+		return 0
+	case "approved-check":
+		if len(args) != 2 {
+			break
+		}
+		bad, err := approvedCheck(args[1], stdout)
+		switch {
+		case err != nil:
+			fmt.Fprintf(stderr, "harness approved-check: %v\n", err)
+			return 2
+		case bad:
+			return 1
+		}
+		return 0
 	case "integrity-check":
 		if len(args) != 2 {
 			break
@@ -86,6 +117,19 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return 2
 		case bad:
 			return 1
+		}
+		return 0
+	case "rename":
+		write := len(args) > 1 && args[1] == "-write"
+		if write {
+			args = args[1:]
+		}
+		if len(args) != 5 {
+			break
+		}
+		if err := renameRepo(args[1], args[2], args[3], args[4], write, stdout); err != nil {
+			fmt.Fprintf(stderr, "harness rename: %v\n", err)
+			return 2
 		}
 		return 0
 	}

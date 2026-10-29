@@ -1,0 +1,9 @@
+{
+  "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "approved-request"
+  },
+  "body": {
+    "status": "ok"
+  }
+}

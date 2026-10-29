@@ -1,0 +1,32 @@
+package service_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"__MOD__/internal/__NAME__/service"
+)
+
+// fakeQueries stands in for store.Queries: the service's logic is tested without Postgres.
+type fakeQueries struct{ err error }
+
+func (f fakeQueries) Ping(context.Context) (int32, error) { return 1, f.err }
+
+func TestReady(t *testing.T) {
+	errDown := errors.New("connection refused")
+	for name, tc := range map[string]struct {
+		pingErr error
+		want    error
+	}{
+		"storage answers": {},
+		"storage down":    {pingErr: errDown, want: errDown},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := service.New(fakeQueries{err: tc.pingErr}).Ready(t.Context())
+			if !errors.Is(err, tc.want) { // errors.Is(err, nil) holds only for a nil err
+				t.Fatalf("Ready() = %v, want %v", err, tc.want)
+			}
+		})
+	}
+}

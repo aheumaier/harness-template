@@ -1,6 +1,6 @@
 # 0002 — Fast, reliable harness
 
-Status: implemented, awaiting review · Owner: @aheumaier · Started: 2026-10-27
+Status: implemented, merged to `main` in PR #3 (071e2b9) · Owner: @aheumaier · Started: 2026-10-27
 
 ## Goal
 
@@ -51,39 +51,19 @@ a changed file. Checking changed packages is therefore sound, as long as a chang
 
 ## NFRs
 
-What the harness promises. Latency is p95 on the reference machine (CI `ubuntu-24.04` runner), warm caches,
-measured by `run.sh` (phase 0); the same budgets apply locally, where they only warn. How a violation is
-reported: [ADR 0013](../../adr/0013-harness-nfr-budgets.md). Numbers land in `scripts/harness/budgets.txt`
-(protected, kind `config`: raising a budget is a loosening and needs a human).
-
-| Id | Requirement | Target | Today | Measured by | On violation |
-|----|-------------|--------|-------|-------------|--------------|
-| NFR-H1 | Each PreToolUse hook, per call | ≤ 50 ms | 29 ms (protect-harness, Bash), 34 ms (Edit), 26 ms (guard-bash), 25 ms (only-make-check); median of 9, timing included (2026-10-28, step 8, load avg 11–17) | hook wrapper timing | warn; alert |
-| NFR-H2 | fast-check (PostToolUse), per edited file | ≤ 1 s | `.md` 0.08 s, `.sh` 0.14 s, `.go` 0.33 s, `.tsx` in apps/web 0.90 s (was 1.05 s, over budget; 2026-10-28, step 8, load avg 11–17) | fast-check timing | warn; alert |
-| NFR-H3 | `make check`, change without shell or harness files | ≤ 10 s | tsx edit 2.1 s; Go edit 11.2 s, **over budget**: `arch-go` is not scoped (A4) and go-arch-lint took 9.4 s (load avg 11–17; 2.2 s at P11) (2026-10-28, step 8) | `run.sh` + make wall time | warn; alert |
-| NFR-H4 | `make check`, any change | ≤ 60 s | 52 s (shell change, `bats` 49 s; load avg 11–17; 36 s at P11) (2026-10-28, step 8) | same | warn; alert |
-| NFR-H5 | one sensor in `make check` | ≤ 5 s, or its row in `budgets.txt` | `bats` 36–49 s (120 tests), `go-arch-lint` 7–9 s (load avg 11–17; 2.2 s at P11); rest ≤ 5 s (2026-10-28, step 8) | `run.sh` | warn; alert |
-| NFR-H6 | `make check` rerun, nothing changed | ≤ 3 s | 1.8 s (2026-10-28, step 8, load avg 11–17; was 3.7 s) | two runs back to back | warn; alert |
-| NFR-H7 | `make check-all` in CI | ≤ 10 min | not measured | job duration | alert |
-| NFR-R1 | Deterministic: same tree, same verdict and same findings | 0 differences | 0 (`make harness-determinism`, scope full; since step 8 tsc and vitest run uncached, `turbo --force`; 342 s, load avg 11–17, 2026-10-28) | nightly double run | **fail** (nightly) + alert |
-| NFR-R2 | Fail closed: a sensor that cannot run (missing tool, base ref, parse error) exits non-zero | 0 silent passes | merge-base, affected.sh, gen-check stamp, integrity-check (shebang and mode changes count), every hook on a missing or failing binary (2026-10-28); no fixtures with a broken environment yet | fixtures with a broken environment | **fail** |
-| NFR-R3 | Detection: every rule with a fixture rejects it ([ADR 0009](../../adr/0009-harness-selftest.md)) | 100 % | 100 % (selftest 32/32, also in scope full as CI runs it, 2026-10-28) | `make harness-selftest` | **fail** |
-| NFR-R4 | Actionable: every sensor failure through `run.sh` names its rule id and remediation; every hook block names its reason | 100 % | 100 % | `run.bats`, selftest, hook bats tests | **fail** |
-| NFR-R5 | Portable: same verdict on macOS and Linux | 0 differences | Linux only in CI | selftest on a macOS runner (weekly) | **fail** (weekly) + alert |
-
-Latency NFRs warn and alert but never fail a build: wall time depends on the machine, and a sensor that fails
-under load would itself break NFR-R1. Reliability NFRs fail, because a wrong verdict is the one thing a sensor
-must not produce.
+What the harness promises: NFR-H1–H7 (latency, warn) and NFR-R1–R5 (reliability, fail), with targets and
+the last measurements, live in [docs/harness/nfr.md](../../harness/nfr.md), as
+[ADR 0013](../../adr/0013-harness-nfr-budgets.md) says. Budgets are in `scripts/harness/budgets.txt`.
 
 ## Phases
 
 | # | Phase | Exit criterion | State |
 |---|-------|----------------|-------|
-| 0 | Measure and alert: timings, budgets, NFR issue | every run of `run.sh` and the hooks records its time; a violation warns locally and reaches the `harness-nfr` issue | proposed |
-| 1 | Do less: skip and cache (no new code) | NFR-H3, NFR-H6 met; `check-all` still runs everything | proposed |
-| 2 | Scope `make check` to the affected set | NFR-H3 holds on a 10× larger fixture repo; CI unchanged | proposed |
-| 3 | Go harness binary for parsing sensors ([ADR 0012](../../adr/0012-parsing-sensors-in-go.md)) | ported sensors pass their fixtures; bats tests replaced by Go tests; no hook starts `node` to parse its input | proposed |
-| 4 | Agent loop latency | NFR-H2 met for every file type | proposed |
+| 0 | Measure and alert: timings, budgets, NFR issue | every run of `run.sh` and the hooks records its time; a violation warns locally and reaches the `harness-nfr` issue | done (P1–P3) |
+| 1 | Do less: skip and cache (no new code) | NFR-H3, NFR-H6 met; `check-all` still runs everything | done (P4–P7); exit criterion not met: NFR-H3 later over budget for a Go edit ([NFRs](../../harness/nfr.md#plan-0002-latency-and-reliability)) |
+| 2 | Scope `make check` to the affected set | NFR-H3 holds on a 10× larger fixture repo; CI unchanged | done (P11); exit criterion not met: the 10× repo was never measured |
+| 3 | Go harness binary for parsing sensors ([ADR 0012](../../adr/0012-parsing-sensors-in-go.md)) | ported sensors pass their fixtures; bats tests replaced by Go tests; no hook starts `node` to parse its input | done (P8–P10) |
+| 4 | Agent loop latency | NFR-H2 met for every file type | done (P7, P8, step 8) |
 
 ## Progress
 
@@ -191,8 +171,8 @@ Per [ADR 0012](../../adr/0012-parsing-sensors-in-go.md): `guard-bash` and every 
 `check-links`, then `integrity-check`. One PR each; same rule ids and output lines.
 
 - `apps/api/tools/harness/*` goes into `protected-paths.txt` (`config`) and CODEOWNERS in P8.
-- `.claude/hooks/*.sh` stay as thin wrappers that `exec .bin/harness …`; missing binary → exit 2 with
-  "run make setup", except `make setup` and `make .bin/harness` pass guard-bash so the repo cannot lock itself.
+- `.claude/hooks/*.sh` stay as thin wrappers that call `.bin/harness …` without `exec`, so the timing EXIT
+  trap still records the hook (ADR 0012); missing binary → exit 2 with "run make setup", except `make setup` and `make .bin/harness` pass guard-bash so the repo cannot lock itself.
   Bats tests cover the wrappers; the parsing tests move to Go.
 - Ported sensors (`check-links`, `integrity-check`): old script and bats file deleted in the same PR, every
   bats case kept as a Go table test.

@@ -1,3 +1,4 @@
+# Harness file (protected): holds the install policy docs/SECURITY.md cites (release age, build scripts).
 packages:
   - apps/web
   - packages/*
@@ -7,6 +8,20 @@ allowBuilds:
   esbuild: true       # verifies its platform binary
   "@scarf/scarf": false # install telemetry
 
+# pnpm 12's built-in default, made explicit (pnpm.io/settings/dependency-resolution#minimumreleaseage):
+# install no version published less than 24 h ago. Setting it explicitly would also turn
+# minimumReleaseAgeStrict on, so it is pinned to the default (false): when no old-enough version matches,
+# pnpm installs a newer one and records it in minimumReleaseAgeExclude below, for review in the PR.
+# Raising the age or turning strict on is a new policy and needs its own reason.
+minimumReleaseAge: 1440
+minimumReleaseAgeStrict: false
+
 minimumReleaseAgeExclude:
   - "@tanstack/query-core@5.105.0"
   - "@tanstack/react-query@5.105.0"
+
+# Known-vulnerable transitive pins (deps-no-known-vulns), each scoped to its chain with when to drop it (ADR 0023).
+overrides:
+  # @stryker-mutator/core 10.x → typed-rest-client ~2.3.0 → qs 6.15.1 exactly (CVE-2026-8723, -82417, -82562,
+  # -110816). Drop it when Stryker depends on typed-rest-client ≥ 3 (qs ^6.16.0); tech-debt TD-34.
+  "typed-rest-client>qs": 6.16.1

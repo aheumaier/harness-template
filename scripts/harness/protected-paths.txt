@@ -10,11 +10,16 @@
 *.custom-gcl.yml config
 *.dependency-cruiser.* config
 *eslint.config.* config
+*stryker.config.* config
+*playwright.config.* config
+apps/web/e2e/global-setup.ts config
 *.spectral.yaml config
 *atlas.hcl config
 *.squawk.toml config
 *.shellcheckrc config
 knip.json config
+trivy.yaml config
+pnpm-workspace.yaml config
 *tsconfig*.json config
 .claude/settings.json config
 .editorconfig config
@@ -33,6 +38,7 @@ scripts/git-hooks/* config
 scripts/test/*
 apps/api/tools/analyzers/* config
 apps/api/tools/harness/* config
+apps/api/internal/platform/approvaltest/* config
 .claude/hooks/* config
 .claude/*
 .github/*

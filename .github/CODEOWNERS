@@ -8,6 +8,9 @@
 .custom-gcl.yml             @aheumaier
 .dependency-cruiser.*       @aheumaier
 eslint.config.*             @aheumaier
+stryker.config.*            @aheumaier
+playwright.config.*         @aheumaier
+/apps/web/e2e/global-setup.ts  @aheumaier
 .spectral.yaml              @aheumaier
 atlas.hcl                   @aheumaier
 .squawk.toml                @aheumaier
@@ -15,6 +18,8 @@ atlas.hcl                   @aheumaier
 .editorconfig               @aheumaier
 .gitattributes              @aheumaier
 knip.json                   @aheumaier
+/trivy.yaml                 @aheumaier
+/pnpm-workspace.yaml        @aheumaier
 tsconfig*.json              @aheumaier
 /Makefile                   @aheumaier
 /scripts/harness/           @aheumaier
@@ -26,6 +31,7 @@ tsconfig*.json              @aheumaier
 /scripts/github-branch-protection.sh  @aheumaier
 /apps/api/tools/analyzers/  @aheumaier
 /apps/api/tools/harness/  @aheumaier
+/apps/api/internal/platform/approvaltest/  @aheumaier
 /.claude/                   @aheumaier
 /.github/                   @aheumaier
 /docs/harness/              @aheumaier
