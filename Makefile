@@ -87,8 +87,8 @@ check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
 CHECK_ALL_SKIP ?=
 check-all: export HARNESS_SCOPE := full
-check-all: check ##Everything: check + integration, contract, migration, security, dead code, e2e
-	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go vuln-deps lint-migrations squawk migrations-append-only lint-api contract-check knip harness-integrity commits specs)
+check-all: check ##Everything: check + integration, contract, migration, security, dead code, clones, e2e
+	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go vuln-deps lint-migrations squawk migrations-append-only lint-api contract-check knip clones-web harness-integrity commits specs)
 	@$(MAKE) -k test-integration test-obs e2e
 
 harness-selftest: $(HARNESS) ## Every fixture in scripts/harness/fixtures must be rejected by its sensor (FIXTURE=name for one)
@@ -204,7 +204,7 @@ fmt: $(GCL) ## Auto-format Go and shell code
 	@shfmt -w $(SH_FILES)
 
 lint-go: $(GCL)
-	@$(call scoped,go,./...) $(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-test-helpers-only-in-tests,go-domain-isolation,go-structured-logging,go-sec,go-format,$(SIZE_RULES) --dir $(API) -- ../../$(GCL) run $$scope
+	@$(call scoped,go,./...) $(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-test-helpers-only-in-tests,go-domain-isolation,go-structured-logging,go-sec,go-format,$(SIZE_RULES),repo-no-clones --dir $(API) -- ../../$(GCL) run $$scope
 
 arch-go:
 	@$(RUN) go-arch-lint go-layers --dir $(API) -- go-arch-lint check --output-color=false
@@ -225,7 +225,7 @@ deadcode-go: ## Unreachable Go functions (drift.yml; deadcode exits 0, so fail o
 	@$(RUN) deadcode go-no-dead-code --dir $(API) -- bash -c 'out="$$(deadcode -test ./...)"; [[ -z "$$out" ]] || { echo "$$out"; exit 1; }'
 
 ##@ Web sensors (apps/web, packages/*)
-.PHONY: lint-web arch-web typecheck-web test-web knip
+.PHONY: lint-web arch-web typecheck-web test-web knip clones-web
 lint-web:
 	@$(call scoped,web,.) $(RUN) eslint web-no-direct-http,web-domain-pure,web-lint,$(SIZE_RULES) -- eslint --max-warnings=0 $$scope
 
@@ -240,6 +240,15 @@ test-web:
 
 knip: ## Unused files, exports and dependencies in the JS workspace
 	@$(RUN) knip web-no-dead-code -- knip
+
+# rules.md#repo-no-clones: jscpd reads every file .gitignore does not exclude, in every app and package (as arch-web).
+# Its settings are in the protected scripts/harness/jscpd.json; naming it with --config also stops jscpd from loading
+# a .jscpd.json, .config/jscpd.json or package.json "jscpd" key it would otherwise find. Generated code is listed
+# there by path, as in eslint.config.mjs (ignores); golangci finds it by its header (exclusions.generated): keep the
+# copies in step. jscpd names each file relative to the root it was given, so it gets absolute paths and the root is
+# cut back off.
+clones-web: ## Copy-pasted code in apps/* and packages/* (jscpd)
+	@$(RUN) jscpd repo-no-clones -- bash -c 'root="$$(pwd -P)"; out="$$(jscpd --config "$$root/scripts/harness/jscpd.json" --reporters xcode --absolute --exit-code 1 --fail-on-empty --no-colors --no-tips "$$root/apps" "$$root/packages")" && s=0 || s=$$?; echo "$${out//"$$root"\//}"; exit $$s'
 
 ##@ Contract (api/openapi.yaml)
 .PHONY: lint-api contract-check approve approved-check

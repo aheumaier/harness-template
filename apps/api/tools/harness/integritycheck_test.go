@@ -12,12 +12,14 @@ import (
 // Suppression markers are assembled from parts so this file never contains one itself: it is hand-written
 // Go and the sensor reads it like any other.
 const (
-	nolint     = "//" + "nolint:noctxroot"
-	eslint     = "// eslint" + "-disable-next-line no-console"
-	shellcheck = "# shellcheck" + " disable=SC2086"
-	tsIgnore   = "@ts" + "-ignore"
-	tsNocheck  = "@ts" + "-nocheck"
-	noReason   = ": suppression without 'reason: … (rule: <id>)' on the same line [harness-suppression-reason]"
+	nolint      = "//" + "nolint:noctxroot"
+	eslint      = "// eslint" + "-disable-next-line no-console"
+	shellcheck  = "# shellcheck" + " disable=SC2086"
+	tsIgnore    = "@ts" + "-ignore"
+	tsNocheck   = "@ts" + "-nocheck"
+	jscpdIgnore = "jscpd" + ":ignore"
+	jscpdStart  = jscpdIgnore + "-start"
+	noReason    = ": suppression without 'reason: … (rule: <id>)' on the same line [harness-suppression-reason]"
 )
 
 // integrityRepo makes a git repo whose `main` holds a minimal harness (rules.md, protected-paths.txt), a
@@ -125,14 +127,16 @@ func TestIntegrityCheck(t *testing.T) {
 			gitT(t, own, "add", "-A")
 			return ""
 		}, false, nil},
-		{"never accepts ts-ignore or ts-nocheck, even with a reason", func(t *testing.T, own string) string {
+		{"never accepts ts-ignore, ts-nocheck or jscpd ignore comments, even with a reason", func(t *testing.T, own string) string {
 			add(t, own, "a.ts", "// "+tsIgnore+" reason: x (rule: web-typecheck)")
 			add(t, own, "b.mts", "// "+tsNocheck+" reason: x (rule: web-typecheck)")
+			add(t, own, "c.tsx", "// "+jscpdStart+" reason: x (rule: web-typecheck)")
 			gitT(t, own, "add", "-A")
 			return ""
 		}, false, []string{
 			"a.ts:1: " + tsIgnore + " is never allowed [harness-suppression-reason]",
 			"b.mts:1: " + tsNocheck + " is never allowed [harness-suppression-reason]",
+			"c.tsx:1: " + jscpdIgnore + " is never allowed [harness-suppression-reason]",
 		}},
 		{"flags SQL, staticcheck, inline eslint and workflow suppressions without a reason", func(t *testing.T, own string) string {
 			add(t, own, "m.sql", "-- atlas"+":nolint DS103", "-- squawk"+"-ignore ban-drop-column")

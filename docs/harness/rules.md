@@ -284,6 +284,20 @@ Maintainability sensors, not style ([ADR 0024](../adr/0024-size-and-complexity-l
 - **Remediation:** Split the file by responsibility into sibling files in the same package or directory (`handlers.go`, `handlers_export.go`) with no new package and no change to the import graph; in TS, move a component's helpers into their own module next to it.
 - **Fixture:** `fixtures/go-file-too-long`, `fixtures/web-file-too-long` · Status: team-convention ([ADR 0024](../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md))
 
+## Duplication (apps/api, apps/web, packages/*)
+
+Agents replicate the code they see (exec plan 0003, G11). Token clones are something a machine decides; the
+same concept written twice in different code is left to review. A maintainability sensor like the size rules
+([ADR 0027](../adr/0027-token-clones-are-a-maintainability-sensor.md)): Go clones go red in `make check`, TS/JS
+clones only in `make check-all`.
+
+### repo-no-clones
+- **Rule:** No copy-pasted code: Go at most 25 syntax-tree tokens repeated within one package (`dupl`); TS/JS at most 15 tokens repeated anywhere in `apps/*` and `packages/*` (`jscpd`), import and re-export statements not counted. Tests included; generated code excluded. No baseline or ignore file for existing clones.
+- **Why:** A pasted block is fixed in one copy and left wrong in the other, and every copy is more code for the next agent to read and copy again ([ADR 0027](../adr/0027-token-clones-are-a-maintainability-sensor.md)).
+- **Sensor:** golangci-lint `dupl` (`make lint-go`, in `make check`, the `apps/api` module only; `apps/api/.golangci.yml` `threshold: 26`, the strictest the tree passes with a `make new-domain` domain in it; 25 trips `internal/platform/problem/problem_test.go`). `dupl` compares the files of one package, so a clone across packages or domains is not seen ([TD-52](../exec-plans/tech-debt-tracker.md)). `jscpd` 5.4.1, a pinned dev dependency (`make clones-web`, in `make check-all`), with the protected `scripts/harness/jscpd.json`: `minTokens` 16 (15 trips `apps/web/e2e/global-setup.test.ts`), `minLines` 1, an `ignorePattern` that skips import and re-export statements (two identical import lines already reach 16 tokens), and `packages/api-client/src/gen/` ignored. It reads every TS, TSX and JS file in `apps/` and `packages/` that `.gitignore` does not exclude. `clones-web` names that config with `--config`, so a `.jscpd.json`, `.config/jscpd.json` or `package.json` `"jscpd"` key elsewhere is never loaded. Thresholds are measured, only go down, by a harness PR once the next clone is deduplicated. golangci's message cannot carry the rule id, so `run.sh` maps a `(dupl)` finding to this rule (`finding_pattern`); the per-edit hook (`fast-check.sh`) does not list it, as for the size rules.
+- **Remediation:** Keep one copy and delete the others. Extract the repeated code into a helper next to its call sites, in the same package or app; in tests, a `t.Helper()` function or a table-driven test (TS: one helper module or `test.each`). Across domains, call the owning domain's `service` or `model`; never copy its code and never move domain logic into `internal/platform`, which takes only shared plumbing and test helpers. Pure TS that two apps or packages need goes to `packages/domain`; shared React stays in one module of the app that uses it. A Go clone that must stay takes `//nolint:dupl // reason: … (rule: repo-no-clones)` on the first line of each copy; jscpd has no sanctioned exception: `jscpd:ignore` comments are never allowed ([harness-suppression-reason](#harness-suppression-reason)).
+- **Fixture:** `fixtures/go-clone`, `fixtures/web-clone`, `fixtures/web-clone-stray-config` · Status: team-convention ([ADR 0027](../adr/0027-token-clones-are-a-maintainability-sensor.md))
+
 ## Generated code
 
 ### gen-up-to-date
@@ -344,10 +358,10 @@ any other Trivy exit is a failure to run (exit 2, `trivy failed to run (exit N) 
 ## Harness integrity and CI (.github/)
 
 ### harness-suppression-reason
-- **Rule:** Every added suppression (`//nolint`, `//lint:ignore`, `//lint:file-ignore`, `eslint-disable`, `/* eslint … */`, `@ts-expect-error`, `# shellcheck disable`, `-- atlas:nolint`, `-- squawk-ignore`) has `reason: … (rule: <id>)` on the same line, where `<id>` is a `### <id>` heading in this file; `@ts-ignore` and `@ts-nocheck` are never allowed.
+- **Rule:** Every added suppression (`//nolint`, `//lint:ignore`, `//lint:file-ignore`, `eslint-disable`, `/* eslint … */`, `@ts-expect-error`, `# shellcheck disable`, `-- atlas:nolint`, `-- squawk-ignore`) has `reason: … (rule: <id>)` on the same line, where `<id>` is a `### <id>` heading in this file; `@ts-ignore`, `@ts-nocheck` and `jscpd:ignore` (jscpd's `jscpd:ignore-start`/`-end`, [repo-no-clones](#repo-no-clones)) are never allowed.
 - **Why:** A bare suppression silently turns a sensor off; the reason and rule id make each exception reviewable and greppable.
 - **Sensor:** `.bin/harness integrity-check` (`apps/api/tools/harness`) on lines added since the merge base with `BASE_REF` in Go, TS/JS, shell, SQL, git hook and workflow files, not vendored `.specify/` (`make harness-integrity`, in `make check-all` and `harness-integrity.yml`, which builds the binary from the base branch; the PR's `.gitattributes` cannot hide a hunk).
-- **Remediation:** Fix the code instead; if the suppression is truly needed, append `reason: <why it is safe> (rule: <rule-id>)` on the same line with an id from this file as it is on the base branch, and replace `@ts-ignore`/`@ts-nocheck` with a fixed type or a reasoned `@ts-expect-error`.
+- **Remediation:** Fix the code instead; if the suppression is truly needed, append `reason: <why it is safe> (rule: <rule-id>)` on the same line with an id from this file as it is on the base branch, replace `@ts-ignore`/`@ts-nocheck` with a fixed type or a reasoned `@ts-expect-error`, and remove a `jscpd:ignore` by deduplicating the code.
 - **Fixture:** `fixtures/harness-suppression-no-reason` · Status: seed
 
 ### harness-config-not-loosened

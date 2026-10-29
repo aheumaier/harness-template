@@ -5,7 +5,7 @@ package main
 //
 //	[harness-suppression-reason]   an added suppression lacks `reason: … (rule: <id>)` on its line, names an
 //	                               id that is not a `### <id>` heading in docs/harness/rules.md, or is an
-//	                               @ts-ignore/@ts-nocheck (never allowed)
+//	                               @ts-ignore/@ts-nocheck/jscpd:ignore (never allowed)
 //	[harness-config-not-loosened]  a harness config (`config` in protected-paths.txt) gained or lost a
 //	                               non-comment line (a shebang is not a comment), or changed its file
 //	                               mode (a hook without its x bit no longer runs). Waived only by a human: HARNESS_CHANGE_APPROVED=1 (CI:
@@ -35,7 +35,8 @@ var (
 		"*.sh", "*.bash", "*.bats", "*.sql", ".github/*.yml", ".github/*.yaml", "scripts/git-hooks/*",
 		":!:scripts/harness/fixtures/*/files/*", ":!:apps/api/tools/harness/integritycheck.go", ":!:.specify/*",
 		":!:*.gen.go", ":!:apps/api/internal/*/store/*", ":!:packages/api-client/src/gen/*"}
-	neverRE       = regexp.MustCompile(`(@ts-ignore|@ts-nocheck)`)
+	// jscpd honours `jscpd:ignore-start`/`-end` comments; repo-no-clones has no sanctioned exception there.
+	neverRE       = regexp.MustCompile(`(@ts-ignore|@ts-nocheck|jscpd:ignore)`)
 	suppressionRE = regexp.MustCompile(`(//[[:space:]]*(nolint|lint:(file-)?ignore)|eslint-disable|/\*[[:space:]]*eslint[[:space:]]|@ts-expect-error|#[[:space:]]*shellcheck[[:space:]]+disable|atlas:nolint|squawk-ignore)`)
 	reasonRE      = regexp.MustCompile(`reason: .+\(rule: ([a-z0-9-]+)\)`)
 	// Only `#` lines and blank lines are comments: `//` and `/* */` can comment out a JSONC, JS or Go line

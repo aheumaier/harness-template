@@ -3,12 +3,9 @@
 package api_test
 
 import (
-	"encoding/json"
-	"net/http"
 	"os"
 	"testing"
 
-	"__MOD__/internal/__NAME__/api"
 	"__MOD__/internal/__NAME__/service"
 	"__MOD__/internal/__NAME__/store"
 	"__MOD__/internal/platform/db"
@@ -27,12 +24,5 @@ func TestGet__PASCAL__Status_Postgres(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	rec := get(t, service.New(store.New(pool)), "/__KEBAB__/status")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /__KEBAB__/status = %d: %s", rec.Code, rec.Body)
-	}
-	var body api.__PASCAL__Status
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.Status != api.Ok {
-		t.Fatalf("body = %s (%v), want status ok", rec.Body, err)
-	}
+	wantStatusOK(t, get(t, service.New(store.New(pool)), "/__KEBAB__/status"))
 }

@@ -64,6 +64,7 @@ finding_pattern() { # rule-id -> ERE matching a tool finding of that rule, or no
     code-complexity) echo '\(gocognit\)$|[[:space:]]complexity$' ;;
     code-parameters) echo ': argument-limit: .*\(revive\)$|[[:space:]]max-params$' ;;
     code-file-length) echo ': file-length-limit: .*\(revive\)$|[[:space:]]max-lines$' ;;
+    repo-no-clones) echo '\(dupl\)$' ;;
     go-sec) echo '\(gosec\)$' ;;
     go-structured-logging) echo '\(sloglint\)$' ;;
     go-format) echo '\((gofmt|goimports)\)$' ;;

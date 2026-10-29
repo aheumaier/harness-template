@@ -1,0 +1,10 @@
+{
+  "minTokens": 16,
+  "minLines": 1,
+  "format": ["typescript", "tsx", "javascript"],
+  "ignore": ["**/packages/api-client/src/gen/**"],
+  "ignorePattern": [
+    "\\b(?:import|export)\\s[^;'\"]*?\\bfrom\\s*['\"][^'\"]*['\"]",
+    "\\bimport\\s*['\"][^'\"]*['\"]"
+  ]
+}

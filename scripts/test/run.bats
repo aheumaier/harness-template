@@ -33,8 +33,8 @@ setup() {
 }
 
 SIZE=code-function-length,code-complexity,code-parameters,code-file-length
-GO_IDS=rule-a,go-sec,go-structured-logging,go-format,$SIZE # as lint-go passes them
-WEB_IDS=rule-a,web-lint,$SIZE                              # as lint-web passes them
+GO_IDS=rule-a,go-sec,go-structured-logging,go-format,$SIZE,repo-no-clones # as lint-go passes them
+WEB_IDS=rule-a,web-lint,$SIZE                                             # as lint-web passes them
 
 # remediations <ids>: a "Fix <id>." remediation in the sandbox rules.md for each id that has none yet.
 remediations() {
@@ -69,6 +69,7 @@ recipe_of() {
   recipe_of "$GO_IDS" 'internal/fx/service/e.go:6:46: G304: Potential file inclusion via variable (gosec)' go-sec
   recipe_of "$GO_IDS" 'internal/fx/service/f.go:6:50: key-value pairs and attributes should not be mixed (sloglint)' go-structured-logging
   recipe_of "$GO_IDS" 'internal/fx/service/g.go:5:1: File is not properly formatted (gofmt)' go-format
+  recipe_of "$GO_IDS" 'internal/fx/service/service.go:10: 10-23 lines are duplicate of `internal/fx/service/service.go:26-39` (dupl)' repo-no-clones
 }
 
 @test "maps each ESLint finding to its rule alone; web-lint takes the unmapped ones (ADR 0024)" {
@@ -86,7 +87,7 @@ recipe_of() {
   remediations "$GO_IDS,$WEB_IDS"
   run -1 "$RUN" golangci "$GO_IDS" -- bash -c "echo 'x.go:1:1: Error return value is not checked (errcheck)'; exit 1"
   has 'Fix A.'
-  run ! grep -qE 'Fix (code|go)-' <<<"$output"
+  run ! grep -qE 'Fix (code|go|repo)-' <<<"$output"
   # web-lint is the catch-all, so it stays in the fallback (e.g. ESLint crashing before any finding).
   run -2 "$RUN" eslint "$WEB_IDS" -- bash -c 'echo "Oops! Something went wrong!"; exit 2'
   has 'Fix A.'

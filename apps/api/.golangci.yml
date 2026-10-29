@@ -18,6 +18,7 @@ linters:
     - funlen # rules.md#code-function-length (ADR 0024)
     - gocognit # rules.md#code-complexity (ADR 0024)
     - revive # rules.md#code-parameters, rules.md#code-file-length (ADR 0024): only the two rules below
+    - dupl # rules.md#repo-no-clones (ADR 0027): token clones within one package, tests included
   settings:
     # ADR 0024: each threshold is the worst value at P4.2's base (1b7aa0f, re-verified at 0bd8958) and only
     # goes down; never raise one.
@@ -37,6 +38,10 @@ linters:
         # rules.md#code-file-length: every line, as wc -l counts (worst over all files, tests included: approvaltest.go, 205)
         - name: file-length-limit
           arguments: [{ max: 205, skipComments: false, skipBlankLines: false }]
+    # rules.md#repo-no-clones (ADR 0027): syntax-tree tokens, not lines (golangci's default is 150). The strictest
+    # value the tree passes with a `make new-domain` domain in it; 25 trips problem_test.go. Only goes down.
+    dupl:
+      threshold: 26
     custom:
       noctxroot:
         type: module
