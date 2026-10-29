@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Breaking-change check of api/openapi.yaml against the merge base with BASE_REF (merge-base.sh).
+# Breaking-change check of the OpenAPI contract (SPEC in scripts/harness/layout.env) against the merge base with BASE_REF (merge-base.sh).
 # Exit 0 when the spec is new or unchanged in a compatible way; exit 1 with oasdiff's findings otherwise.
 # BREAKING_CHANGE_APPROVED=1 (CI: the `breaking-change-approved` PR label, set by a human) still prints the
 # findings but exits 0. Used by `make contract-check` (check-all) and .github/workflows/contract-gate.yml.
@@ -7,7 +7,8 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SPEC=api/openapi.yaml
+# shellcheck source=layout.sh
+source "$HERE/layout.sh" || exit 2 # SPEC
 cd "${HARNESS_ROOT:-$HERE/../..}"
 BASE_REF="${BASE_REF:-$("$HERE/merge-base.sh" --ref)}"
 base_commit="$(BASE_REF="$BASE_REF" "$HERE/merge-base.sh")"

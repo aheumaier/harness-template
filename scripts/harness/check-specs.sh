@@ -6,17 +6,19 @@
 # specs-structure: every specs/<dir> is a real directory named NNN-kebab-slug with a unique NNN, has spec.md,
 #   has plan.md once it has tasks.md, no .md in it has an open clarification (`[NEEDS CLARIFICATION: …]` from
 #   /speckit-specify, a plan field left as `: NEEDS CLARIFICATION`; checklists/ only names the marker), and it
-#   holds no OpenAPI document (the contract lives only in api/openapi.yaml).
+#   holds no OpenAPI document (the contract lives only in the layout's SPEC).
 # specs-required-for-features: when a `feat` commit since the merge base with BASE_REF (or a feat PR_TITLE)
-#   changes apps/ or api/ outside the harness files (protected-paths.txt), the change must also add or
-#   change (not just delete) a committed specs/<dir>/. NO_SPEC_NEEDED=1 (the `no-spec-needed` PR label)
-#   skips this rule only.
+#   changes product code (PRODUCT_GLOBS of scripts/harness/layout.env) outside the harness files
+#   (protected-paths.txt), the change must also add or change (not just delete) a committed specs/<dir>/.
+#   NO_SPEC_NEEDED=1 (the `no-spec-needed` PR label) skips this rule only.
 #
 # Reads from HARNESS_ROOT (default: this repo) so CI runs the base branch's copy against the PR head.
 # Fails closed (exit 2) when the base or the range cannot be read.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=layout.sh
+source "$HERE/layout.sh" || exit 2
 cd "${HARNESS_ROOT:-$HERE/../..}"
 OPEN_CLARIFICATION='\[NEEDS CLARIFICATION:|: NEEDS CLARIFICATION[[:space:]]*$'
 fail=0
@@ -47,7 +49,7 @@ for d in specs/*/; do
     err "$f:$line: open NEEDS CLARIFICATION (resolve it with /speckit-clarify) [specs-structure]"
   done < <(grep -rnE --include='*.md' --exclude-dir=checklists "$OPEN_CLARIFICATION" "$d" || true)
   while IFS= read -r f; do
-    err "$f: is an OpenAPI document: change api/openapi.yaml instead and describe the change here [specs-structure]"
+    err "$f: is an OpenAPI document: change $SPEC instead and describe the change here [specs-structure]"
   done < <(grep -rlE --include='*.yaml' --include='*.yml' --include='*.json' '^(openapi:|[[:space:]]*"openapi"[[:space:]]*:)' "$d" || true)
 done
 
@@ -55,8 +57,8 @@ done
 if [[ "${NO_SPEC_NEEDED:-0}" != 1 ]]; then
   base="$("$HERE/merge-base.sh")"
   feat='^feat(\([^)]*\))?!?:'
-  # Product code: apps/ and api/ minus harness files (analyzers, linter configs), planned in exec-plans.
-  product=('apps/*' 'api/*')
+  # Product code: PRODUCT_GLOBS minus harness files (analyzers, linter configs), planned in exec-plans.
+  product=("${PRODUCT_GLOBS[@]}")
   while read -r glob _; do product+=(":(exclude)$glob"); done < <(grep -Ev '^[[:space:]]*(#|$)' "$HERE/protected-paths.txt")
   # Product files of every commit in the range whose subject is a feat; with a feat PR title, the whole change.
   log="$(git log --no-merges --format='%H %s' "$base..HEAD")" || exit 2
@@ -72,7 +74,7 @@ if [[ "${NO_SPEC_NEEDED:-0}" != 1 ]]; then
   # Committed only: CI sees no untracked files, so a local pass must not depend on them.
   changed="$(git diff --name-only --diff-filter=d "$base" HEAD)" || exit 2
   if grep -q . <<<"$feat_files" && ! grep -Eq '^specs/[^/]+/' <<<"$changed"; then
-    err "a feat change touches apps/ or api/ but adds or changes no committed specs/<NNN-slug>/ (write it with /speckit-specify and commit it, or label the PR no-spec-needed) [specs-required-for-features]"
+    err "a feat change touches product code (${PRODUCT_GLOBS[*]}) but adds or changes no committed specs/<NNN-slug>/ (write it with /speckit-specify and commit it, or label the PR no-spec-needed) [specs-required-for-features]"
   fi
 fi
 

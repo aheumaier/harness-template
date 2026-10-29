@@ -69,6 +69,8 @@ die() {
 
 # shellcheck source=scripts/harness/ci-agent.sh
 . "$ROOT/scripts/harness/ci-agent.sh"
+# shellcheck source=scripts/harness/layout.sh
+. "$ROOT/scripts/harness/layout.sh" || exit 2 # SPEC, MIGRATIONS_DIR (the PR body's checklist)
 
 # listed <item> <newline-separated list>: 0 when the list holds the item as a whole line.
 listed() { [[ $'\n'"$2"$'\n' == *$'\n'"$1"$'\n'* ]]; }
@@ -336,8 +338,8 @@ $kept$fence
 
 ## Checklist
 
-- **Contract change** (\`api/openapi.yaml\`): N
-- **Migration** (\`apps/api/db/migrations/\`): N
+- **Contract change** (\`$SPEC\`): N
+- **Migration** (\`$MIGRATIONS_DIR/\`): N
 - **Harness change**: N (agent-gc never edits a path in \`scripts/harness/protected-paths.txt\`)
 - **Spec**: not a feature (a doc fix)
 - **ADR**: none needed

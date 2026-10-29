@@ -1,7 +1,7 @@
 package main
 
-// approved-check (api-approved-match-contract): every approved response file is a response api/openapi.yaml
-// allows. The files are `<pkg>/testdata/approved/<operationId>.<status>[.<case>].json`, written by
+// approved-check (api-approved-match-contract): every approved response file is a response the layout's SPEC
+// (scripts/harness/layout.env) allows. The files are `<pkg>/testdata/approved/<operationId>.<status>[.<case>].json`, written by
 // `make approve` from the handler tests; apps/api/internal/platform/approvaltest (File) writes this format
 // (rules.md#api-responses-approved, ADR 0022):
 //
@@ -42,10 +42,9 @@ import (
 )
 
 const (
-	specFile         = "api/openapi.yaml"
 	approvedPathspec = "*/testdata/approved/*"
 	// specURL names the spec as the one schema resource; local refs resolve against it.
-	specURL = "file:///harness/api/openapi.yaml"
+	specURL = "file:///harness/openapi.yaml"
 )
 
 var (
@@ -56,6 +55,7 @@ var (
 
 type approvedChecker struct {
 	out     io.Writer
+	spec    string // the layout's SPEC, repo-relative
 	bad     bool
 	doc     any
 	ops     map[string]string // operationId → JSON pointer of the operation
@@ -70,11 +70,16 @@ func (a *approvedChecker) report(file, format string, args ...any) {
 
 // approvedCheck prints one line per finding to stdout and reports whether there was any. root is the repo.
 func approvedCheck(root string, stdout io.Writer) (bool, error) {
-	doc, err := loadSpec(filepath.Join(root, specFile))
+	l, err := loadLayout(root)
 	if err != nil {
-		return false, fmt.Errorf("%s: %w", specFile, err)
+		return false, err
 	}
-	a := &approvedChecker{out: stdout, doc: doc, ops: map[string]string{}, schemas: map[string]*jsonschema.Schema{}}
+	spec := l.get("SPEC")
+	doc, err := loadSpec(filepath.Join(root, spec))
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", spec, err)
+	}
+	a := &approvedChecker{out: stdout, spec: spec, doc: doc, ops: map[string]string{}, schemas: map[string]*jsonschema.Schema{}}
 	paths, _ := pointer(doc, "/paths").(map[string]any)
 	for p, item := range paths {
 		for _, m := range httpMethods {
@@ -88,7 +93,7 @@ func approvedCheck(root string, stdout io.Writer) (bool, error) {
 	a.c.AssertFormat()
 	a.c.UseLoader(jsonschema.SchemeURLLoader{}) // no file or network loads: every $ref stays in the spec
 	if err := a.c.AddResource(specURL, doc); err != nil {
-		return false, fmt.Errorf("%s: %w", specFile, err)
+		return false, fmt.Errorf("%s: %w", spec, err)
 	}
 
 	files, err := gitFiles(root, approvedPathspec)
@@ -96,7 +101,7 @@ func approvedCheck(root string, stdout io.Writer) (bool, error) {
 		return false, err
 	}
 	if len(files) == 0 {
-		return false, fmt.Errorf("no approved response matches %s (fixtures skipped), though the template ships apps/api/internal/platform/health/testdata/approved/getHealth.*.json: restore them with `make approve`, or, if the layout moved, update approvedPathspec in approvedcheck.go (Harness change: Y)", approvedPathspec)
+		return false, fmt.Errorf("no approved response matches %s (fixtures skipped), though the template ships getHealth's (under the health package's testdata/approved/): restore them with `make approve`, or, if the layout moved, update approvedPathspec in approvedcheck.go (Harness change: Y)", approvedPathspec)
 	}
 	sort.Strings(files)
 	for _, f := range files {
@@ -178,7 +183,7 @@ func (a *approvedChecker) check(root, file string) error {
 	opID, status := m[1], m[2]
 	op, ok := a.ops[opID]
 	if !ok {
-		a.report(file, "operationId %s is not in %s", opID, specFile)
+		a.report(file, "operationId %s is not in %s", opID, a.spec)
 		return nil
 	}
 	resp, key := "", ""
@@ -261,7 +266,7 @@ func (a *approvedChecker) check(root, file string) error {
 		switch typ, _ := pointer(a.doc, sch+"/type").(string); typ {
 		case "integer", "number", "boolean": // a header value is text; the schema types the value it spells
 			if _, err := jsonschema.UnmarshalJSON(strings.NewReader(v)); err != nil {
-				a.report(file, "headers/%s: %q is not a JSON %s (%s#%s)", name, v, typ, specFile, sch)
+				a.report(file, "headers/%s: %q is not a JSON %s (%s#%s)", name, v, typ, a.spec, sch)
 				continue
 			}
 			raw = []byte(v)
@@ -300,12 +305,12 @@ func (a *approvedChecker) resolve(file, ptr string) (string, bool) {
 			return ptr, true
 		}
 		if !strings.HasPrefix(ref, "#/") {
-			a.report(file, "%s: $ref %q is not local to %s", ptr, ref, specFile)
+			a.report(file, "%s: $ref %q is not local to %s", ptr, ref, a.spec)
 			return "", false
 		}
 		ptr = ref[1:]
 		if pointer(a.doc, ptr) == nil {
-			a.report(file, "$ref %q names nothing in %s", ref, specFile)
+			a.report(file, "$ref %q names nothing in %s", ref, a.spec)
 			return "", false
 		}
 	}
@@ -322,7 +327,7 @@ func (a *approvedChecker) validate(file, ptr, what string, value []byte) error {
 	if !ok {
 		var err error
 		if sch, err = a.c.Compile(specURL + "#" + ptr); err != nil {
-			return fmt.Errorf("%s#%s: %w", specFile, ptr, err)
+			return fmt.Errorf("%s#%s: %w", a.spec, ptr, err)
 		}
 		a.schemas[ptr] = sch
 	}
@@ -345,7 +350,7 @@ func (a *approvedChecker) validate(file, ptr, what string, value []byte) error {
 			if u, err := url.PathUnescape(at); err == nil {
 				at = u
 			}
-			found = append(found, fmt.Sprintf("%s%s: %s (%s%s)", what, loc, leaf.ErrorKind.LocalizedString(printer), specFile, at))
+			found = append(found, fmt.Sprintf("%s%s: %s (%s%s)", what, loc, leaf.ErrorKind.LocalizedString(printer), a.spec, at))
 		}
 		sort.Strings(found) // the validator's order follows map iteration
 		for _, f := range found {

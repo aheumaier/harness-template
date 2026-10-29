@@ -23,9 +23,9 @@ whose `fixture.conf` tests that rule, or says `none (<reason>)` ([rules-fixture-
 - **Fixture:** `fixtures/go-layers-service-imports-api`, `fixtures/go-layers-platform-imports-domain` · Status: seed
 
 ### go-domain-isolation
-- **Rule:** `internal/<a>/**` must not import `internal/<b>/store` or `internal/<b>/api`.
+- **Rule:** `<layer dir>/<a>/**` must not import `<layer dir>/<b>/store` or `<layer dir>/<b>/api`, where `<layer dir>` is `LAYER_GLOB` in `scripts/harness/layout.env` without its `/*/*` (template: `internal`).
 - **Why:** A domain's storage and HTTP surface are private; coupling to them makes domains impossible to split or change independently.
-- **Sensor:** custom analyzer `domainiso` (`apps/api/tools/analyzers/domainiso`) via golangci-lint, `make lint-go`.
+- **Sensor:** custom analyzer `domainiso` (`apps/api/tools/analyzers/domainiso`) via golangci-lint, `make lint-go`. It reads only `LAYER_GLOB` and fails closed: without `layout.env`, without `LAYER_GLOB` or with a glob that is not `<dir>[/<dir>…]/*/*` it reports an error instead of passing ([harness-layout-valid](#harness-layout-valid)).
 - **Remediation:** Call the other domain's service (or use its model types) instead of its store or api package.
 - **Fixture:** `fixtures/go-domain-isolation` · Status: seed
 
@@ -83,7 +83,7 @@ whose `fixture.conf` tests that rule, or says `none (<reason>)` ([rules-fixture-
 - **Why:** Tests are the cheapest behavioural sensor; the race detector catches concurrency bugs agents rarely reason about.
 - **Sensor:** `make test-go`, `make test-analyzers`, `make test-harness` (Go test cache in `make check`, `-count=1` in `make check-all` and CI: [harness-scope](#harness-scope)); `make test-integration` (`-tags=integration`, in `make check-all`). The CI generator probe runs `make check` and `make test-scaffold` on a fresh `make new-domain`, whose scaffold ships a service, handler and integration test (NFR-B1): `go test -json` over the new domain, red unless every `Test*` of the scaffold templates ran and passed, none skipped (`scripts/harness/scaffold-tests.sh`).
 - **Remediation:** Read the first failing test above, fix the code (not the test) unless the behaviour change is intended and documented in the PR.
-- **Fixture:** `fixtures/go-tests-dependent-package` · Status: seed
+- **Fixture:** `fixtures/go-tests-dependent-package`, `fixtures/go-tests-root-module` · Status: seed
 
 ### go-no-known-vulns
 - **Rule:** No reachable known vulnerabilities in Go dependencies or the standard library.
@@ -419,6 +419,13 @@ any other Trivy exit is a failure to run (exit 2, `trivy failed to run (exit N) 
 - **Sensor:** actionlint (`make lint-ci`, part of `make check`).
 - **Remediation:** Fix the line actionlint names (unknown context/expression, bad `needs`/`if`, or the shellcheck code in a `run:` block); pin new actions to a full commit SHA with a `# vX.Y.Z` comment.
 - **Fixture:** `fixtures/ci-invalid-workflow` · Status: seed
+
+### harness-layout-valid
+- **Rule:** `scripts/harness/layout.env` is the one place that says where the product's code lives (`API_DIR`, `SPEC`, `MIGRATIONS_DIR`, `QUERIES_DIR`, `API_CLIENT_DIR`, `WEB_GLOBS`, `GENERATED_GLOBS`, `PRODUCT_GLOBS`, `LAYER_GLOB`). The scripts in `scripts/harness/`, the Makefile, `.bin/harness`, the domainiso analyzer and the CI workflows read it and name none of those paths themselves; the files that cannot read it (linter configs, CODEOWNERS, `protected-paths.txt`, codegen configs, `fast-check.sh`, ...) are the named exceptions listed in README.md, "(b) Brownfield project" step 5. It parses (`KEY=value`, no quotes or `$`, every key set once, no unknown key, no empty list entry), every path it names exists (`QUERIES_DIR` or its parent, until the first domain), each `WEB_GLOBS` entry is `<existing directory>/*`, and `LAYER_GLOB` is `<dir>[/<dir>…]/*/*` with literal segments (no empty, `.`, `..` or wildcard segment) and matches at least one Go package under `API_DIR`, with no flat package `<dir>/<pkg>` beside them, since the analyzer skips those (`<dir>/platform` is shared plumbing, skipped, never flat; a tree with only platform packages is the template before its first domain) (exec plan 0003, P4.6).
+- **Why:** A product that moves or renames a directory changed it in a dozen sensors by hand, and a sensor that still pointed at the old path went silently green (a pathspec that matches nothing finds nothing); a `LAYER_GLOB` matching no package turns [go-domain-isolation](#go-domain-isolation) off without a word.
+- **Sensor:** `.bin/harness layout-check` (`make layout-check`, part of `make check`) prints `scripts/harness/layout.env:<line>: <KEY>=<value>: <problem> [harness-layout-valid]`. Every reader fails closed on an unreadable layout with `<file>:<line>: <message> [harness-layout-valid]`: a script sourcing `scripts/harness/layout.sh` exits 2, the Makefile stops at parse time (it and CI read `layout.sh --print`), `.bin/harness` and the domainiso analyzer refuse to run, and the migration gate and `migrations-append-only.sh` read both the base and the head copy and exit 2 when either is invalid. Both Go parsers of `LAYER_GLOB` (layout-check and domainiso) test against the shared vectors in `apps/api/tools/harness/testdata/layer-globs.txt`.
+- **Remediation:** Fix the named line in `scripts/harness/layout.env` (or move the code to where it points) and re-point the files that cannot read it, listed in README.md, "(b) Brownfield project" step 5. Harness change: Y.
+- **Fixture:** `fixtures/harness-layout-no-layer`; `scripts/test/layout.bats`, `scripts/test/migrations-append-only.bats`, `apps/api/tools/harness/layout_test.go`, `apps/api/tools/analyzers/domainiso/layout_test.go` · Status: team-convention ([ADR 0030](../adr/0030-one-layout-file-for-every-sensor.md))
 
 ## Commits and specs (git history, specs/)
 

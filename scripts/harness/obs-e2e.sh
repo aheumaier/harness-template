@@ -15,6 +15,8 @@
 # cannot run (no Docker, image, env or free port), each with the fix.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=layout.sh
+source "$ROOT/scripts/harness/layout.sh" || exit 2
 JQ="$ROOT/.bin/jq"
 WAIT=60 # seconds each signal may take to arrive
 
@@ -92,7 +94,7 @@ m obs-up >"$tmp/err" 2>&1 ||
   fail "make obs-up failed: Docker could not start the obs stack (OBS_IMAGE ${OBS_IMAGE:-unset}); check its network and disk space"
 
 # The API, built (killing `go run` can orphan its child) and listening on a port nobody else uses.
-(cd "$ROOT/apps/api" && go build -o "$tmp/api" ./cmd/api) >"$tmp/err" 2>&1 || fail "the API does not build"
+(cd "$ROOT/$API_DIR" && go build -o "$tmp/api" ./cmd/api) >"$tmp/err" 2>&1 || fail "the API does not build"
 port="$(perl -MIO::Socket::INET -e 'print IO::Socket::INET->new(Listen => 1, LocalAddr => "127.0.0.1:0")->sockport')" ||
   die "could not find a free port (perl IO::Socket::INET)"
 id="nfr-o1-$(date +%s)-$$"

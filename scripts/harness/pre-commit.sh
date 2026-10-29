@@ -4,7 +4,7 @@
 # sensors only:
 #
 #   every staged file   repo-no-secrets   scripts/harness/trivy.sh secret --staged (offline)
-#   Go                  go-format         golangci-lint fmt (gofmt + goimports, apps/api/.golangci.yml)
+#   Go                  go-format         golangci-lint fmt (gofmt + goimports, API_DIR/.golangci.yml)
 #   shell, bats, hooks  sh-shellcheck, sh-format
 #   Markdown            docs-links-resolve, docs-claude-imports-agents (on the whole staged tree)
 #
@@ -24,7 +24,7 @@ fail() { # the hook cannot check: exit 2, blocking the commit (fail closed)
 # shellcheck source=../tool-versions.env
 source scripts/tool-versions.env || fail "scripts/tool-versions.env is missing: run make setup"
 # shellcheck source=file-sensors.sh
-source scripts/harness/file-sensors.sh || fail "scripts/harness/file-sensors.sh is missing"
+source scripts/harness/file-sensors.sh || fail "scripts/harness/file-sensors.sh or the layout it reads is missing or invalid"
 export GOTOOLCHAIN="$GO_TOOLCHAIN" PATH="$ROOT/.bin:$PATH"
 export HARNESS_SCOPE=pre-commit # tags the timings of the sensors below
 RUN="$ROOT/scripts/harness/run.sh"
@@ -74,7 +74,7 @@ check_staged() ( # a subshell: its EXIT trap removes the staged tree, the parent
     "$RUN" "$id" "$rules" -- bash -c 'cd "$1" || exit 2; shift; exec "$@"' in-tree "$tree" "$@" || worst $?
   }
   if ((${#go[@]})); then
-    in_tree golangci-fmt go-format golangci-lint-custom fmt --diff --config apps/api/.golangci.yml "${go[@]}"
+    in_tree golangci-fmt go-format golangci-lint-custom fmt --diff --config "${API_PREFIX}.golangci.yml" "${go[@]}"
   fi
   if ((${#sh[@]})); then
     in_tree shellcheck sh-shellcheck shellcheck -f gcc "${sh[@]}"

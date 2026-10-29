@@ -63,6 +63,18 @@ commit() { # subject
   has '[specs-required-for-features]'
 }
 
+@test "product code is layout.env's PRODUCT_GLOBS" {
+  sed -i.bak 's|^PRODUCT_GLOBS=.*|PRODUCT_GLOBS=services/*|' "$SANDBOX/scripts/harness/layout.env"
+  rm "$SANDBOX/scripts/harness/layout.env.bak"
+  add apps/web/y 'y'
+  commit 'feat(web): add banner'
+  check -0
+  add services/core/y 'y'
+  commit 'feat(core): add thing'
+  check -1
+  has 'touches product code (services/*)'
+}
+
 @test "a feat commit touching apps/ passes with a spec, or with NO_SPEC_NEEDED=1" {
   add apps/web/y 'y'
   commit 'feat(web): add banner'

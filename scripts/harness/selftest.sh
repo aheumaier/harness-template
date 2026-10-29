@@ -20,6 +20,8 @@ FIXTURES="$ROOT/scripts/harness/fixtures"
 cd "$ROOT"
 # shellcheck source=../tool-versions.env
 source scripts/tool-versions.env
+# shellcheck source=layout.sh
+source scripts/harness/layout.sh || exit 2
 export GOTOOLCHAIN="$GO_TOOLCHAIN" PATH="$ROOT/.bin:$ROOT/node_modules/.bin:$PATH"
 
 names=("$@")
@@ -37,8 +39,10 @@ git ls-files -co --exclude-standard | while read -r f; do [[ -e "$f" ]] && print
   tar -cf - --null -T - | tar -xf - -C "$work"
 ln -s "$ROOT/node_modules" "$work/node_modules"
 ln -s "$ROOT/.bin" "$work/.bin"
-for nm in apps/*/node_modules packages/*/node_modules; do # pnpm workspace links are relative: copy them
-  [[ -d "$nm" ]] && cp -R "$nm" "$work/$nm"
+for ws in "${WEB_DIRS[@]}"; do # pnpm workspace links are relative: copy them
+  for nm in "$ws"/*/node_modules; do
+    [[ -d "$nm" ]] && cp -R "$nm" "$work/$nm"
+  done
 done
 g() { git -C "$work" -c core.hooksPath=/dev/null -c user.name=harness-selftest -c user.email=selftest@localhost "$@"; }
 g init -q -b main
@@ -51,8 +55,8 @@ overlay() { # dir: copy a fixture overlay into the copy
   cp -R "$1/." "$work/"
 }
 commit() { # message: rehash migrations if touched, then commit (must change something)
-  if [[ -n "$(g status --porcelain -- apps/api/db/migrations)" ]]; then
-    (cd "$work/apps/api" && atlas migrate hash --env local) || return 1
+  if [[ -n "$(g status --porcelain -- "$MIGRATIONS_DIR")" ]]; then
+    (cd "$work/$API_DIR" && atlas migrate hash --env local) || return 1
   fi
   [[ -n "$(g status --porcelain)" ]] || {
     echo "fixture changed nothing" >&2

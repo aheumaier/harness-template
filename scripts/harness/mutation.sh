@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Mutation testing of the Go and TS source files changed recently (docs/adr/0023-mutation-testing-is-a-drift-report.md,
-# docs/harness/ci.md#mutation-testing): gremlins for apps/api, Stryker for each JS workspace. A trend, never a
-# gate: it fails only when it cannot measure (missing tool, failing tests, shallow history, unparseable input,
-# a loosened config), never on a score. A report, not a sensor: no rule id, never in make check (slow, and the
+# docs/harness/ci.md#mutation-testing): gremlins for API_DIR (scripts/harness/layout.env), Stryker for each JS
+# workspace. A trend, never a gate: it fails only when it cannot measure (missing tool, failing tests, shallow
+# history, unparseable input, a loosened config), never on a score. A report, not a sensor: no rule id, never in make check (slow, and the
 # window reads the clock) nor in make check-all; drift.yml runs it weekly.
 #
 #   scripts/harness/mutation.sh files <since>
@@ -17,11 +17,11 @@
 #       the surviving mutants (make mutation-scores: drift.yml's weekly issue entry; the job summary has them).
 #
 # Mutable source:
-#   - package apps/api: apps/api/**/*.go of the apps/api module (not a nested module such as tools/harness),
+#   - package <API_DIR>: <API_DIR>/**/*.go of that module (not a nested module such as tools/harness),
 #     except *_test.go, testdata/ and files marked "Code generated ... DO NOT EDIT."; mutated by gremlins with
 #     scripts/harness/gremlins.yaml (what is measured is fixed in protected config: no other config file and
 #     no GREMLINS_* variable is read) and GOFLAGS=-short (the test set of make test-go and make coverage);
-#   - package <workspace> (apps/*, packages/*): <workspace>/src/**/*.{ts,tsx}, except *.test.*, *.spec.*,
+#   - package <workspace> (WEB_GLOBS): <workspace>/src/**/*.{ts,tsx}, except *.test.*, *.spec.*,
 #     *.d.ts and src/gen/ (generated); mutated by the workspace's `mutation` script, run as `pnpm run mutation
 #     stryker.config.json --mutate <files> --reporters json --cleanTempDir always` (Stryker; the report is read
 #     from <workspace>/reports/mutation/mutation.json). A workspace with neither a `test` nor a `mutation`
@@ -40,7 +40,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 usage="usage: mutation.sh files <since> | collect <dir> <since> | report [--scores] <tsv> <since>"
-API=apps/api
+# shellcheck source=layout.sh
+source "$ROOT/scripts/harness/layout.sh" || exit 2
+API="$API_DIR"
 GREMLINS_CONFIG="$ROOT/scripts/harness/gremlins.yaml"
 # An allowed file name, as an ERE (awk) and a JS regex.
 NAME_ERE='^[]A-Za-z0-9_.@+$[/-]+$'
@@ -72,17 +74,18 @@ files() {
   nested="" generated=""
   # git ls-files --others and git grep --untracked warn about a pathspec directory that does not exist.
   if [[ -d "$ROOT/$API" ]]; then
-    # Nested Go modules below apps/api (tools/analyzers, tools/harness) are not the apps/api module.
-    nested="$(git -C "$ROOT" ls-files --cached --others --exclude-standard -- "$API/*/go.mod")" ||
+    # Nested Go modules below API_DIR (tools/analyzers, tools/harness) are not its module.
+    nested="$(git -C "$ROOT" ls-files --cached --others --exclude-standard -- "${API_PREFIX}*/go.mod")" ||
       die "git ls-files failed listing nested Go modules"
-    generated="$(git -C "$ROOT" -c core.quotePath=false grep -l --untracked -E '^// Code generated .* DO NOT EDIT\.$' -- "$API/*.go")" ||
+    generated="$(git -C "$ROOT" -c core.quotePath=false grep -l --untracked -E '^// Code generated .* DO NOT EDIT\.$' -- "${API_PREFIX}*.go")" ||
       (($? == 1)) || die "git grep failed listing generated Go files"
   fi
   {
     printf '%s\n' "$nested" | sed 's/^/N /; s/go\.mod$//'
     printf '%s\n' "$generated" | sed 's/^/G /'
     printf '%s\n' "$changed" | sed 's/^/C /'
-  } | LC_ALL=C awk -v api="$API/" -v name="$NAME_ERE" '
+  } | LC_ALL=C awk -v api="$API_PREFIX" -v apipkg="$API" -v web="${WEB_DIRS[*]}" -v name="$NAME_ERE" '
+    BEGIN { n = split(web, w, " "); for (i = 1; i <= n; i++) workspace[w[i]] = 1 }
     # The whole rest of the line, not $2: a name with a space is one name.
     { t = substr($0, 1, 1); f = substr($0, 3) }
     f == "" { next }
@@ -92,11 +95,11 @@ files() {
       # git still quotes a name with a control character or a double quote: filter on what is inside.
       g = f
       if (g ~ /^".*"$/) g = substr(g, 2, length(g) - 2)
-      if (index(g, api) == 1 && g ~ /\.go$/) {
+      if ((api == "" || index(g, api) == 1) && g ~ /\.go$/) {
         if (g ~ /_test\.go$/ || g ~ /\/testdata\// || (g in generated)) next
-        for (n in nested) if (index(g, n) == 1) next
-        pkg = substr(api, 1, length(api) - 1)
-      } else if (g ~ /^(apps|packages)\/[^\/]+\/src\/.+\.tsx?$/) {
+        for (m in nested) if (index(g, m) == 1) next
+        pkg = apipkg
+      } else if (g ~ /^[^\/]+\/[^\/]+\/src\/.+\.tsx?$/ && (substr(g, 1, index(g, "/") - 1) in workspace)) {
         if (g ~ /\.(test|spec)\.tsx?$/ || g ~ /\.d\.ts$/ || g ~ /^[^\/]+\/[^\/]+\/src\/gen\//) next
         split(g, p, "/")
         pkg = p[1] "/" p[2]
@@ -113,10 +116,10 @@ files() {
 }
 
 # gremlins_rows <gremlins.json> <selection>: its mutants as mutants.tsv rows; file names are relative to
-# apps/api and must be in the selection ("<path>" per line).
+# API_DIR and must be in the selection ("<path>" per line).
 gremlins_rows() {
   node -e '
-    const [file, sel, name] = process.argv.slice(1);
+    const [file, sel, name, prefix, pkg] = process.argv.slice(1);
     const fail = (m) => { console.error(`mutation: ${m} in ${file}`); process.exit(3); };
     const j = require(file);
     const allowed = new Set(sel.split("\n"));
@@ -124,15 +127,15 @@ gremlins_rows() {
       "NOT VIABLE": "invalid", SKIPPED: "invalid" };
     if (!Array.isArray(j.files)) fail("no files array");
     for (const f of j.files) {
-      const path = `apps/api/${f.file_name}`;
+      const path = `${prefix}${f.file_name}`;
       if (typeof f.file_name !== "string" || !new RegExp(name).test(f.file_name) || !path.endsWith(".go")) fail(`unexpected file_name ${f.file_name}`);
       if (!allowed.has(path)) fail(`a file outside the selection: ${path}`);
       for (const m of f.mutations ?? []) {
         if (!(m.status in status) || !/^[A-Z_]+$/.test(m.type) || !Number.isInteger(m.line) || !Number.isInteger(m.column)) fail(`unexpected mutation ${JSON.stringify(m)}`);
-        console.log(`apps/api\t${path}:${m.line}:${m.column}\t${m.type}\t${status[m.status]}`);
+        console.log(`${pkg}\t${path}:${m.line}:${m.column}\t${m.type}\t${status[m.status]}`);
       }
     }
-  ' "$1" "$2" "$NAME_JS"
+  ' "$1" "$2" "$NAME_JS" "$API_PREFIX" "$API"
 }
 
 # stryker_rows <workspace> <mutation.json> <selection>: its mutants as mutants.tsv rows
@@ -193,7 +196,7 @@ collect() {
     exclude=()
     while IFS= read -r f; do
       [[ -n "$f" ]] || continue
-      grep -qxF "$API/$f" <<<"$mine" && continue
+      grep -qxF "$API_PREFIX$f" <<<"$mine" && continue
       exclude+=(-E "^$(printf '%s' "$f" | sed 's/[][\.*^$+?(){}|]/\\&/g')\$")
     done <<<"$gofiles"
     if ! (

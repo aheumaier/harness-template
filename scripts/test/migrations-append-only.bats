@@ -38,3 +38,44 @@ check() { BASE_REF=main run "$@" "$SANDBOX/scripts/harness/migrations-append-onl
   BASE_REF=nope run -2 "$SANDBOX/scripts/harness/migrations-append-only.sh"
   has "is not a commit"
 }
+
+# ADR 0030: the base copy of layout.env names the base's MIGRATIONS_DIR, so moving it cannot hide an edit.
+move_dir() { # <mv|copy>
+  if [[ "$1" == mv ]]; then
+    git -C "$SANDBOX" mv apps/api/db/migrations apps/api/db/schema
+  else
+    cp -R "$MIG" "$SANDBOX/apps/api/db/schema"
+  fi
+  sed -i.bak 's|^MIGRATIONS_DIR=.*|MIGRATIONS_DIR=apps/api/db/schema|' "$SANDBOX/scripts/harness/layout.env"
+  rm "$SANDBOX/scripts/harness/layout.env.bak"
+  git -C "$SANDBOX" add -A
+}
+
+@test "passes when MIGRATIONS_DIR moves with its migrations unchanged" {
+  move_dir mv
+  check -0
+}
+
+@test "flags a migration edited while MIGRATIONS_DIR moves" {
+  move_dir mv
+  printf '%s\n' '-- edited' >>"$SANDBOX/apps/api/db/schema/1_a.sql"
+  check -1
+  has 'apps/api/db/migrations/1_a.sql: migration on main was modified [db-append-only-migrations]'
+}
+
+@test "flags an edit left in the base's MIGRATIONS_DIR after the layout points elsewhere" {
+  move_dir copy
+  printf '%s\n' '-- edited' >>"$MIG/1_a.sql"
+  check -1
+  has 'apps/api/db/migrations/1_a.sql: migration on main was modified [db-append-only-migrations]'
+}
+
+@test "fails closed when the base's layout.env is invalid" {
+  local env="$SANDBOX/scripts/harness/layout.env"
+  cp "$env" "$BATS_TEST_TMPDIR/valid.env"
+  printf '%s\n' 'MIGRATIONS_DIR=$(id)' >>"$env"
+  git -C "$SANDBOX" -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false commit -qam broken
+  cp "$BATS_TEST_TMPDIR/valid.env" "$env"
+  check -2
+  has 'scripts/harness/layout.env on main is invalid'
+}

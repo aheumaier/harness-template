@@ -36,6 +36,7 @@ func integrityRepo(t *testing.T) string {
 		"scripts/harness/run.sh": {"#!/usr/bin/env bash", "set -eu", "echo ok"},
 		"Makefile":               {"check:", "\t@echo check"},
 		"x.go":                   {"package x"},
+		layoutFile:               templateLayout,
 	} {
 		writeLines(t, root, p, lines...)
 	}
@@ -150,6 +151,14 @@ func TestIntegrityCheck(t *testing.T) {
 			add(t, own, "x.go", "f() "+nolint+" // reason: trust me (rule: go-lint)")
 			return ""
 		}, false, []string{"x.go:2: suppression names 'go-lint', not a rule id in docs/harness/rules.md [harness-suppression-reason]"}},
+		{"skips the layout's generated code (GENERATED_GLOBS)", func(t *testing.T, own string) string {
+			writeLines(t, own, layoutFile, withLayout("GENERATED_GLOBS", "*.gen.go:apps/api/internal/*/store/*")...)
+			commitAll(t, own, "a layout without the client's generated code")
+			add(t, own, "a.gen.go", nolint)
+			add(t, own, "apps/api/internal/billing/store/q.go", nolint)
+			add(t, own, "packages/api-client/src/gen/x.ts", eslint)
+			return ""
+		}, false, []string{"packages/api-client/src/gen/x.ts:1" + noReason}},
 		{"reports paths with spaces", func(t *testing.T, own string) string {
 			writeLines(t, own, "a b.go", "package y")
 			commitAll(t, own, "space")
@@ -319,6 +328,15 @@ func TestIntegrityCheckFailsClosed(t *testing.T) {
 		}
 		if _, err := integrityCheck(own, own, "main", true, &bytes.Buffer{}); err == nil {
 			t.Error("passed without rules.md")
+		}
+	})
+	t.Run("no layout.env", func(t *testing.T) {
+		own := integrityRepo(t)
+		if err := os.Remove(filepath.Join(own, layoutFile)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := integrityCheck(own, own, "main", false, &bytes.Buffer{}); err == nil {
+			t.Error("passed without layout.env")
 		}
 	})
 	t.Run("no merge base", func(t *testing.T) {

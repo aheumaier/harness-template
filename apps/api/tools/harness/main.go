@@ -15,6 +15,7 @@
 //	harness references-pinned <root>
 //	                               docs-references-pinned (make references-pinned)
 //	harness approved-check <root>  api-approved-match-contract (make approved-check)
+//	harness layout-check <root>    harness-layout-valid: scripts/harness/layout.env (make layout-check)
 //	harness integrity-check <root> harness-suppression-reason, harness-config-not-loosened (make
 //	                               harness-integrity; env BASE_REF, HARNESS_ROOT, HARNESS_CHANGE_APPROVED)
 //	harness rename [-write] <root> <name> <module> <owner>
@@ -36,7 +37,18 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness check-links <root> | harness fixture-claims <root> | harness orphans <root> | harness quality-rows [-no-clock] <root> | harness references-pinned <root> | harness approved-check <root> | harness integrity-check <root> | harness rename [-write] <root> <name> <module> <owner>"
+const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness check-links <root> | harness fixture-claims <root> | harness orphans <root> | harness quality-rows [-no-clock] <root> | harness references-pinned <root> | harness approved-check <root> | harness layout-check <root> | harness integrity-check <root> | harness rename [-write] <root> <name> <module> <owner>"
+
+// rootSensors are the sensors run as `harness <name> <root>`: findings on stdout, whether there was any, and an
+// error when they cannot run.
+var rootSensors = map[string]func(root string, stdout io.Writer) (bool, error){
+	"check-links":       checkLinks,
+	"fixture-claims":    fixtureClaims,
+	"orphans":           orphans,
+	"references-pinned": referencesPinned,
+	"approved-check":    approvedCheck,
+	"layout-check":      layoutCheck,
+}
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
@@ -72,40 +84,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stderr, "guard-bash: blocked: %v\n", err)
 		return 2
-	case "check-links":
+	case "check-links", "fixture-claims", "orphans", "references-pinned", "approved-check", "layout-check":
 		if len(args) != 2 {
 			break
 		}
-		bad, err := checkLinks(args[1], stdout)
+		bad, err := rootSensors[args[0]](args[1], stdout)
 		switch {
 		case err != nil:
-			fmt.Fprintf(stderr, "harness check-links: %v\n", err)
-			return 2
-		case bad:
-			return 1
-		}
-		return 0
-	case "fixture-claims":
-		if len(args) != 2 {
-			break
-		}
-		bad, err := fixtureClaims(args[1], stdout)
-		switch {
-		case err != nil:
-			fmt.Fprintf(stderr, "harness fixture-claims: %v\n", err)
-			return 2
-		case bad:
-			return 1
-		}
-		return 0
-	case "orphans":
-		if len(args) != 2 {
-			break
-		}
-		bad, err := orphans(args[1], stdout)
-		switch {
-		case err != nil:
-			fmt.Fprintf(stderr, "harness orphans: %v\n", err)
+			fmt.Fprintf(stderr, "harness %s: %v\n", args[0], err)
 			return 2
 		case bad:
 			return 1
@@ -126,32 +112,6 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		switch {
 		case err != nil:
 			fmt.Fprintf(stderr, "harness quality-rows: %v\n", err)
-			return 2
-		case bad:
-			return 1
-		}
-		return 0
-	case "references-pinned":
-		if len(args) != 2 {
-			break
-		}
-		bad, err := referencesPinned(args[1], stdout)
-		switch {
-		case err != nil:
-			fmt.Fprintf(stderr, "harness references-pinned: %v\n", err)
-			return 2
-		case bad:
-			return 1
-		}
-		return 0
-	case "approved-check":
-		if len(args) != 2 {
-			break
-		}
-		bad, err := approvedCheck(args[1], stdout)
-		switch {
-		case err != nil:
-			fmt.Fprintf(stderr, "harness approved-check: %v\n", err)
 			return 2
 		case bad:
 			return 1

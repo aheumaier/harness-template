@@ -85,6 +85,20 @@ EOF
   run -1 "$A" go
 }
 
+@test "go: the module is where layout.env's API_DIR says (here the repo root)" {
+  stub_turbo
+  git -C "$SANDBOX" checkout -q main
+  mv "$SANDBOX/apps/api/"* "$SANDBOX"
+  sed -i.bak 's|^API_DIR=.*|API_DIR=.|' "$SANDBOX/scripts/harness/layout.env" && rm "$SANDBOX/scripts/harness/layout.env.bak"
+  sandbox_base
+  git -C "$SANDBOX" checkout -qB feature
+  echo '// x' >>"$SANDBOX/service/service.go"
+  run -0 "$A" go
+  is "$(printf './cmd\n./service')"
+  run -0 "$A" web # Go files of a root module are no workspace's
+  is ""
+}
+
 @test "go: everything when go list fails" {
   printf 'package service\n\nimport "example.com/api/nope"\n' >"$SANDBOX/apps/api/service/broken.go"
   run -1 "$A" go

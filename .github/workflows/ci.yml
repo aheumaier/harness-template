@@ -101,11 +101,12 @@ jobs:
       - name: The probe's service, handler and integration tests ran and passed (NFR-B1)
         run: make test-scaffold NAME=zzz_probe
       # Restores only what the generator writes (its undo hint in scripts/new-domain.sh), so a change anywhere
-      # else fails the assertion instead of being reset.
+      # else fails the assertion instead of being reset. The paths come from scripts/harness/layout.env, which
+      # the setup action loaded into the env.
       - name: The probe stays inside the generator's paths
         run: |
-          git checkout -- apps/api/cmd/api/routes.go api/openapi.yaml apps/api/sqlc.yaml docs/QUALITY.md \
-            apps/api/db/migrations/atlas.sum docs/generated packages/api-client/src/gen
-          git clean -fdq -- apps/api/internal/zzz_probe apps/api/db/queries/zzz_probe.sql \
-            'apps/api/db/migrations/*_zzz_probe.sql' packages/api-client/src/gen
+          git checkout -- "$API_DIR/cmd/api/routes.go" "$SPEC" "$API_DIR/sqlc.yaml" docs/QUALITY.md \
+            "$MIGRATIONS_DIR/atlas.sum" docs/generated "$API_CLIENT_DIR/src/gen"
+          git clean -fdq -- "$API_DIR/${LAYER_GLOB%/\*/\*}/zzz_probe" "$QUERIES_DIR/zzz_probe.sql" \
+            "$MIGRATIONS_DIR/*_zzz_probe.sql" "$API_CLIENT_DIR/src/gen"
           test -z "$(git status --porcelain)" || { git status --porcelain; exit 1; }

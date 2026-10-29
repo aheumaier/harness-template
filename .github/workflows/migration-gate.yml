@@ -1,14 +1,14 @@
 # Harness file (protected). Focused feedback when migrations change: Atlas lint (destructive and
 # backward-incompatible changes, against the PR base), squawk (locking) and append-only. The same sensors
-# run in ci.yml's check-all, which is the required check; this one is path-filtered.
+# run in ci.yml's check-all, which is the required check; this one runs its gates only when the PR changes
+# MIGRATIONS_DIR or scripts/harness/layout.env (a `paths:` filter cannot read the layout, so the job always
+# starts and a diff step decides; ADR 0030).
 # rules.md#db-no-destructive-migration, #db-backward-compatible-migration, #db-safe-locking,
 # #db-append-only-migrations
 name: migration-gate
 
 on:
   pull_request:
-    paths:
-      - apps/api/db/migrations/**
 
 permissions:
   contents: read
@@ -22,6 +22,25 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - name: Did MIGRATIONS_DIR change?
+        id: migrations
+        # Both copies of layout.env (validated by layout.sh --print, fails closed): a PR that moves
+        # MIGRATIONS_DIR or edits layout.env runs the gates, and append-only checks the base's dir too.
+        run: |
+          base="$(git merge-base HEAD "origin/$GITHUB_BASE_REF")"
+          head_dir="$(scripts/harness/layout.sh --print | sed -n 's/^MIGRATIONS_DIR=//p')"
+          base_dir="$head_dir"
+          if git cat-file -e "$base:scripts/harness/layout.env" 2>/dev/null; then
+            git show "$base:scripts/harness/layout.env" >"$RUNNER_TEMP/base-layout.env"
+            base_dir="$(scripts/harness/layout.sh --print "$RUNNER_TEMP/base-layout.env" | sed -n 's/^MIGRATIONS_DIR=//p')"
+          fi
+          if git diff --quiet "$base" -- scripts/harness/layout.env "$head_dir" "$base_dir"; then
+            echo changed=false
+          else
+            echo changed=true
+          fi >>"$GITHUB_OUTPUT"
+      - if: steps.migrations.outputs.changed == 'true'
+        uses: ./.github/actions/setup
       # -k: report every gate, not just the first red one. Atlas starts its own Docker dev database.
-      - run: make -k migrations-append-only lint-migrations squawk BASE_REF="origin/$GITHUB_BASE_REF"
+      - if: steps.migrations.outputs.changed == 'true'
+        run: make -k migrations-append-only lint-migrations squawk BASE_REF="origin/$GITHUB_BASE_REF"

@@ -28,11 +28,13 @@ hook() {
 # from their own location, so they operate on the sandbox). Executables are hardlinked: macOS assesses every
 # newly written executable on its first exec (~0.35 s each; exec plan 0002). Data files are copied, and so is
 # an executable when the link fails (another volume). A link writes through to the real file: call `own` before
-# a test writes to a sandboxed executable; teardown_file fails the file if one did not.
+# a test writes to a sandboxed executable; teardown_file fails the file if one did not. Every sandbox also gets
+# scripts/harness/layout.sh and layout.env: the scripts read the repo layout from them.
 sandbox() {
   SANDBOX="$BATS_TEST_TMPDIR/repo"
   local f
-  for f in "$@"; do
+  for f in scripts/harness/layout.sh scripts/harness/layout.env "$@"; do
+    [[ ! -e "$SANDBOX/$f" ]] || continue # a second sandbox call, or a caller naming the layout files too
     mkdir -p "$SANDBOX/$(dirname "$f")"
     if [[ -x "$REPO/$f" ]] && ln "$REPO/$f" "$SANDBOX/$f" 2>/dev/null; then continue; fi
     cp "$REPO/$f" "$SANDBOX/$f"

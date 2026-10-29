@@ -34,3 +34,14 @@ docs/harness/rules.md md
 Makefile -
 TABLE
 }
+
+@test "the paths come from layout.env: a Go module at the repo root, the spec elsewhere" {
+  sandbox scripts/harness/file-sensors.sh
+  sed -i.bak -e 's|^API_DIR=.*|API_DIR=.|' -e 's|^SPEC=.*|SPEC=contract/v1.yaml|' "$SANDBOX/scripts/harness/layout.env"
+  # shellcheck source=../harness/file-sensors.sh
+  source "$SANDBOX/scripts/harness/file-sensors.sh"
+  [[ "$(harness_file_kind cmd/api/main.go)" == go ]]
+  [[ "$(harness_file_kind tools/harness/main.go)" == go-harness ]]
+  [[ "$(harness_file_kind contract/v1.yaml)" == openapi ]]
+  [[ "$(harness_file_kind api/openapi.yaml)" == "" ]]
+}

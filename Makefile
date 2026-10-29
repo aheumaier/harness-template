@@ -6,6 +6,14 @@ SHELL := bash
 MAKEFLAGS += --no-print-directory
 
 include scripts/tool-versions.env
+# Where the code lives (API_DIR, SPEC, ...), one file for every sensor (ADR 0030); its lists separate entries
+# with `:`. Read through the validating parser, never included as make syntax: layout.sh prints only its known
+# keys with plain values, one KEY=value word each, or nothing and its findings on stderr.
+LAYOUT := $(shell scripts/harness/layout.sh --print)
+ifeq ($(LAYOUT),)
+$(error scripts/harness/layout.env is missing or invalid (see above): fix it, then run make layout-check [harness-layout-valid])
+endif
+$(foreach kv,$(LAYOUT),$(eval $(kv)))
 export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 export OBS_IMAGE # compose.yaml interpolates the obs service even when its profile is off
 export PATH := $(CURDIR)/.bin:$(CURDIR)/node_modules/.bin:$(PATH)
@@ -21,7 +29,10 @@ DEPCRUISE_CACHE = $(if $(CACHED),--cache node_modules/.cache/depcruise)
 TURBO_FORCE = $(if $(CACHED),,--force)
 # Load this worktree's ports/DB URL (written by `make setup`) into a recipe's shell.
 WITH_ENV := [[ -f .env.local ]] || { echo "no .env.local: run make setup" >&2; exit 1; }; set -a; source .env.local; set +a;
-API  := apps/api
+# The JS workspaces' parent directories: each WEB_GLOBS entry without its /*.
+WEB_DIRS := $(patsubst %/*,%,$(subst :, ,$(WEB_GLOBS)))
+# The domains' parent directory (each domain is <DOMAINS_DIR>/<name>): LAYER_GLOB without its /*/*, in API_DIR.
+DOMAINS_DIR := $(patsubst ./%,%,$(API_DIR)/$(patsubst %/*/*,%,$(LAYER_GLOB)))
 # `$(call scoped,<go|web>,<everything>) <command on $$scope>`: in make check, runs the command on the packages or
 # workspaces a change affects plus their dependents (scripts/harness/affected.sh), or skips it when there are
 # none; on <everything> in make check-all, CI and whenever affected.sh cannot narrow it (rules.md#harness-scope).
@@ -31,9 +42,9 @@ GCL  := .bin/golangci-lint-custom
 # ADR 0024's size and complexity limits, one rule id per measure, checked by lint-go and lint-web. The linters'
 # messages cannot carry the id: run.sh maps each finding to its id, so only that measure's split recipe prints.
 SIZE_RULES := code-function-length,code-complexity,code-parameters,code-file-length
-ANALYZERS_SRC := $(shell find $(API)/tools/analyzers -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
+ANALYZERS_SRC := $(shell find $(API_DIR)/tools/analyzers -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
 HARNESS     := .bin/harness
-HARNESS_SRC := $(shell find $(API)/tools/harness -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
+HARNESS_SRC := $(shell find $(API_DIR)/tools/harness -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
 
 ##@ Workflow
 .PHONY: help setup check check-all harness-selftest harness-determinism new-domain rename dev db-up db-migrate db-reset
@@ -66,22 +77,22 @@ dev: db-up ## Run API + web for this worktree (Ctrl-C stops both), output also i
 	  done; \
 	  trap 'kill 0' EXIT; mkdir -p .tmp/dev; \
 	  echo "api http://$$HTTP_ADDR  web http://localhost:$$WEB_PORT  logs .tmp/dev/api.log .tmp/dev/web.log"; \
-	  (cd $(API) && go run ./cmd/api) 2>&1 | tee .tmp/dev/api.log & \
+	  (cd $(API_DIR) && go run ./cmd/api) 2>&1 | tee .tmp/dev/api.log & \
 	  (cd apps/web && node_modules/.bin/vite) 2>&1 | tee .tmp/dev/web.log & wait
 
 db-up: ## Start this worktree's Postgres
 	@$(WITH_ENV) docker compose --progress quiet up -d --wait db
 
 db-migrate: db-up ## Apply pending migrations to this worktree's Postgres
-	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
+	@$(WITH_ENV) cd $(API_DIR) && atlas migrate apply --env local >/dev/null
 
 db-reset: ## Drop this worktree's database volume (and the obs stack), recreate, migrate
 	@$(MAKE) --no-print-directory down
 	@$(WITH_ENV) docker compose --progress quiet up -d --wait db
-	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
+	@$(WITH_ENV) cd $(API_DIR) && atlas migrate apply --env local >/dev/null
 
 check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=60s any: NFR-H3/H4): format, lint, arch, unit tests, secrets, gen-check
-	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned fixture-claims approved-check lint-web arch-web typecheck-web test-web
+	@$(MAKE) -k -j4 layout-check lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned fixture-claims approved-check lint-web arch-web typecheck-web test-web
 	@$(MAKE) gen-check
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
@@ -187,51 +198,51 @@ tools: $(GCL) $(HARNESS) ## Install pinned CLI tools into .bin
 deps: ## Install JS dependencies from the lockfile (make e2e installs its browser itself)
 	@pnpm install --frozen-lockfile --silent
 
-$(GCL): $(API)/.custom-gcl.yml $(ANALYZERS_SRC) scripts/tool-versions.env
+$(GCL): $(API_DIR)/.custom-gcl.yml $(ANALYZERS_SRC) scripts/tool-versions.env
 	@scripts/install-tools.sh
-	@grep -q "^version: $(GOLANGCI_LINT_VERSION)$$" $(API)/.custom-gcl.yml || { echo ".custom-gcl.yml version != GOLANGCI_LINT_VERSION ($(GOLANGCI_LINT_VERSION))" >&2; exit 1; }
-	@cd $(API) && golangci-lint custom
+	@grep -q "^version: $(GOLANGCI_LINT_VERSION)$$" $(API_DIR)/.custom-gcl.yml || { echo ".custom-gcl.yml version != GOLANGCI_LINT_VERSION ($(GOLANGCI_LINT_VERSION))" >&2; exit 1; }
+	@cd $(API_DIR) && golangci-lint custom
 	@touch $@
 
 # The hooks' parser (ADR 0012); every hook fails closed without it.
 $(HARNESS): $(HARNESS_SRC) scripts/tool-versions.env
-	@cd $(API)/tools/harness && go build -o $(CURDIR)/$@ .
+	@cd $(API_DIR)/tools/harness && go build -o $(CURDIR)/$@ .
 
 ##@ Go sensors
 .PHONY: fmt lint-go arch-go test-go test-analyzers test-harness vuln-go deadcode-go
 fmt: $(GCL) ## Auto-format Go and shell code
-	@cd $(API) && ../../$(GCL) fmt ./...
+	@cd $(API_DIR) && $(CURDIR)/$(GCL) fmt ./...
 	@shfmt -w $(SH_FILES)
 
 lint-go: $(GCL)
-	@$(call scoped,go,./...) $(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-test-helpers-only-in-tests,go-domain-isolation,go-structured-logging,go-sec,go-format,$(SIZE_RULES),repo-no-clones --dir $(API) -- ../../$(GCL) run $$scope
+	@$(call scoped,go,./...) $(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-test-helpers-only-in-tests,go-domain-isolation,go-structured-logging,go-sec,go-format,$(SIZE_RULES),repo-no-clones --dir $(API_DIR) -- $(CURDIR)/$(GCL) run $$scope
 
 arch-go:
-	@$(RUN) go-arch-lint go-layers --dir $(API) -- go-arch-lint check --output-color=false
+	@$(RUN) go-arch-lint go-layers --dir $(API_DIR) -- go-arch-lint check --output-color=false
 
 test-go:
-	@$(call scoped,go,./...) $(RUN) go-test go-tests-pass,api-responses-approved --dir $(API) -- go test -race $(GO_TEST_COUNT) -short $$scope
+	@$(call scoped,go,./...) $(RUN) go-test go-tests-pass,api-responses-approved --dir $(API_DIR) -- go test -race $(GO_TEST_COUNT) -short $$scope
 
 test-analyzers:
-	@$(RUN) analyzer-tests go-tests-pass --dir $(API)/tools/analyzers -- go test $(GO_TEST_COUNT) ./...
+	@$(RUN) analyzer-tests go-tests-pass --dir $(API_DIR)/tools/analyzers -- go test $(GO_TEST_COUNT) ./...
 
 test-harness:
-	@$(RUN) harness-tests go-tests-pass --dir $(API)/tools/harness -- go test $(GO_TEST_COUNT) ./...
+	@$(RUN) harness-tests go-tests-pass --dir $(API_DIR)/tools/harness -- go test $(GO_TEST_COUNT) ./...
 
 vuln-go:
-	@$(RUN) govulncheck go-no-known-vulns --dir $(API) -- govulncheck ./...
+	@$(RUN) govulncheck go-no-known-vulns --dir $(API_DIR) -- govulncheck ./...
 
 # tools/analyzers is left out: deadcode cannot see golangci-lint's module-plugin entry points (TD-70).
 deadcode-go: ## Unreachable Go functions in apps/api and tools/harness (check-all, drift.yml; deadcode exits 0, so fail on any output)
-	@$(RUN) deadcode go-no-dead-code --dir $(API) -- bash -c 'set -o pipefail; out="$$(deadcode -test ./... && cd tools/harness && deadcode -test ./... | sed "s|^|tools/harness/|")" || exit 2; [[ -z "$$out" ]] || { echo "$$out"; exit 1; }'
+	@$(RUN) deadcode go-no-dead-code --dir $(API_DIR) -- bash -c 'set -o pipefail; out="$$(deadcode -test ./... && cd tools/harness && deadcode -test ./... | sed "s|^|tools/harness/|")" || exit 2; [[ -z "$$out" ]] || { echo "$$out"; exit 1; }'
 
-##@ Web sensors (apps/web, packages/*)
+##@ Web sensors (the workspaces of WEB_GLOBS)
 .PHONY: lint-web arch-web typecheck-web test-web knip clones-web
 lint-web:
 	@$(call scoped,web,.) $(RUN) eslint web-no-direct-http,web-domain-pure,web-lint,$(SIZE_RULES) -- eslint --max-warnings=0 $$scope
 
 arch-web:
-	@$(call scoped,web,apps packages) $(RUN) dependency-cruiser web-domain-pure,web-no-cross-app -- depcruise $$scope --config .dependency-cruiser.cjs --output-type err $(DEPCRUISE_CACHE)
+	@$(call scoped,web,$(WEB_DIRS)) $(RUN) dependency-cruiser web-domain-pure,web-no-cross-app -- depcruise $$scope --config .dependency-cruiser.cjs --output-type err $(DEPCRUISE_CACHE)
 
 typecheck-web:
 	@$(RUN) tsc web-typecheck -- turbo run typecheck --output-logs=errors-only $(TURBO_FORCE)
@@ -248,23 +259,23 @@ knip: ## Unused files, exports and dependencies in the JS workspace
 # there by path, as in eslint.config.mjs (ignores); golangci finds it by its header (exclusions.generated): keep the
 # copies in step. jscpd names each file relative to the root it was given, so it gets absolute paths and the root is
 # cut back off.
-clones-web: ## Copy-pasted code in apps/* and packages/* (jscpd)
-	@$(RUN) jscpd repo-no-clones -- bash -c 'root="$$(pwd -P)"; out="$$(jscpd --config "$$root/scripts/harness/jscpd.json" --reporters xcode --absolute --exit-code 1 --fail-on-empty --no-colors --no-tips "$$root/apps" "$$root/packages")" && s=0 || s=$$?; echo "$${out//"$$root"\//}"; exit $$s'
+clones-web: ## Copy-pasted code in the JS workspaces (jscpd)
+	@$(RUN) jscpd repo-no-clones -- bash -c 'root="$$(pwd -P)"; out="$$(jscpd --config "$$root/scripts/harness/jscpd.json" --reporters xcode --absolute --exit-code 1 --fail-on-empty --no-colors --no-tips $(foreach d,$(WEB_DIRS),"$$root/$(d)"))" && s=0 || s=$$?; echo "$${out//"$$root"\//}"; exit $$s'
 
-##@ Contract (api/openapi.yaml)
+##@ Contract (SPEC)
 .PHONY: lint-api contract-check approve approved-check
 API_RULES := api-kebab-case-paths,api-camel-case-properties,api-operation-metadata,api-documented-errors,api-errors-problem-json
 
 lint-api: ## Spectral style + error-contract rules on the OpenAPI spec
-	@$(RUN) spectral $(API_RULES) -- spectral lint api/openapi.yaml --ruleset .spectral.yaml --fail-severity=warn --quiet
+	@$(RUN) spectral $(API_RULES) -- spectral lint $(SPEC) --ruleset .spectral.yaml --fail-severity=warn --quiet
 
 approve: $(HARNESS) ## Rewrite the approved responses from the handler tests, then check them; review the diff
-	@$(RUN) approve go-tests-pass --dir $(API) -- env APPROVE_RESPONSES=1 go test -count=1 -short ./...
+	@$(RUN) approve go-tests-pass --dir $(API_DIR) -- env APPROVE_RESPONSES=1 go test -count=1 -short ./...
 	@HARNESS_SCOPE=full $(MAKE) approved-check
 
 # In make check, runs only when the spec, an approved response or a harness file changed (rules.md#harness-scope).
-approved-check: $(HARNESS) ## Every approved response (testdata/approved/*.json) is one api/openapi.yaml allows
-	@if scripts/harness/unchanged.sh api/openapi.yaml '*/testdata/approved/*'; then \
+approved-check: $(HARNESS) ## Every approved response (testdata/approved/*.json) is one the OpenAPI spec allows
+	@if scripts/harness/unchanged.sh $(SPEC) '*/testdata/approved/*'; then \
 	  echo "$@: skipped, neither the spec nor an approved response changed (make check-all runs it)"; \
 	else $(RUN) approved-check api-approved-match-contract -- $(HARNESS) approved-check .; fi
 
@@ -277,7 +288,7 @@ BASE_REF ?= $(shell scripts/harness/merge-base.sh --ref)
 ATLAS_LINT_SCOPE ?= --git-base "$(BASE_REF)"
 
 lint-migrations: ## Atlas migrate lint (destructive + incompatible), needs Docker
-	@$(RUN) atlas-lint db-no-destructive-migration,db-backward-compatible-migration --dir $(API) -- atlas migrate lint --env local $(ATLAS_LINT_SCOPE)
+	@$(RUN) atlas-lint db-no-destructive-migration,db-backward-compatible-migration --dir $(API_DIR) -- atlas migrate lint --env local $(ATLAS_LINT_SCOPE)
 
 squawk: ## Postgres locking checks on migrations
 	@$(RUN) squawk db-safe-locking -- scripts/harness/squawk.sh
@@ -292,7 +303,7 @@ schema-doc-fresh:
 	@$(RUN) schema-doc db-schema-doc-fresh -- scripts/gen-schema-doc.sh --check
 
 test-integration: ## Integration tests against the worktree's Postgres (.env.local)
-	@$(WITH_ENV) unset "$${!OTEL_@}"; $(RUN) go-integration go-tests-pass --dir $(API) -- go test -race -count=1 -tags=integration ./...
+	@$(WITH_ENV) unset "$${!OTEL_@}"; $(RUN) go-integration go-tests-pass --dir $(API_DIR) -- go test -race -count=1 -tags=integration ./...
 
 # CI's generator probe (ci.yml): a scaffold whose tests compile but skip or vanish would pass test-integration.
 test-scaffold: ## After make new-domain NAME=<name>: each of its scaffolded tests ran and passed, none skipped (NFR-B1)
@@ -328,9 +339,12 @@ vuln-deps: $(GCL) ## Known vulns in pnpm-lock.yaml and every go.mod (fetches the
 	@$(RUN) trivy-vuln deps-no-known-vulns -- scripts/harness/trivy.sh vuln
 
 ##@ CI and harness integrity (.github/, protected harness files)
-.PHONY: lint-ci harness-integrity orphans harness-sync-check commits specs
+.PHONY: lint-ci layout-check harness-integrity orphans harness-sync-check commits specs
 lint-ci: ## actionlint (+ shellcheck on run: blocks) on .github/workflows
 	@$(RUN) actionlint ci-workflows-valid -- actionlint -no-color
+
+layout-check: $(HARNESS) ## scripts/harness/layout.env parses, its paths exist and LAYER_GLOB matches a Go package
+	@$(RUN) layout-check harness-layout-valid -- $(HARNESS) layout-check .
 
 harness-integrity: $(HARNESS) ## Added suppressions carry a reason; harness configs are not loosened (vs BASE_REF)
 	@$(RUN) integrity harness-suppression-reason,harness-config-not-loosened -- env BASE_REF="$(BASE_REF)" $(HARNESS) integrity-check .
@@ -348,7 +362,7 @@ harness-sync-check: ## Harness files changed upstream since .harness-version and
 commits: ## Commit subjects (and PR_TITLE) since BASE_REF follow Conventional Commits
 	@$(RUN) commits git-conventional-commits -- env BASE_REF="$(BASE_REF)" scripts/harness/check-commits.sh
 
-specs: ## spec-kit specs/ are well formed; feat changes to apps/ or api/ come with a spec (vs BASE_REF)
+specs: ## spec-kit specs/ are well formed; feat changes to PRODUCT_GLOBS (layout.env) come with a spec (vs BASE_REF)
 	@$(RUN) specs specs-structure,specs-required-for-features -- env BASE_REF="$(BASE_REF)" scripts/harness/check-specs.sh
 
 ##@ Docs
@@ -378,19 +392,19 @@ fixture-claims: $(HARNESS) ## Every rules.md Fixture line names fixtures that ex
 .PHONY: gen gen-check gen-sqlc gen-atlas-sum gen-oapi gen-api-client
 gen: gen-oapi gen-api-client gen-sqlc gen-atlas-sum ## Regenerate all generated code (then commit it)
 
-gen-oapi: # one strict server per OpenAPI tag: every apps/api/internal/**/oapi-codegen.yaml
-	@for cfg in $$(find $(API)/internal -name oapi-codegen.yaml | sort); do \
-	  (cd $$(dirname $$cfg) && oapi-codegen -config oapi-codegen.yaml $(CURDIR)/api/openapi.yaml) || exit 1; \
+gen-oapi: # one strict server per OpenAPI tag: every $(DOMAINS_DIR)/**/oapi-codegen.yaml
+	@for cfg in $$(find $(DOMAINS_DIR) -name oapi-codegen.yaml | sort); do \
+	  (cd $$(dirname $$cfg) && oapi-codegen -config oapi-codegen.yaml $(CURDIR)/$(SPEC)) || exit 1; \
 	done
 
-gen-api-client: # orval: TanStack Query hooks + zod schemas into packages/api-client/src/gen
-	@cd packages/api-client && node_modules/.bin/orval --config orval.config.ts >/dev/null
+gen-api-client: # orval: TanStack Query hooks + zod schemas into $(API_CLIENT_DIR)/src/gen
+	@cd $(API_CLIENT_DIR) && node_modules/.bin/orval --config orval.config.ts >/dev/null
 
 gen-sqlc:
-	@cd $(API) && if grep -q -- '- engine:' sqlc.yaml; then sqlc generate; fi
+	@cd $(API_DIR) && if grep -q -- '- engine:' sqlc.yaml; then sqlc generate; fi
 
 gen-atlas-sum:
-	@cd $(API) && atlas migrate hash --env local
+	@cd $(API_DIR) && atlas migrate hash --env local
 
 gen-check: ## gen + fail if anything changed (generated code must be committed and untouched)
 	@if scripts/harness/gen-check.sh --unchanged; then \

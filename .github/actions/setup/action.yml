@@ -1,5 +1,6 @@
 # Harness file (protected). Pinned toolchain for every workflow: versions come from scripts/tool-versions.env
-# (Go from apps/api/go.mod), tools land in .bin exactly as `make tools` puts them locally.
+# (Go from API_DIR's go.mod), tools land in .bin exactly as `make tools` puts them locally. The repo layout
+# (scripts/harness/layout.env: API_DIR, SPEC, MIGRATIONS_DIR, ...) is loaded into the job's env for later steps.
 name: setup
 description: Go, Node, pinned tools in .bin and JS dependencies, with caches.
 inputs:
@@ -22,14 +23,18 @@ runs:
       shell: bash
       run: grep -E '^[A-Z_]+=' scripts/tool-versions.env >>"$GITHUB_ENV"
 
+    - name: Load scripts/harness/layout.env
+      shell: bash
+      run: scripts/harness/layout.sh --print >>"$GITHUB_ENV"
+
     - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-        go-version-file: apps/api/go.mod
+        go-version-file: ${{ env.API_DIR }}/go.mod
         cache: ${{ inputs.save-caches == 'true' }}
         cache-dependency-path: |
-          apps/api/go.sum
-          apps/api/tools/analyzers/go.sum
-          apps/api/tools/harness/go.sum
+          ${{ env.API_DIR }}/go.sum
+          ${{ env.API_DIR }}/tools/analyzers/go.sum
+          ${{ env.API_DIR }}/tools/harness/go.sum
 
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
@@ -44,7 +49,7 @@ runs:
         path: |
           .bin
           !.bin/playwright
-        key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', 'apps/api/.custom-gcl.yml', 'apps/api/tools/analyzers/**', 'apps/api/tools/harness/**') }}
+        key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', format('{0}/.custom-gcl.yml', env.API_DIR), format('{0}/tools/analyzers/**', env.API_DIR), format('{0}/tools/harness/**', env.API_DIR)) }}
 
     - name: Restore pinned tools (.bin), saving nothing
       id: bin-restore
@@ -54,7 +59,7 @@ runs:
         path: |
           .bin
           !.bin/playwright
-        key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', 'apps/api/.custom-gcl.yml', 'apps/api/tools/analyzers/**', 'apps/api/tools/harness/**') }}
+        key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', format('{0}/.custom-gcl.yml', env.API_DIR), format('{0}/tools/analyzers/**', env.API_DIR), format('{0}/tools/harness/**', env.API_DIR)) }}
 
     - name: Install pinned tools
       shell: bash

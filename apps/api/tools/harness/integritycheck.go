@@ -29,12 +29,12 @@ import (
 )
 
 var (
-	// Hand-written source only: fixture overlays are deliberate violations, generated and vendored code
-	// (.specify/, spec-kit: ADR 0011) is not ours, and this file names the markers it looks for.
+	// Hand-written source only: fixture overlays are deliberate violations and vendored code (.specify/,
+	// spec-kit: ADR 0011) is not ours; suppressionPathspecs also drops generated code (GENERATED_GLOBS) and this
+	// file, which names the markers it looks for.
 	suppressionSources = []string{"*.go", "*.ts", "*.tsx", "*.mts", "*.cts", "*.js", "*.jsx", "*.mjs", "*.cjs",
 		"*.sh", "*.bash", "*.bats", "*.sql", ".github/*.yml", ".github/*.yaml", "scripts/git-hooks/*",
-		":!:scripts/harness/fixtures/*/files/*", ":!:apps/api/tools/harness/integritycheck.go", ":!:.specify/*",
-		":!:*.gen.go", ":!:apps/api/internal/*/store/*", ":!:packages/api-client/src/gen/*"}
+		":!:scripts/harness/fixtures/*/files/*", ":!:.specify/*"}
 	// jscpd honours `jscpd:ignore-start`/`-end` comments; repo-no-clones has no sanctioned exception there.
 	neverRE       = regexp.MustCompile(`(@ts-ignore|@ts-nocheck|jscpd:ignore)`)
 	suppressionRE = regexp.MustCompile(`(//[[:space:]]*(nolint|lint:(file-)?ignore)|eslint-disable|/\*[[:space:]]*eslint[[:space:]]|@ts-expect-error|#[[:space:]]*shellcheck[[:space:]]+disable|atlas:nolint|squawk-ignore)`)
@@ -69,7 +69,11 @@ func integrityCheck(own, root, baseRef string, approved bool, stdout io.Writer) 
 	if err != nil {
 		return false, err
 	}
-	rows, err := changes(root, base, suppressionSources)
+	l, err := loadLayout(own)
+	if err != nil {
+		return false, err
+	}
+	rows, err := changes(root, base, suppressionPathspecs(l))
 	if err != nil {
 		return false, err
 	}
@@ -123,6 +127,15 @@ func integrityCheck(own, root, baseRef string, approved bool, stdout io.Writer) 
 		}
 	}
 	return bad, nil
+}
+
+// suppressionPathspecs is suppressionSources without the layout's generated code and this file.
+func suppressionPathspecs(l layout) []string {
+	specs := append([]string{":!:" + l.apiPath("tools/harness/integritycheck.go")}, suppressionSources...)
+	for _, g := range l.list("GENERATED_GLOBS") {
+		specs = append(specs, ":!:"+g)
+	}
+	return specs
 }
 
 // mergeBase is scripts/harness/merge-base.sh in root: the merge base of HEAD with ref (default: origin/main

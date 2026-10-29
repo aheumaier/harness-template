@@ -12,9 +12,9 @@
 #       (make coverage-fell, drift.yml).
 #
 # coverage.tsv, one row per line, sorted: "<package>\t<covered statements>\t<statements>"
-#   - every Go package of apps/api (`go test -short`: unit tests, as make test-go; files marked
-#     "Code generated ... DO NOT EDIT." are excluded), and their sum as "apps/api/...";
-#   - every JS workspace (apps/*, packages/*) with a `coverage` script, run as `pnpm run coverage
+#   - every Go package of API_DIR (`go test -short`: unit tests, as make test-go; files marked
+#     "Code generated ... DO NOT EDIT." are excluded), and their sum as "<API_DIR>/...";
+#   - every JS workspace (WEB_GLOBS) with a `coverage` script, run as `pnpm run coverage
 #     --coverage.provider=v8 --coverage.reporter=json-summary --coverage.reportsDirectory=<dir>` (the
 #     measurement is fixed here, not in the workspace's config; apps/web/AGENTS.md); "<workspace>\t-\t-"
 #     for a workspace with neither a `test` nor a `coverage` script. One with tests but no `coverage`
@@ -24,6 +24,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=layout.sh
+source "$ROOT/scripts/harness/layout.sh" || exit 2
 usage="usage: coverage.sh collect <dir> | coverage.sh report [--fell] <tsv> [<previous tsv>]"
 
 die() {
@@ -34,7 +36,7 @@ die() {
 # One Go profile block per line: "<import path>/<file>.go:<l>.<c>,<l>.<c> <statements> <count>".
 go_rows() {
   local profile="$1" module="$2" generated="$3"
-  LC_ALL=C awk -v module="$module/" -v generated="$generated" '
+  LC_ALL=C awk -v module="$module/" -v generated="$generated" -v prefix="$API_PREFIX" '
     BEGIN { while ((getline f < generated) > 0) skip[f] = 1 }
     NR == 1 { if ($0 !~ /^mode: (set|count|atomic)$/) bad = 1; next }
     $0 !~ /^[^ ]+\.go:[0-9]+\.[0-9]+,[0-9]+\.[0-9]+ [0-9]+ [0-9]+$/ { bad = 1; next }
@@ -42,7 +44,7 @@ go_rows() {
       block = $1
       file = substr(block, 1, index(block, ".go:") + 2)
       if (index(file, module) != 1) { bad = 1; next }
-      rel = "apps/api/" substr(file, length(module) + 1)
+      rel = prefix substr(file, length(module) + 1)
       if (rel in skip) next
       pkg = rel
       sub(/\/[^\/]*$/, "", pkg)
@@ -57,7 +59,7 @@ go_rows() {
         if (b in hit) { covered[p] += stmts[b]; allc += stmts[b] }
       }
       for (p in total) printf "%s\t%d\t%d\n", p, covered[p], total[p]
-      if (all > 0) printf "apps/api/...\t%d\t%d\n", allc, all
+      if (all > 0) printf "%s...\t%d\t%d\n", (prefix == "" ? "./" : prefix), allc, all
     }
   ' "$profile"
 }
@@ -72,20 +74,20 @@ collect() {
   rm -rf "${out:?}/go.out" "$out/coverage.tsv" "$out/ws"
   log="$out/test.log"
 
-  if ! (cd "$ROOT/apps/api" && go test -short -count=1 -coverprofile="$out/go.out" ./...) >"$log" 2>&1; then
+  if ! (cd "$ROOT/$API_DIR" && go test -short -count=1 -coverprofile="$out/go.out" ./...) >"$log" 2>&1; then
     cat "$log" >&2
-    echo "coverage: go test failed in apps/api (make test-go shows the same failure)" >&2
+    echo "coverage: go test failed in $API_DIR (make test-go shows the same failure)" >&2
     exit 1
   fi
-  module="$(cd "$ROOT/apps/api" && go list -m)" || die "go list -m failed in apps/api: run make setup"
+  module="$(cd "$ROOT/$API_DIR" && go list -m)" || die "go list -m failed in $API_DIR: run make setup"
   generated="$out/generated.txt"
   # git grep exits 1 when nothing matches; anything above that is a git error.
-  git -C "$ROOT" grep -l --untracked -E '^// Code generated .* DO NOT EDIT\.$' -- 'apps/api/*.go' >"$generated" ||
+  git -C "$ROOT" grep -l --untracked -E '^// Code generated .* DO NOT EDIT\.$' -- "${API_PREFIX}*.go" >"$generated" ||
     (($? == 1)) || die "git grep failed listing generated Go files"
   rows="$(go_rows "$out/go.out" "$module" "$generated")" || die "unparseable Go coverage profile $out/go.out"
   [[ -n "$rows" ]] || die "no Go packages in $out/go.out"
 
-  pjs="$(git -C "$ROOT" ls-files -co --exclude-standard -- 'apps/*/package.json' 'packages/*/package.json')" ||
+  pjs="$(git -C "$ROOT" ls-files -co --exclude-standard -- "${WEB_GLOBS[@]/%//package.json}")" ||
     die "git ls-files failed listing JS workspaces"
   for pj in $pjs; do
     ws="$(dirname "$pj")"

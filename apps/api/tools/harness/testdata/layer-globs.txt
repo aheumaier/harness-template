@@ -1,0 +1,16 @@
+# LAYER_GLOB vectors shared by layerSegments (tools/harness/layout_test.go) and domainiso's parsePrefix
+# (tools/analyzers/domainiso/layout_test.go), so the two parsers accept and reject the same values (ADR 0030).
+# <LAYER_GLOB> <the analyzer's layer prefix, or `reject`>
+internal/*/* /internal/
+pkg/domains/*/* /pkg/domains/
+*/* reject
+internal/* reject
+internal/*/*/x reject
+internal/*/*/ reject
+int*/*/* reject
+in?ernal/*/* reject
+./*/* reject
+../internal/*/* reject
+internal/./*/* reject
+/internal/*/* reject
+internal//*/* reject
