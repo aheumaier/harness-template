@@ -162,7 +162,10 @@ PR; **–** needs none.
 - [x] P2.2 — no-op — web: jsdom + Testing Library, or keep `renderToString` → kept: the one web test
   (`App.test.tsx`) renders to a string, and no test needs interaction or effects yet (P2.3 drives the browser
   through Playwright, P2.1 scaffolds Go tests); the guide from Q5 stands
-- [ ] P2.3 — H — Playwright: `make e2e` against `make dev`, one journey (NFR-B2); skill `drive-app`
+- [x] P2.3 — afdfeee — done — no test drove the running app → `make e2e` runs one Playwright journey
+  (pinned `@playwright/test`, headless Chromium in `.bin/playwright`) against this worktree's `make dev`, in
+  `check-all` and CI (NFR-B2); skill `drive-app`; rule `web-e2e-journeys`; budget row `e2e`; TD-42 added,
+  TD-36 closed
 - [x] P2.4 — 6a30e4d — partial — a response change passed unseen unless a test asserted it → handler tests
   pin responses with `approvaltest.Verify` (`testdata/approved/<operationId>.<status>[.<case>].json`,
   `make approve`); `api-responses-approved`, `api-approved-match-contract` (`.bin/harness approved-check`)
@@ -184,14 +187,19 @@ PR; **–** needs none.
   `pull_request` and posts one advisory comment (never a required check); sha256-pinned Claude Code via
   `install-tools.sh claude`, read-only tools, pinned model, turn and budget caps; inert with a notice until
   the `ANTHROPIC_API_KEY` secret exists (TD-38); ADR 0016 and 0019 amended; TD-39 added
-- [x] P3.3 — H — scheduled security, data-handling and modularity reviews → drift issue
+- [x] P3.3 — f5b5d27 — done — no scheduled review of the whole repository → drift.yml runs three
+  read-only review agents (skills `review-security`, `review-data-handling`, `review-modularity`) and appends
+  their findings to the drift issue, advisory; `scripts/harness/ci-agent.sh` shared with `pr-review.sh`;
+  ADR 0016 and 0019 amended; TD-40 added, TD-38 extended
 - [ ] P3.4 — H — enable `agent-gc`: doc-gardening PRs for drift the computational checks found
 - [ ] P3.5 — H — QUALITY.md grades per domain and layer, `Updated:` date, staleness check in drift
 - [ ] P3.6 — H — `repo-no-orphan-scripts` (unreferenced scripts and make targets); `deadcode-go` into
   `check-all`
 - [ ] P3.7 — H — clone detection: golangci `dupl` (Go) and `jscpd` (TS) with thresholds, in `check-all`
 - [ ] P3.8 — H — `reuse-reviewer` agent: does the diff re-implement something that exists?
-- [x] P4.1 — – — ADR amending core belief 3: size and complexity limits as sensors, not style
+- [x] P4.1 — 20c1021 — done — core belief 3 called size and complexity style →
+  [ADR 0024](../../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md) proposed: limits as maintainability
+  sensors; core belief 3 amended
 - [ ] P4.2 — H — Go: `funlen`, `cyclop`/`gocognit`, file length; TS: `max-lines`, `complexity`, `max-params`
 - [ ] P4.3 — H — template version marker (`.harness-version`) + `make harness-sync-check` against upstream
 - [ ] P4.4 — H — per-rule fire counts in `timings.jsonl`; drift issue lists rules that never fired in 90 days
@@ -919,3 +927,13 @@ give it a sensor. Each touches protected paths.
   `.bin/claude` was never executed: human TODO after the secret is set, one workflow_dispatch drift run on the
   default branch (TD-38, ci.md "Turning it on"). Sensor candidates: `agent-skip-list-ids-exist`,
   `ci-no-marketplace-agent-runtime`, `ci-agent-job-least-privilege`.
+- 2026-10-29: P2.3 integrated (afdfeee, rebased from the lane onto 49dba05; one conflict, the tracker's
+  TD-36/TD-37/TD-38 rows: HEAD's TD-38 kept, the lane's TD-37 with e2e taken, TD-36 dropped). `make e2e`
+  drives one journey with pinned Playwright (headless Chromium from `.bin/playwright`) against this worktree's
+  `make dev`, in check-all and CI; skill `drive-app`; rule `web-e2e-journeys` (Fixture: none); budget row
+  `e2e 30000` (NFR-H7, no value raised). TD-36 closed as obsolete: no second boot copy was written. TD-42
+  (Playwright provenance per bump). Reviews: architecture 7 and code 15 findings, 13 fixed in one retry;
+  rejected: root AGENTS.md/CLAUDE.md rows (protected, Noticed) and a playwright-config fixture (the config is
+  a protected path, not a rule). Noticed: AGENTS.md/CLAUDE.md rows for `make e2e` and `drive-app`; bats suite
+  ~80 s. Lane `check` green, `harness-selftest` 47/47, `lint-ci` green, `check-all` red only on
+  harness-integrity and specs, `test-integration`, `test-obs` and `e2e` green. CI not run (actionlint only).
