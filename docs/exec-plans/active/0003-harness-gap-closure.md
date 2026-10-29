@@ -224,7 +224,8 @@ PR; **–** needs none.
   (with `API_CLIENT_DIR`) parsed by `layout.sh` for the scripts, the Makefile and CI and by `.bin/harness`;
   `make layout-check` (`harness-layout-valid`) in `make check`; `.claude/hooks/fast-check.sh` keeps the template
   layout until a human `.claude` PR (TD-66), as does `make new-domain` (TD-67) (ADR 0030)
-- [ ] P4.7 — H — stack profiles: `HARNESS_STACK=go,db,web` selects sensors, tool installs and fixtures
+- [x] P4.7 — bfec770 — done — stack profiles: `STACK` in layout.env (or `HARNESS_STACK`) selects sensor
+  groups, tool installs and fixtures; spectral, squawk and bats move to .bin; ADR 0033, TD-83..86
 - [x] P4.8 — 70e8066 — done — `make rename` demanded a dotted module → it takes a bare module, a one-element
   host or `MODULE=skip` (keeps the template's module root), strips the module as a whole word when looking
   for leftovers, and needs a usable layout.env; TD-23 closed
@@ -709,6 +710,18 @@ found only after integration.
   - **Proposed, not made** (protected): depguard rule `go-otel-sdk-only-in-telemetry` (otel SDK, exporters
     and bridges only in `internal/platform/telemetry`, otelpgx only in `internal/platform/db`, tests exempt),
     with a fixture and a rules.md entry.
+- **A19 — stack profile choices (P4.7).**
+  - `STACK` lives in `scripts/harness/layout.env`, `HARNESS_STACK` overrides it for one run; a missing
+    `STACK` means `go:db:web` so readers of older layout.env copies keep working, an invalid value fails
+    closed. Leaving out a group whose git-known files exist is red (`harness-layout-valid`).
+  - A tool a stack without web still needs goes to `.bin` (spectral, squawk, bats); web-only tools stay
+    in the lockfile (ADR 0023 and 0027 narrowed accordingly). spectral bundles a Node runtime no scanner
+    reads (TD-86). Linux release digests match GitHub's but were installed only on macOS; CI's first
+    `make setup` is the proof.
+  - The acceptance copy also needed links pruned that the plan did not name: AGENTS.md's links to
+    `apps/api/db/`, `apps/web/` and orval, and `docs/references/orval-llms.txt`. Only `setup check
+    harness-selftest` were run on it, not `check-all`.
+  - NFR-B1/B2 (Postgres and browser budgets) do not apply without db or web (nfr.md notes).
 
 ## Log
 
@@ -1235,3 +1248,17 @@ found only after integration.
   wording "`.github/` workflows and actions named in `scripts/harness/protected-paths.txt`". Noticed: a
   product workflow can use `pull_request_target` or broad `permissions:` gated only by owner review; input
   for P4.12's evasion review.
+- 2026-10-29: P4.7 done (bfec770). `STACK` (default `go:db:web`) selects what `check`, `check-all`, `gen`,
+  `tools`, `deps`, `setup` and `harness-selftest` run; spectral, squawk and bats are pinned releases in
+  `.bin`. Acceptance: in a copy without `apps/web`, `packages/` and `apps/api/db`, `HARNESS_STACK=go make
+  setup check harness-selftest` green (selftest 50 passed, 20 skipped). Review: code, architecture and
+  reuse together 19 items, all fixed in one retry, none rejected; among them an absent STACK failing
+  closed (now a default), a narrowed stack silently hiding a present group (now red, fixture
+  `harness-stack-hides-web`) and ADR 0033 reconciling ADRs 0016, 0023 and 0027. The retry found that
+  `make -n` is no dry run on this Makefile: recipe lines naming `$(MAKE)` still run, so the first
+  make-stack.bats ran Playwright and obs-e2e inside every `make check`; the test now sets
+  `MAKE='echo make'`. Rebase onto P4.4 and P4.9: ARCHITECTURE.md, the ADR index and the tracker
+  conflicted, both sides kept. Lane `check` green, `harness-selftest` 70/70, `check-all` red only on
+  harness-integrity, `test-integration`, `test-obs` and `e2e` green. Hand-off: `make -n check-all`,
+  `make -n e2e` and `make -n test-obs` still run obs-e2e and Playwright (the Makefile is protected);
+  the PR needs the `harness-change-approved` label.
