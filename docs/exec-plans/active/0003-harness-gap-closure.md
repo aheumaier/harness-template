@@ -198,8 +198,9 @@ PR; **–** needs none.
 - [x] P3.5 — 5be0ad6 — done — QUALITY rows unchecked → `make docs-quality-shape` (deterministic, in `check-all`
   and the generator-probe) and age-only `make docs-quality` in drift; rows per backend domain and layer with
   `Updated` (ADR 0028; frontend not graded TD-56, domain list twice TD-55)
-- [ ] P3.6 — H — `repo-no-orphan-scripts` (unreferenced scripts and make targets); `deadcode-go` into
-  `check-all`
+- [x] P3.6 — 3edf728 — done — no orphan detection → `repo-no-orphan-scripts` (`harness orphans`, `make
+  orphans` in `check-all`) for scripts and make targets; `deadcode-go` also scans tools/harness and runs in
+  `check-all` (ADR 0031; tools/analyzers left out TD-70)
 - [x] P3.7 — 8e4f77b — done — no clone detection → `repo-no-clones`: golangci `dupl` threshold 26 per package
   in `make check` (lint-go), `jscpd` 5.4.1 `minTokens` 16 over `apps/` and `packages/` in `check-all`; thresholds
   measured after cheap fixes with a scaffolded domain, no baseline (ADR 0027; per-package blind spot TD-52)
@@ -1078,3 +1079,20 @@ give it a sensor. Each touches protected paths.
   `harness-tests` and bats over their NFR-H5 budgets (the references tests take 0.7 s). Lane `check` green,
   `harness-selftest` 64/64, `lint-ci`, `references-pinned` and `docs-quality-shape` green, `check-all` red
   only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
+- 2026-10-29: P3.6 done (3edf728). `harness orphans <root>` flags a file under `scripts/` that no Makefile
+  target, workflow, hook, skill, agent, guide or named script names, and a make target neither in `make help`
+  (`name: ## …`) nor called. Paths match whole only (a `/` before one only after `.`, `..` or a variable);
+  only the runner directories `scripts/test` and `scripts/git-hooks`, named in code, cover their files;
+  executable referencers lose their comments, guides count whole. Runs in `check-all`, not `check`: mid-change
+  a new script is an orphan until its caller lands (ADR 0031). Deviations from the plan: the help marker is
+  `##` (not `## `), so the existing `check-all: check ##Everything` was fixed to `## Everything`; `deadcode-go`
+  also scans tools/harness, and tools/analyzers stays out because deadcode cannot see golangci-lint's
+  module-plugin entry points (TD-70). Review: code CHANGES (2 medium: a path matched under any directory, e.g.
+  `apps/scripts/x.sh` or a URL, and any mention of a `scripts/` directory kept all its files alive; 10 low:
+  help-line and target-specific-variable parsing, comments as callers, rules.md exclusions, ADR rationale,
+  helper split, tests); all fixed in one retry. Rebase onto 6853cdd: harness `main.go` usage (orphans next to
+  references-pinned), ADR index and tracker. Noticed: an earlier P3.6 `check-all` run listed P4.6 files under
+  harness-integrity; my recheck did not reproduce it (watch for cross-worktree reads in integritycheck).
+  bats and `harness-tests` over their NFR-H5 budgets (TestOrphans 0.2 s). Lane `check` green,
+  `harness-selftest` 67/67, fixtures, `orphans`, `deadcode-go`, `fixture-claims` and `references-pinned`
+  green, `check-all` red only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
