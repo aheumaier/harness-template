@@ -58,7 +58,7 @@ setup: ## Tools, deps, this worktree's Postgres (own ports) + migrations, .env.l
 new-domain: ## Scaffold a domain through every layer: make new-domain NAME=billing
 	@scripts/new-domain.sh $(NAME)
 
-rename: $(HARNESS) ## Rename the template once (dry run): make rename NAME=acme-shop MODULE=github.com/acme/shop OWNER=@acme [WRITE=1]
+rename: $(HARNESS) ## Rename the template once (dry run): make rename NAME=acme-shop MODULE=github.com/acme/shop|shop|skip OWNER=@acme [WRITE=1]
 	@$(HARNESS) rename $(if $(filter 1,$(WRITE)),-write) . $(NAME) $(MODULE) $(OWNER)
 
 # Each process's output (the API's JSON log lines, Vite's text) also goes to .tmp/dev/<name>.log, emptied on start,

@@ -80,7 +80,9 @@ Claude Code hooks fail closed.
      product, and by hand the template's own description in `AGENTS.md` (line 3) and
      [ARCHITECTURE.md](ARCHITECTURE.md); both are protected, so a human does it.
    - **MODULE is the repository path.** It also becomes the OpenAPI `url: https://<MODULE>` and every
-     `https://github.com/aheumaier/harness-template/...` link, so use `host.tld/owner/repo`.
+     `https://github.com/aheumaier/harness-template/...` link, so use `host.tld/owner/repo`. A bare module
+     (no dot in its first element, such as `shop`) is accepted too; the rename then keeps those URLs and lists
+     them as leftovers, since `https://shop` is no URL.
    - **Template sync:** it also writes `HARNESS_UPSTREAM=https://github.com/aheumaier/harness-template` to
      `scripts/tool-versions.env`, the one line it neither renames nor reports: from here on the repo is a
      product that [template sync](#keeping-up-with-the-template) compares with the template.
@@ -145,9 +147,9 @@ There is no adoption script; once adopted, [template sync](#keeping-up-with-the-
 template changed since. Adopt by hand, in one reviewed harness PR:
 
 1. **Branch** in the existing repo, for example `harness/adopt`. Note the template commit you copy from, in the
-   PR description, in an ADR and in `.harness-version`. Set `HARNESS_UPSTREAM` in `scripts/tool-versions.env`
-   to the template's git URL by hand: step 4 may not run `make rename`, and an empty value means "this
-   repository is the template", so template sync would stay silent.
+   PR description, in an ADR and in `.harness-version`. `make rename` (step 4) sets `HARNESS_UPSTREAM` in
+   `scripts/tool-versions.env` to the template's git URL; until then the value is empty, which means "this
+   repository is the template", so template sync stays silent.
 2. **Build the hooks' parser first.** The template's Claude Code hooks fail closed while `.bin/harness` is
    missing. Every Bash call is then blocked, and without `HARNESS_EDIT=1` every edit too, except `make setup`
    and `make .bin/harness` ([hook-bootstrap.sh](scripts/harness/hook-bootstrap.sh)). The block message says to
@@ -222,23 +224,29 @@ template changed since. Adopt by hand, in one reviewed harness PR:
 4. **Rename the copied identity (human).** The copied files still carry `harness-template`,
    `github.com/aheumaier/harness-template` and `@aheumaier`. Rename them to your product's:
    ```sh
-   make rename NAME=<your-product> MODULE=<your-module-root> OWNER=<@you-or-@org/team>
-   make rename NAME=<your-product> MODULE=<your-module-root> OWNER=<@you-or-@org/team> WRITE=1
+   make rename NAME=<your-product> MODULE=<your-module-root|skip> OWNER=<@you-or-@org/team>
+   make rename NAME=<your-product> MODULE=<your-module-root|skip> OWNER=<@you-or-@org/team> WRITE=1
    ```
-   - `MODULE` must be a Go module path of the form `host.tld/path`
-     (`renameModule` in [rename.go](apps/api/tools/harness/rename.go)). A bare module such as `emergencies` is
-     refused.
-     Either change your Go module path first, or skip `make rename` and replace the three tokens by hand, in
-     every tracked file except `docs/adr/`, `docs/exec-plans/`, `README.md`, `rename.go` and `rename_test.go`:
-     `github.com/aheumaier/harness-template`, then `harness-template`, then `@aheumaier`. Replace the module
-     path before the name, since the name is part of it. A blanket replace that reaches `rename.go` rewrites
-     the template constants and breaks its test. Then run `git grep -n -e harness-template -e aheumaier`; only
-     the five excluded paths may still hold them.
-   - `MODULE` replaces the template's module root. Copied code then imports `<MODULE>/apps/api/...`. With a
-     `host.tld/path` module, pick the value that makes this match your Go module. If your layout has no
+   - `MODULE` is a Go module path: `host.tld[/path]`, or a bare module such as `emergencies` or
+     `example/hello` (no dot in the first element; `renameModule` in
+     [rename.go](apps/api/tools/harness/rename.go)). With a bare module only text starting with
+     `https://github.com/aheumaier/harness-template` stays, and is listed as a leftover, since
+     `https://emergencies` is no URL. Every other mention of the template's module path becomes the bare
+     module and is not reported, a URL with another scheme (`http://`, `pkg.go.dev/`) or a
+     `go install github.com/aheumaier/harness-template/...@latest` included: search the dry-run's files for
+     those by hand.
+   - `MODULE=skip` keeps every Go module path and renames only the name and the owner. Use it when your
+     module path should not take the template's place in the copied Go code; it shadows a bare module
+     literally named `skip`. Text holding the template's module path, its `https://` URLs included, is then
+     kept and not reported as a leftover; the owner's other forms (`git@github.com:aheumaier/...`) are.
+   - Unless `MODULE=skip`, `MODULE` replaces the template's module root. Copied code then imports
+     `<MODULE>/apps/api/...`. Pick the value that makes this match your Go module. If your layout has no
      `apps/api`, fix the remaining import paths in step 6, when you port the fixtures.
-   - The copied harness tool's `go.mod` becomes `<MODULE>/apps/api/tools/harness`, a nested module of its own.
-     That path is fine to keep even when the repo has no `apps/api`. The same holds for `tools/analyzers`.
+   - The copied harness tool's `go.mod` (`<API_DIR>/tools/harness/go.mod`, `API_DIR` read from `layout.env`,
+     which step 2 set) becomes `<MODULE>/<API_DIR>/tools/harness` (`<MODULE>/tools/harness` for `API_DIR=.`), a
+     nested module of its own; with `MODULE=skip` it keeps the template's path. The rename prints that path.
+     `tools/analyzers` keeps
+     `<MODULE>/apps/api/tools/analyzers`, which is fine even when the repo has no `apps/api`.
    - The rename scans your existing tracked files too. Read the dry-run list, and its leftovers, before you
      add `WRITE=1`. `git add` the copied files first, since untracked files are not renamed.
    - It skips `docs/adr/`, `docs/exec-plans/` and `README.md`, so copied ADRs keep their history and your own
@@ -287,7 +295,6 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      | [install-tools.sh](scripts/install-tools.sh) | installs pnpm and exits 1 unless the root `package.json` pins `packageManager` | `make setup` aborts before the other tools land; see step 6 on why a root `package.json` stays |
      | [setup-worktree.sh](scripts/setup-worktree.sh) | `make tools deps`, compose `db`, `atlas migrate apply` in `apps/api` | `make setup` fails in `pnpm install` without a lockfile; `SKIP_DB=1` skips only the db part |
      | `make new-domain`: [new-domain.sh](scripts/new-domain.sh) and `scripts/templates/new-domain/*` | `apps/api/internal/<name>`, `apps/api/db/queries`, `apps/api/db/migrations`, `apps/api/cmd/api/routes.go`, `apps/api/sqlc.yaml` | it writes the template layout, and CI's `make new-domain` probe job fails; rewrite it for your layout or drop the probe and the skill (tracker TD-67) |
-     | [rename.go](apps/api/tools/harness/rename.go) | `renameSkipped` names `apps/api/tools/harness/rename(_test)?.go` | a later `make rename` rewrites its own constants and breaks its test |
      | `scripts/test/*.bats`, for example [affected.bats](scripts/test/affected.bats) | template paths in the test cases | they keep testing the template layout; update each with the script it tests |
 6. **Keep, adapt or drop each rule in [rules.md](docs/harness/rules.md).**
    - A dropped rule takes out more than its id. Remove all of this, plus one ADR line saying why:
@@ -350,8 +357,8 @@ Template sync reports drift and never applies anything ([ADR 0026](docs/adr/0026
 - `.harness-version` holds the template commit this repo was copied from, or last synced to. Use the commit
   you actually copied: a newer one hides the changes in between. `# declined <path>: <why>` lines in it skip
   harness files you chose not to take.
-- `HARNESS_UPSTREAM` in `scripts/tool-versions.env` is the template's git URL, written by `make rename` (by
-  hand in a brownfield adoption). Empty means this repository is the template: the check prints a notice and
+- `HARNESS_UPSTREAM` in `scripts/tool-versions.env` is the template's git URL, written by `make rename`.
+  Empty means this repository is the template: the check prints a notice and
   exits 0. `make harness-sync-check HARNESS_UPSTREAM=<url>` overrides it for one run.
 - `make harness-sync-check` fetches the upstream's default branch anonymously into a temp repo and lists each
   protected path (except `.harness-version`) that changed there since the marker and differs here, marking
