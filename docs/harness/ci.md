@@ -20,7 +20,7 @@ same target is red on your machine (with `BASE_REF=origin/main` for diff-based s
 | `harness-integrity.yml` | PR via `pull_request_target` (incl. label and title changes) | `harness-integrity` | the **base branch's** `make harness-integrity` against the PR head (`HARNESS_ROOT`) | yes |
 | | | `pr-conventions` | the **base branch's** `make commits specs` against the PR head and title (Conventional Commits, PR title ≤ 90 characters, spec-kit specs) | yes |
 | `migration-gate.yml` | every PR; its gates run only when `MIGRATIONS_DIR` (`scripts/harness/layout.env`) changed | `migrations` | append-only, Atlas lint, squawk | no (same sensors in `check-all`) |
-| `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, Trivy (`vuln-deps`), schema doc, doc links, harness files behind the template (`make harness-sync-check`; anonymous fetch, so a private template exits 2 here and is checked locally), `QUALITY.md` rows not graded in the last 30 days (`make docs-quality`, the only clock-dependent half; the deterministic `make docs-quality-shape` is in `check-all`, [ADR 0028](../adr/0028-quality-grades-per-domain-and-layer.md)), coverage that fell since the last run ([coverage](#coverage)), the weekly mutation score table, or a mutation run that could not measure ([mutation testing](#mutation-testing); survivors go to the job summary only), the findings of the scheduled reviews → one open `drift` issue | no |
+| `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, Trivy (`vuln-deps`), schema doc, doc links, harness files behind the template (`make harness-sync-check`; anonymous fetch, so a private template exits 2 here and is checked locally), `QUALITY.md` rows not graded in the last 30 days (`make docs-quality`, the only clock-dependent half; the deterministic `make docs-quality-shape` is in `check-all`, [ADR 0028](../adr/0028-quality-grades-per-domain-and-layer.md)), coverage that fell since the last run ([coverage](#coverage)), the weekly mutation score table, or a mutation run that could not measure ([mutation testing](#mutation-testing); survivors go to the job summary only), rules that never fired in 90 days ([rule fires](#rule-fires); a human decides to keep or retire each), the findings of the scheduled reviews → one open `drift` issue | no |
 | | | `review-gate`, `reviews (<review>)` | the [scheduled reviews](#scheduled-reviews): security, data handling, modularity, one read-only agent each, on the default branch only; skipped with a notice without the `ANTHROPIC_API_KEY` secret | no |
 | | | `gc-gate`, `agent-gc`, `agent-gc-pr` | [agent GC](#agent-gc): one agent fixes broken doc links in unprotected docs → one small PR labelled `agent-gc` for human review; off until the `AGENT_GC_ENABLED` variable is `true` | no |
 | `harness-nfr.yml` | nightly, manual | `harness-nfr` | p95 per sensor over 7 days of `harness-timings-check-all` artifacts vs `budgets.txt` (`scripts/harness/nfr-report.sh`, alerts only) and `make harness-determinism` (`make check` twice; fails on any difference) → one open `harness-nfr` issue | no |
@@ -81,6 +81,42 @@ not a sensor: no rule id, in neither `make check` (minutes, and its window reads
   --scores`, no survivors) when the run succeeded, the output of a failing `make mutation`, or one line
   pointing at the step log for a step that hit the cap.
 - A threshold or ratchet needs its own ADR, justified by a finding.
+
+## Rule fires
+
+A rule that has not found anything for months may guard a rare mistake, guard one that agents stopped making
+because the rule exists, or no longer earn its place. The weekly drift run lists those rules; a human decides
+which case it is ([ADR 0032](../adr/0032-rules-that-never-fire-are-a-drift-report.md)). Nothing retires a rule
+automatically.
+
+- `scripts/harness/run.sh` adds each rule's finding count to its row in `.cache/harness/timings.jsonl`
+  (`"findings":{"<rule-id>":<n>,...}`): 0 on success; on failure, for each rule whose remediation prints, the
+  output lines naming it, at least 1; 0 for the others. Only "more than 0" is used.
+- `drift.yml`'s baseline step (the only one with a token) fetches the `rule-fires` ledger of the newest
+  earlier scheduled drift run and ci.yml's `harness-timings-check-all` artifacts of their retention window
+  (`scripts/harness/ci-timings.sh`, which reads the retention from ci.yml and also serves `harness-nfr.yml`).
+  The Sweep runs `scripts/harness/rule-fires.sh`, which merges each artifact once (the ledger keeps the ids
+  it merged until they expire, so one uploaded after a merge is merged the next week) and uploads the ledger
+  as the `rule-fires` artifact (90 days) for the next run.
+- The `drift` issue lists every rule of rules.md that was tracked for the whole 90 days, ran in them and
+  never fired in them, with when it last fired and its runs without a finding since. Rules with no run in the
+  window are named as not measured, never as candidates: hook-only rules, the sensors with their own
+  workflow ([TD-79, TD-80](../exec-plans/tech-debt-tracker.md)) and conventions without a sensor.
+- Nothing is listed in the first 90 days of tracking, nor for 90 days after the ledger is lost (no scheduled
+  run for longer than its retention); the issue says when tracking starts or when a gap longer than the
+  timings retention lost rows. A rule added to rules.md is tracked from that day; one removed drops out of the
+  ledger.
+- A bad week never resets the history: tracking starts fresh only when the run list worked and no earlier
+  scheduled run has a `rule-fires` artifact. A gh error listing or downloading the ledger or the timings, or
+  a failing `rule-fires.sh`, merges nothing and uploads no ledger, so the last one stays the newest; the
+  issue says so.
+- Rows come from PR runs, so `rule-fires.sh` trusts none: only `timing.sh`'s exact shape, known rule ids
+  and integer counts, no row starting after the merge, no symlink. That does not make a fork PR's row
+  trustworthy: a well-formed forged row can hide a rule ([ADR 0032](../adr/0032-rules-that-never-fire-are-a-drift-report.md)).
+  The step log says how many rows were merged from how many artifacts; the issue says when new artifacts
+  gave none.
+- A report, not a sensor: no rule id, in neither `make check` nor `make check-all` (it reads the clock and
+  the network). Retiring a rule is a harness PR removing its rules.md entry, sensor and fixture.
 
 ## PR review
 

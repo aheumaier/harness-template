@@ -12,6 +12,12 @@
 # Every run is timed by scripts/harness/timing.sh: one row in .cache/harness/timings.jsonl and, over the
 # sensor's budget in scripts/harness/budgets.txt, one warning line (rules.md#harness-latency-budget).
 # Timing never changes the exit status: if it cannot be measured or written, it is skipped.
+#
+# The row also holds each given rule's finding count ("findings"), for the drift report of rules that never
+# fire (scripts/harness/rule-fires.sh, ADR 0032): 0 on success; on failure, for a rule whose remediation
+# prints, its output lines (those naming it or holding one of its mapped findings), at least 1, so a rule
+# whose tool names no rule (a failing test, a gofmt diff) still counts as fired; 0 for the others. The number
+# is lines naming the rule, not findings: only "more than 0" (fired) is used.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -32,14 +38,23 @@ if [[ "${1:-}" == "--dir" ]]; then
   shift 2
 fi
 [[ "${1:-}" == "--" ]] && shift
+IFS=',' read -ra ids <<<"$rules"
+counts=() # finding count per rule id, by index; unset = 0
+
+findings_json() { # -> {"<id>":<count>,...}
+  local i json=""
+  for i in "${!ids[@]}"; do json+="${json:+,}\"${ids[i]}\":${counts[i]:-0}"; done
+  echo "{$json}"
+}
 
 log="$(mktemp -t "harness-${sensor}.XXXXXX")"
 start="$(harness_now_ms)"
 (cd "$dir" && "$@") >"$log" 2>&1
 status=$?
-harness_record sensor "$sensor" "$start" "$status"
+end="$(harness_now_ms)"
 
 if [[ $status -eq 0 ]]; then
+  harness_record sensor "$sensor" "$start" "$status" "$(findings_json)" "$end"
   rm -f "$log"
   exit 0
 fi
@@ -73,12 +88,12 @@ finding_pattern() { # rule-id -> ERE matching a tool finding of that rule, or no
 }
 catch_all() { [[ "$1" == web-lint ]]; } # owns the mapped findings that no other given rule names or maps
 
-named() { # rule-id -> true if the output names the rule or holds one of its mapped findings
+findings_of() { # rule-id -> the output lines that name the rule or hold one of its mapped findings
   local id="$1" pattern found other
-  grep -q -- "$id" "$log" && return 0
+  grep -- "$id" "$log"
   pattern="$(finding_pattern "$id")"
-  [[ -n "$pattern" ]] || return 1
-  found="$(grep -E -- "$pattern" "$log")" || return 1
+  [[ -n "$pattern" ]] || return 0
+  found="$(grep -v -- "$id" "$log" | grep -E -- "$pattern")" || return 0
   if catch_all "$id"; then
     for other in "${ids[@]}"; do
       [[ "$other" == "$id" ]] && continue
@@ -87,20 +102,31 @@ named() { # rule-id -> true if the output names the rule or holds one of its map
       if [[ -n "$pattern" ]]; then found="$(grep -Ev -- "$pattern" <<<"$found")"; fi
     done
   fi
-  [[ -n "$found" ]]
+  [[ -z "$found" ]] || printf '%s\n' "$found"
 }
 
 general() { [[ -z "$(finding_pattern "$1")" ]] || catch_all "$1"; } # not a rule for one kind of finding
 
 # Show the rules named in the output; if the tool names none of them, show the general ones (so a split recipe
-# prints only when its finding is there), or every rule when none is general (e.g. go-format alone).
-shown() { # rule-id -> true if its remediation prints
-  named "$1" && return 0
-  ((any)) && return 1
-  ((! general_given)) || general "$1"
-}
+# prints only when its finding is there), or every rule when none is general (e.g. go-format alone). A shown
+# rule fired: its count is its findings, at least 1.
+matched=() # output lines per rule id, by index
+any=0 general_given=0
+for i in "${!ids[@]}"; do
+  matched[i]="$(findings_of "${ids[i]}" | wc -l | tr -d ' ')"
+  ((matched[i] > 0)) && any=1
+  general "${ids[i]}" && general_given=1
+done
+for i in "${!ids[@]}"; do
+  counts[i]=0
+  if ((matched[i] > 0)); then
+    counts[i]="${matched[i]}"
+  elif ((! any)) && { ((! general_given)) || general "${ids[i]}"; }; then
+    counts[i]=1
+  fi
+done
+harness_record sensor "$sensor" "$start" "$status" "$(findings_json)" "$end"
 
-IFS=',' read -ra ids <<<"$rules"
 {
   rel="${dir#"$ROOT"}"
   rel="${rel#/}"
@@ -111,16 +137,11 @@ IFS=',' read -ra ids <<<"$rules"
   head -n "$MAX_LINES" "$log"
   if ((lines > MAX_LINES)); then echo "… $((lines - MAX_LINES)) more lines in $log"; fi
   echo "────────────────────────────────────────────────────────────"
-  any=0 general_given=0
-  for id in "${ids[@]}"; do
-    named "$id" && any=1
-    general "$id" && general_given=1
-  done
-  for id in "${ids[@]}"; do
-    if shown "$id"; then
-      echo "rule:        $id"
-      echo "remediation: $(remediation "$id")"
-      echo "docs:        docs/harness/rules.md#$id"
+  for i in "${!ids[@]}"; do
+    if ((counts[i] > 0)); then
+      echo "rule:        ${ids[i]}"
+      echo "remediation: $(remediation "${ids[i]}")"
+      echo "docs:        docs/harness/rules.md#${ids[i]}"
     fi
   done
 } >&2

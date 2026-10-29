@@ -8,7 +8,10 @@ Status: **seed** = created with the template; **team-convention** = a convention
 adopted as a rule by a recorded decision (ADR) instead of an incident; **earned** = promoted from an inferential
 sensor's finding class accepted twice ([ADR 0019](../adr/0019-inferential-sensors-are-advisory.md)), written
 `Status: earned (<finding 1>, <finding 2>)` with both findings linked. New rules must be earned (link the
-incident/PR that motivated them) and need a fixture in `scripts/harness/fixtures/` before they merge.
+incident/PR that motivated them) and need a fixture in `scripts/harness/fixtures/` before they merge. They
+also leave: the weekly drift issue lists rules that never fired in 90 days ([ci.md](ci.md#rule-fires)), and a
+human decides to keep each or retire it in a harness PR (entry, sensor, fixture;
+[ADR 0032](../adr/0032-rules-that-never-fire-are-a-drift-report.md)).
 
 Format per rule: rule · why · sensor · remediation · fixture. `make harness-selftest` applies every fixture to
 a temp copy of the repo and asserts its sensor fails with the expected message and this remediation

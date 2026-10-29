@@ -58,6 +58,18 @@ recipe_of() {
     cat "$SANDBOX/out" >&2
     return 1
   fi
+  # The timing row counts the finding for <rule-id> alone (scripts/harness/rule-fires.sh reads it, ADR 0032).
+  local id ids row want
+  row="$(tail -n 1 "$SANDBOX/.cache/harness/timings.jsonl")"
+  IFS=',' read -ra ids <<<"$1"
+  for id in "${ids[@]}"; do
+    want=0
+    [[ $id != "$3" ]] || want=1
+    [[ $row == *"\"$id\":$want"[,\}]* ]] || {
+      printf 'expected "%s":%s in the timing row for: %s\nrow: %s\n' "$id" "$want" "$2" "$row" >&2
+      return 1
+    }
+  done
 }
 
 @test "maps each golangci finding that cannot carry its rule id to that rule alone (ADR 0024)" {
@@ -112,6 +124,25 @@ recipe_of() {
   has '"exit":0,"scope":"changed"'
   has '{"sensor":"broken","start_ms":'
   has '"exit":2,'
+}
+
+@test "records each rule's finding count: its lines, at least 1 when its remediation prints, else 0 (ADR 0032)" {
+  T="$SANDBOX/.cache/harness/timings.jsonl"
+  run -0 "$RUN" quick rule-a,rule-b -- true
+  run tail -n 1 "$T"
+  has '","findings":{"rule-a":0,"rule-b":0}}'
+  run -1 "$RUN" named rule-a,rule-b -- bash -c 'printf "x:1: [rule-b]\nx:2: [rule-b]\nnoise\n"; exit 1'
+  run tail -n 1 "$T"
+  has '"findings":{"rule-a":0,"rule-b":2}}'
+  # A failing test names no rule: each rule whose remediation prints fired once, so it is never a retirement
+  # candidate for want of a rule id in its tool's output.
+  run -1 "$RUN" tests rule-a,rule-b -- bash -c 'echo "--- FAIL: TestX"; exit 1'
+  run tail -n 1 "$T"
+  has '"findings":{"rule-a":1,"rule-b":1}}'
+  remediations "$GO_IDS"
+  run -1 "$RUN" golangci "$GO_IDS" -- bash -c "echo 'x.go:1:1: Error return value is not checked (errcheck)'; exit 1"
+  run tail -n 1 "$T"
+  has '"findings":{"rule-a":1,"go-sec":0,"go-structured-logging":0,"go-format":0,"code-function-length":0,'
 }
 
 @test "warns over budget and keeps the sensor's exit status" {

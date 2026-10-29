@@ -37,12 +37,11 @@ jobs:
           fence='```'
           : >"$report"
           since="$(date -u -d '7 days ago' +%Y-%m-%d)"
-          # A run without the artifact (cancelled before the upload step) is skipped.
-          gh run list --workflow ci.yml --status completed --created ">=$since" --limit 1000 \
-            --json databaseId --jq '.[].databaseId' | while read -r id; do
-            gh run download "$id" --name harness-timings-check-all --dir "$timings/$id" 2>/dev/null || true
-          done
-          mapfile -t files < <(find "$timings" -name timings.jsonl 2>/dev/null)
+          # ci.yml's timing artifacts of 7 days, listed once and downloaded by id; a run cancelled before its
+          # upload step has none. A failed list or download is a report line, the rest is still measured.
+          scripts/harness/ci-timings.sh download "$timings" 7 ||
+            printf '### Latency (NFR-H*): ci-timings.sh could not list or download every timing artifact (the run log has which); the p95 below misses those runs\n\n' >>"$report"
+          mapfile -t files < <(find "$timings" -type f -name timings.jsonl 2>/dev/null)
           if ((${#files[@]} == 0)); then
             printf '### Latency (NFR-H*)\n\nNo harness-timings-check-all artifact from ci.yml since %s: the timings pipeline is broken.\n\n' "$since" >>"$report"
           elif table="$(scripts/harness/nfr-report.sh "${files[@]}" 2>&1)"; then

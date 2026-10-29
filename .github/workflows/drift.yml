@@ -2,7 +2,8 @@
 # dead code, known vulnerabilities in dependencies, a stale schema doc, dead doc links, harness files behind the
 # template (make harness-sync-check; anonymous fetch, so a private template exits 2), QUALITY.md rows not
 # graded in the last 30 days (ADR 0028), test coverage that fell since the last run, mutants that survived in
-# the week's changes, and the advisory findings of three read-only review agents (security, data handling,
+# the week's changes, rules that never fired in 90 days (ADR 0032; a human decides to keep or retire each),
+# and the advisory findings of three read-only review agents (security, data handling,
 # modularity; ci.md#scheduled-reviews). Findings go to one
 # open issue labelled `drift` (created, or commented on). When enabled, agent-gc proposes fixes for the doc
 # check's broken links as a small PR (ci.md#agent-gc).
@@ -206,7 +207,7 @@ jobs:
     if: ${{ !cancelled() }}
     permissions:
       contents: read
-      actions: read # earlier drift runs and their coverage artifacts
+      actions: read # earlier drift runs with their coverage and rule-fires artifacts; ci.yml's timing artifacts
       issues: write
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -225,28 +226,60 @@ jobs:
           path: .cache/trivy
           key: trivy-db-${{ steps.today.outputs.date }}
           restore-keys: trivy-db-
-      # The baseline for the coverage change (ADR 0020): coverage.tsv of the newest earlier scheduled drift run
-      # that has one, so a manual run never resets the weekly baseline. Any completed run counts when it
-      # uploaded the artifact (a failed review job no longer hides a good baseline). Its own step, because
+      # The baselines of the week-on-week reports, each from the newest earlier scheduled drift run that has it,
+      # so a manual run never resets them: coverage.tsv for the coverage change (ADR 0020) and the rule-fires
+      # ledger (ADR 0032, ci.md#rule-fires). Any completed run counts when it uploaded the artifact (a failed
+      # review job no longer hides a good baseline). Also ci.yml's timing artifacts (harness-timings-check-all)
+      # of its retention window, which the ledger merges (scripts/harness/ci-timings.sh). Whether a run has the
+      # ledger is asked apart from downloading it, so a gh error never reads as "no ledger": fires_state is
+      # found, fresh (the list worked and no run has one) or error; retention is set only when every timing
+      # artifact downloaded. Otherwise the Sweep merges nothing and uploads no ledger. Its own step, because
       # only it needs a token; the Sweep runs third-party code (pnpm, deadcode, knip, Trivy) and gets none.
-      - name: Coverage baseline
+      - name: Baselines (coverage, rule fires)
         id: baseline
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          coverage='' fires_state=fresh
           if ! ids="$(gh run list --workflow drift.yml --branch "$GITHUB_REF_NAME" --event schedule \
-            --status completed --limit 10 --json databaseId --jq '.[].databaseId')"; then
-            echo "::warning::gh run list failed: this drift run reports coverage without the change since the last one"
-            exit 0
+            --status completed --limit 14 --json databaseId --jq '.[].databaseId')"; then
+            echo "::warning::gh run list failed: this drift run reports coverage without the change since the last one, and does not merge rule fires"
+            ids='' fires_state=error
           fi
           for id in $ids; do
-            if gh run download "$id" --name coverage --dir "$RUNNER_TEMP/coverage-$id" 2>/dev/null &&
+            if [[ -z $coverage ]] && gh run download "$id" --name coverage --dir "$RUNNER_TEMP/coverage-$id" 2>/dev/null &&
               [[ -s "$RUNNER_TEMP/coverage-$id/coverage.tsv" ]]; then
-              echo "previous=$RUNNER_TEMP/coverage-$id/coverage.tsv" >>"$GITHUB_OUTPUT"
-              break
+              coverage="$RUNNER_TEMP/coverage-$id/coverage.tsv"
+              echo "previous=$coverage" >>"$GITHUB_OUTPUT"
             fi
+            if [[ $fires_state == fresh ]]; then
+              if ! n="$(gh api "repos/$GH_REPO/actions/runs/$id/artifacts?name=rule-fires" \
+                --jq '[.artifacts[] | select(.expired | not)] | length')"; then
+                echo "::warning::listing the artifacts of drift run $id failed: rule fires are not merged this week"
+                fires_state=error
+              elif [[ $n != 0 ]]; then
+                fires="$RUNNER_TEMP/rule-fires-$id/rule-fires.txt"
+                if gh run download "$id" --name rule-fires --dir "$RUNNER_TEMP/rule-fires-$id" && [[ -s $fires ]]; then
+                  echo "fires=$fires" >>"$GITHUB_OUTPUT"
+                  fires_state=found
+                else
+                  echo "::warning::downloading the rule-fires ledger of drift run $id failed: rule fires are not merged this week"
+                  fires_state=error
+                fi
+              fi
+            fi
+            [[ -z $coverage || $fires_state == fresh ]] || break
           done
+          echo "fires_state=$fires_state" >>"$GITHUB_OUTPUT"
+          timings="$RUNNER_TEMP/timings"
+          echo "timings=$timings" >>"$GITHUB_OUTPUT"
+          if retention="$(scripts/harness/ci-timings.sh retention)" &&
+            scripts/harness/ci-timings.sh download "$timings" "$retention"; then
+            echo "retention=$retention" >>"$GITHUB_OUTPUT"
+          else
+            echo "::warning::ci-timings.sh failed: rule fires are not merged this week"
+          fi
       # Mutation testing of the files changed in the last 7 days (ADR 0023, ci.md#mutation-testing), a trend,
       # never a gate: scores and survivors go to the job summary; the Sweep puts the score table (no survivors)
       # in the issue every week, or an entry saying it could not measure (make mutation failed, or this step
@@ -276,6 +309,10 @@ jobs:
           COVERAGE_BASELINE: ${{ steps.baseline.outputs.previous }}
           MUTATION_OUTCOME: ${{ steps.mutation.outcome }}
           REVIEWS_RESULT: ${{ needs.reviews.result }}
+          RULE_FIRES_LEDGER: ${{ steps.baseline.outputs.fires }}
+          RULE_FIRES_STATE: ${{ steps.baseline.outputs.fires_state }}
+          RULE_FIRES_TIMINGS: ${{ steps.baseline.outputs.timings }}
+          RULE_FIRES_RETENTION: ${{ steps.baseline.outputs.retention }}
         run: |
           report="$RUNNER_TEMP/drift.md"
           fence='```'
@@ -316,6 +353,29 @@ jobs:
               out="$(printf '### make mutation-scores failed\n\n%s\n%s\n%s' "$fence" "$out" "$fence")"
             printf '%s\n\n' "$out" >>"$report"
           fi
+          # Rules that never fired (ADR 0032, ci.md#rule-fires): merges the ci.yml timing rows, each artifact
+          # once, into the ledger carried from the last scheduled run and lists the rules without a finding in 90
+          # days; a human decides to keep or retire each. rule-fires.sh validates every row (PR runs write them).
+          # A gh error in the Baselines step, or a failing rule-fires.sh, merges nothing and uploads no ledger, so
+          # the last one stays the newest and a bad week never resets the history; tracking starts fresh only
+          # when no earlier scheduled run has a ledger.
+          fires_out=.cache/harness/rule-fires.txt
+          mkdir -p "${fires_out%/*}"
+          if [[ ! "$RULE_FIRES_STATE" =~ ^(found|fresh)$ || -z "$RULE_FIRES_RETENTION" ]]; then
+            printf '### Rule fires: not merged this week (a gh error reading the last ledger or the ci.yml timings; the Baselines step log has it), so the last ledger stays the baseline\n\n' >>"$report"
+          else
+            [[ "$RULE_FIRES_STATE" == found ]] ||
+              printf '### Rule fires: no ledger from an earlier scheduled run; tracking starts today, so no rule is listed for 90 days\n\n' >>"$report"
+            [[ -n "$(find "$RULE_FIRES_TIMINGS" -name timings.jsonl)" ]] ||
+              printf '### Rule fires: no ci.yml timings (harness-timings-check-all) from the last %s days to merge\n\n' "$RULE_FIRES_RETENTION" >>"$report"
+            if out="$(scripts/harness/rule-fires.sh "$RULE_FIRES_LEDGER" "$fires_out" "$RULE_FIRES_RETENTION" "$RULE_FIRES_TIMINGS" 2>"$RUNNER_TEMP/rule-fires.log")"; then
+              cat "$RUNNER_TEMP/rule-fires.log"
+              [[ -z "$out" ]] || printf '%s\n\n' "$out" >>"$report"
+              echo "fires_merged=true" >>"$GITHUB_OUTPUT"
+            else
+              printf '### scripts/harness/rule-fires.sh failed (not merged; the last ledger stays the baseline)\n\n%s\n%s\n%s\n\n' "$fence" "$(cat "$RUNNER_TEMP/rule-fires.log")" "$fence" >>"$report"
+            fi
+          fi
           # Scheduled reviews (ci.md#scheduled-reviews), advisory (ADR 0019): last and security first, so the
           # cut below drops modularity first. render takes the untrusted findings with the pinned jq.
           for review in security data-handling modularity; do
@@ -352,6 +412,16 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 35
+      # Next week's rule-fires ledger (ci.md#rule-fires): it holds the 90-day history, so it outlives the window.
+      # Only a merged one: otherwise the last ledger stays the newest.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.sweep.outputs.fires_merged == 'true'
+        with:
+          name: rule-fires
+          path: .cache/harness/rule-fires.txt
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 90
       - name: Open or update the drift issue
         if: steps.sweep.outputs.found == 'true'
         env:
