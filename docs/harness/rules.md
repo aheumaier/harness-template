@@ -381,6 +381,15 @@ In CI these run in the `pr-conventions` job of `harness-integrity.yml` (base bra
 - **Remediation:** Write the spec with `/speckit-specify` (then `/speckit-plan`, `/speckit-tasks`) and commit `specs/<NNN-slug>/` with the feature; if the change is not a product feature, use another commit type, or ask a reviewer for the `no-spec-needed` label.
 - **Fixture:** `fixtures/specs-feat-without-spec` · Status: team-convention (PR #1)
 
+## Runtime (make logs, traces, metrics)
+
+### obs-request-queryable
+- **Rule:** One request to the running API can be read back through `make` alone (NFR-O1): its access line by `make logs REQUEST_ID=<id>`, its server span by `make traces ID=<trace_id>` from that line, and the p95 latency of its route from that API process by `make metrics`.
+- **Why:** An agent that cannot read its own app's runtime guesses; `scripts/obs-query.sh` is otherwise tested only against canned Loki, Tempo and Prometheus responses (`scripts/test/obs-query.bats`), so a changed `OBS_IMAGE` would show up as empty or wrong output instead of a failed check (exec plan 0003, P1.4).
+- **Sensor:** `scripts/harness/obs-e2e.sh`, `make test-obs` (in `make check-all` and CI; needs Docker). It first pulls `OBS_IMAGE` if missing (sensor `obs-pull`), then (sensor `obs-e2e`) starts Postgres, builds the API, runs it on a free port with its exporters on this worktree's obs stack and `service.instance.id` set to the request ID, sends one `GET /healthz` with that `X-Request-Id`, stops it (flushing its telemetry) and polls the three targets for up to 60 s each; the p95 query selects the Prometheus label `instance` (from `service.instance.id`), so an attached stack's other data cannot satisfy it. It uses an obs stack that is already up and leaves it; one it started, it removes. Without Docker, the image or this worktree's obs ports it fails, never skips.
+- **Remediation:** Fix what the output names: start Docker, or run `make setup` for missing ports; for a missing line, span or series run `make obs-up` and `make dev`, send a request and read it back with `make logs REQUEST_ID=<id>` to find which part changed (the API's telemetry or access log, or `scripts/obs-query.sh` after an `OBS_IMAGE` bump).
+- **Fixture:** none (a positive end-to-end test against Docker and the 2.58 GB obs image, while selftest asserts that a sensor rejects a violation; `scripts/test/obs-e2e.bats` covers its fail-closed and stack-cleanup paths) · Status: team-convention ([ADR 0017](../adr/0017-per-worktree-observability-stack.md), NFR-O1)
+
 ## Docs
 
 ### docs-links-resolve

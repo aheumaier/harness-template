@@ -12,3 +12,4 @@ coverage/
 # Stryker (make mutation): its sandbox and the json report scripts/harness/mutation.sh moves to .cache/mutation/.
 .stryker-tmp/
 reports/mutation/
+.tmp/

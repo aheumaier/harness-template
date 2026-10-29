@@ -16,3 +16,9 @@ pre-commit 2000 NFR-H8
 repo-no-secrets 5000 NFR-H9
 # make harness-determinism runs make check twice: twice the NFR-H4 budget.
 determinism 120000 NFR-H4
+# make test-obs in check-all (exec plan 0003 P1.5, proves NFR-O1; its time counts against check-all's NFR-H7).
+# obs-pull: OBS_IMAGE present locally, 0.1 s; a fresh CI runner pulls 2.58 GB, not measured yet.
+# obs-e2e: builds and boots the API, starts the obs stack when it is down (about 4 s once pulled) and waits for a
+# log line, a span and a metric; 15 s measured, warm.
+obs-pull 120000 NFR-H7
+obs-e2e 30000 NFR-H7

@@ -105,7 +105,10 @@ receives the request's `context.Context`.
   when `make dev` starts (restart dev after `make obs-up`). Read it through make only:
   `make logs REQUEST_ID=…` (or `QUERY=<LogQL>`), `make traces ID=<trace_id>`, and
   `make metrics QUERY=<PromQL>`, which without `QUERY` fails with an example p95 query; `make obs-down`
-  removes it, `make down` removes every container and volume of the worktree.
+  removes it, `make down` removes every container and volume of the worktree. `make test-obs` (in
+  `make check-all`) proves one request can be read back this way (NFR-O1). Without the stack, `make dev`
+  also writes each run's output to `.tmp/dev/api.log` (JSON lines) and `.tmp/dev/web.log`; the
+  [query-runtime](.claude/skills/query-runtime/SKILL.md) skill maps runtime questions to these.
 - **Generated code** is committed; `make gen-check` fails if it is stale or hand-edited.
 
 ## Invariants worth knowing

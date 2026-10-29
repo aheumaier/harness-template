@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # scripts/obs-query.sh (make logs, metrics, traces): input checks, and the shaping of recorded Loki, Prometheus
 # and Tempo responses. A stub curl on PATH records its arguments and answers with $STUB/body, the HTTP status
-# in $STUB/code (default 200) or the curl exit status in $STUB/rc. The live stack is exercised by hand (TD-32).
+# in $STUB/code (default 200) or the curl exit status in $STUB/rc. make test-obs reads the live stack (TD-32).
 bats_require_minimum_version 1.5.0
 load helpers
 

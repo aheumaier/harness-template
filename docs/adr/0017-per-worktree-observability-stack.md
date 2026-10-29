@@ -47,8 +47,13 @@ Assumption A5 ("~500 MB of RAM") held.
 - **The stack is one `grafana/otel-lgtm` container per worktree**, pinned as `name:tag@sha256:digest` (the
   tag says the version, the digest pins it). The pin will live in `scripts/tool-versions.env` next to
   `POSTGRES_IMAGE` (P1.4, a harness change).
-- **Opt-in:** a compose profile `obs`, started by `make obs-up` (P1.4). Worktrees that don't start it pay
-  nothing. Telemetry is disposable: no named volume.
+- **Opt-in for the dev loop:** a compose profile `obs`, started by `make obs-up` (P1.4). A `make dev` without
+  it pays nothing; `make check-all` pays for it (next bullet). Telemetry is disposable: no named volume.
+- **Required by `make check-all` and CI** (exec plan 0003 P1.5): `make test-obs` proves NFR-O1 against a
+  live stack, so `check-all` needs Docker and pulls `OBS_IMAGE` on each fresh CI runner (no image cache yet).
+  The CI cost of that pull is not measured yet (TODO for a human, after the first CI run: the `obs-pull` row
+  of `harness-timings-check-all`). This ADR adopts rule
+  [obs-request-queryable](../harness/rules.md#obs-request-queryable) for it.
 - **Ports: one per signal, from the worktree's port block** ([ADR 0008](0008-per-worktree-isolation.md)).
   Blocks are 10 ports apart and use `+0..+2` today (`DB`, `API`, `WEB`); P1.4 is planned to add:
 
@@ -98,6 +103,7 @@ Assumption A5 ("~500 MB of RAM") held.
 - Telemetry is lost on `docker compose down`; that is intended for a dev loop.
 - Pyroscope (profiles) runs although nothing uses it; its memory is part of the measured 0.53 GiB.
 - **Supersede this ADR** when a re-measurement on a bump exceeds 1.5 GB idle or 90 s to ready; when the image
-  is discontinued, re-licensed so that local dev use is no longer allowed, or loses one of the three signals; when CI must run the stack
-  and its runners cannot afford it; or when NFR-O1 cannot be met on it (then the bare collector + `jq` is
+  is discontinued, re-licensed so that local dev use is no longer allowed, or loses one of the three signals;
+  when the `OBS_IMAGE` pull in CI (`make test-obs`) pushes `make check-all` past [NFR-H7](../harness/nfr.md)
+  (10 min); or when NFR-O1 cannot be met on it (then the bare collector + `jq` is
   the next candidate).

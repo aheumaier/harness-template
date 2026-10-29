@@ -45,16 +45,19 @@ new-domain: ## Scaffold a domain through every layer: make new-domain NAME=billi
 rename: $(HARNESS) ## Rename the template once (dry run): make rename NAME=acme-shop MODULE=github.com/acme/shop OWNER=@acme [WRITE=1]
 	@$(HARNESS) rename $(if $(filter 1,$(WRITE)),-write) . $(NAME) $(MODULE) $(OWNER)
 
-dev: db-up ## Run API + web for this worktree (Ctrl-C stops both); telemetry goes to make obs-up's stack if it runs
+# Each process's output (the API's JSON log lines, Vite's text) also goes to .tmp/dev/<name>.log, emptied on start,
+# so an agent can read this run without the obs stack.
+dev: db-up ## Run API + web for this worktree (Ctrl-C stops both), output also in .tmp/dev/{api,web}.log; telemetry goes to make obs-up's stack if it runs
 	@$(WITH_ENV) off=; \
 	  if [[ -z "$${OTLP_PORT:-}" ]]; then off="no OTLP_PORT in this worktree's env: run make setup"; \
 	  elif ! (: <"/dev/tcp/127.0.0.1/$$OTLP_PORT") 2>/dev/null; then \
 	    off="no obs stack on :$$OTLP_PORT (make obs-up, then restart make dev)"; fi; \
 	  if [[ -n "$$off" ]]; then echo "telemetry off: $$off"; \
 	    export OTEL_TRACES_EXPORTER=none OTEL_METRICS_EXPORTER=none OTEL_LOGS_EXPORTER=none; fi; \
-	  trap 'kill 0' EXIT; \
-	  echo "api http://$$HTTP_ADDR  web http://localhost:$$WEB_PORT"; \
-	  (cd $(API) && go run ./cmd/api) & (cd apps/web && node_modules/.bin/vite) & wait
+	  trap 'kill 0' EXIT; mkdir -p .tmp/dev; \
+	  echo "api http://$$HTTP_ADDR  web http://localhost:$$WEB_PORT  logs .tmp/dev/api.log .tmp/dev/web.log"; \
+	  (cd $(API) && go run ./cmd/api) 2>&1 | tee .tmp/dev/api.log & \
+	  (cd apps/web && node_modules/.bin/vite) 2>&1 | tee .tmp/dev/web.log & wait
 
 db-up: ## Start this worktree's Postgres
 	@$(WITH_ENV) docker compose --progress quiet up -d --wait db
@@ -75,7 +78,7 @@ CHECK_ALL_SKIP ?=
 check-all: export HARNESS_SCOPE := full
 check-all: check ##Everything: check + integration, contract, migration, security, dead code
 	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go vuln-deps lint-migrations squawk migrations-append-only lint-api contract-check knip harness-integrity commits specs)
-	@$(MAKE) test-integration
+	@$(MAKE) -k test-integration test-obs
 
 harness-selftest: $(HARNESS) ## Every fixture in scripts/harness/fixtures must be rejected by its sensor (FIXTURE=name for one)
 	@scripts/harness/selftest.sh $(FIXTURE)
@@ -88,7 +91,7 @@ harness-determinism: ## Run make check twice on this tree: same exit status, fin
 	@$(RUN) determinism harness-deterministic -- scripts/harness/determinism.sh $(MAKE) $(DETERMINISM_TARGET)
 
 ##@ Runtime: this worktree's logs, metrics and traces (compose profile obs, ADR 0017)
-.PHONY: obs-up obs-down down logs metrics traces
+.PHONY: obs-up obs-down down logs metrics traces test-obs
 # The query targets read the stack's HTTP APIs through scripts/obs-query.sh; their inputs (REQUEST_ID, QUERY,
 # SINCE, LIMIT, ID) reach it as environment variables, never spliced into the recipe. Make expands `$` in a
 # command-line value (QUERY='x$y' arrives as 'x'): write `$$`, or pass it from the environment (QUERY=… make logs).
@@ -111,6 +114,14 @@ metrics: ## PromQL instant query, one series per line: make metrics QUERY='<Prom
 
 traces: ## Spans of one trace as JSON lines, in start order: make traces ID=<trace_id>
 	@$(WITH_ENV) $(OBS_QUERY) traces
+
+# NFR-O1 end to end, in make check-all: the API on a free port with its exporters on, one request, read back
+# through the targets above. Starts Postgres and, if it is down, the obs stack, which it then removes; a stack
+# that was already up stays. OBS_IMAGE (2.58 GB) is pulled first, as its own sensor, so the pull stays out of
+# obs-e2e's latency budget. MAKE: the script's own make calls use this make (macOS ships 3.81).
+test-obs: ## One request's access line, trace and p95 latency through make logs, traces and metrics (Docker)
+	@$(WITH_ENV) $(RUN) obs-pull obs-request-queryable -- scripts/harness/obs-e2e.sh pull
+	@$(WITH_ENV) $(RUN) obs-e2e obs-request-queryable -- env MAKE="$(MAKE)" scripts/harness/obs-e2e.sh
 
 ##@ Reports
 .PHONY: coverage coverage-fell mutation
