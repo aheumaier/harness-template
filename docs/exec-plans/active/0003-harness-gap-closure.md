@@ -111,7 +111,7 @@ They comment, never fail (Phase 3, ADR).
 | 0 | Quick wins: Trivy, pre-commit, structured-logging lints, doc truth | secrets and JS/nested-Go vulns are detected; `rules-fixture-claims` is green; every drift item above is fixed | implemented |
 | 1 | Runtime legibility (G1) | NFR-O1 met: logs by request ID and a p95 latency, per worktree, via `make` | implemented |
 | 2 | Behaviour harness (G2) | NFR-B1 and NFR-B2 met; coverage reported per package; weekly mutation score in the drift issue | implemented |
-| 3 | Inferential sensors and garbage collection (G3, G4, G8, G11) | reviewer comments on every PR (advisory); scheduled reviews and `agent-gc` open issues/PRs; QUALITY.md has a staleness check; orphan scripts, dead Go code and clones fail `check-all`; `reuse-reviewer` exists | proposed |
+| 3 | Inferential sensors and garbage collection (G3, G4, G8, G11) | reviewer comments on every PR (advisory); scheduled reviews and `agent-gc` open issues/PRs; QUALITY.md has a staleness check; orphan scripts, dead Go code and clones fail `check-all`; `reuse-reviewer` exists | implemented (exit pending: ADR 0019 accepted, first PR comment and drift run observed) |
 | 4 | Taste lints and harness lifecycle (G5, G7, G9, G10, G12) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue; `adoption-probe` green on a root-module fixture; reviewer catches seen twice are earned rules; sensor slices get an evasion review | proposed |
 
 ## Progress
@@ -1171,3 +1171,22 @@ found only after integration.
   assessment of this loop: reviewer catches seen twice become earned rules (ADR 0019), and sensor slices get
   an evasion review plus a diff-only re-review after a retry. Both are H; P4.12's loop prompt and CLAUDE.md
   wiring is a human step. Recommendations 1, 2 and 5 stay in the hand-off.
+- 2026-10-29: Phase 3 gate. `check-all` red only on harness-integrity, `harness-selftest` 69/69. Reviews of
+  the Phase 3 commits (eb61f5e, 1b33d8e, f5b5d27, 14d7317, 5be0ad6, 3edf728, 8e4f77b, ddd125f): architecture
+  9 findings, code 6. Fixed in d8a6ff9: docs-quality reads the domains' directory from layout.env and fails
+  closed; pr-review.bats checks every `.bin/claude -p` call for a cap and pr-review.yml caps the agent below
+  the job timeout; agent-gc's guide filter; clones-web exit codes; ADRs 0015, 0019, 0028, 0030, rules.md,
+  ci.md, QUALITY.md; TD-91..TD-94 record the rest (sensor devDependencies, review output `class` field,
+  orphans' `make help` regex copy, hand-copied skip lists in protected agents). The fix's own review
+  (APPROVE) left four low findings, deferred: the cap sweep misses `*.yaml`, composite actions and other call
+  forms; the cap-below-timeout check covers pr-review.yml only, not drift.yml's jobs; exit 137 may be the OOM
+  killer rather than the cap (guard with `SECONDS`); applied: the precise layout assertion and `writeLines`
+  reuse. Exit criterion: met for the staleness check (`make docs-quality`), orphans, `deadcode-go` and
+  `clones-web` in `check-all`, dupl in `check`, and `reuse-reviewer` (CLAUDE.md names it); not demonstrable
+  here: a PR comment and scheduled-review/agent-gc issues, blocked on ADR 0019 acceptance, TD-38
+  (`ANTHROPIC_API_KEY`) and TD-50 (`AGENT_GC_TOKEN`), and pr-review skips harness-only PRs. Noticed:
+  `make check` was green while the pre-commit `go-format` sensor refused a one-line `layerDir` in
+  layout.go, so `lint-go`'s scope can miss a format finding the hook sees. Protected proposal (TD-94):
+  `.claude/agents/code-reviewer.md:33` should read "Suggest a grade (A–F, or – if not graded yet) for each
+  layer (`model`, `store`, `service`, `api`) of each touched domain per docs/QUALITY.md, for a human to
+  write into its row with a new `Updated` date; never edit docs/QUALITY.md yourself."
