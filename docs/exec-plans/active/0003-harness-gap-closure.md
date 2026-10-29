@@ -128,7 +128,11 @@ PR; **–** needs none.
 - [x] P2.5 — f28e238 — no coverage signal → `make coverage` (Go per package + every JS workspace with a
   `coverage` script) in a non-required PR job summary; drift lists packages whose coverage fell;
   [ADR 0020](../../adr/0020-test-coverage-is-a-trend.md) proposed: a trend, never a gate
-- [ ] P2.6 — H — weekly mutation testing on files changed that week (Go: `gremlins`; TS: Stryker)
+- [x] P2.6 — 4595942 — done — coverage showed lines ran, not that a test would notice them change → weekly
+  `make mutation` in drift.yml on the week's first-parent changes (gremlins v0.6.0 for apps/api, Stryker
+  10.0.0 for workspaces with a `mutation` script); first run: apps/api 52.1 % (73 mutants, 7 survived),
+  apps/web 20.0 % (15, 1 survived); [ADR 0023](../../adr/0023-mutation-testing-is-a-drift-report.md)
+  proposed. A trend, never a gate
 - [x] P3.1 — eb61f5e — inferential sensors had no stated status →
   [ADR 0019](../../adr/0019-inferential-sensors-are-advisory.md) proposed: one top-level PR comment, never a
   review thread; skip with a notice; outside the harness NFRs; hard cost cap in a protected file; a finding
@@ -728,3 +732,21 @@ code: `deadcode` and knip do that without false positives from entry points they
   `POSTGRES_IMAGE` stays tag-only (digest pin is a human TODO); jq 1.8.2 is from 2026-06-20. Noticed
   (protected): add the obs targets to AGENTS.md's "Also:" line; sensor candidates
   `compose-env-provided` and `compose-ports-loopback-from-block`.
+- 2026-10-29: P2.6 integrated (4595942, rebased from lane c7486dc; ADR README, tracker and tool-versions
+  conflicts merged: 0022 then 0023, TD-35/TD-34 above TD-33, `OBS_IMAGE` then `GREMLINS_VERSION`). Review
+  fixed in one retry (the lane agent's connection dropped once mid-retry and was resumed): files picked by a
+  first-parent tree diff (a `--no-ff` merge's files counted, bats case); measured settings in protected
+  config (`scripts/harness/gremlins.yaml` via `--config`, `GREMLINS_*` unset; `*stryker.config.*` in
+  protected-paths and CODEOWNERS; a Stryker config with thresholds or excluded mutators exits 2); ADR 0023
+  extends 0020 and settles A7 (both tools exist, run, and are older than 14 days: gremlins 2025-12-05,
+  Stryker 2026-08-14); `deps-no-known-vulns`' remediation names a scoped pnpm override, and the first one
+  pins `typed-rest-client>qs` 6.16.1 (TD-34); file names checked on source paths only (`$`, `[]` allowed);
+  workspace probe exit codes, and the same fix in coverage.sh (an unparseable package.json read as "no
+  tests"); full Stryker setup remediation; gremlins under `GOFLAGS=-short`; TD-27 extended, TD-35 (one
+  `-E` per Go file). NITs taken: the drift issue gets a mutation entry only on failure or timeout,
+  scores and survivors go to the job summary, ARCHITECTURE links ci.md#mutation-testing; `--survived` and
+  `make mutation-survived` removed (nothing reads them). Rejected: a helper shared with coverage.sh (two
+  callers with different parsing; revisit with TD-27). Noticed (protected): `// Stryker disable` as a
+  suppression form for `suppression-reason`; sensors `workspace-report-scripts` and
+  `report-config-no-threshold`; 28 of 73 Go mutants are no coverage because integration-only code is
+  uncovered under `-short`; bats 59–66 s against its 5 s budget (NFR-H5).
