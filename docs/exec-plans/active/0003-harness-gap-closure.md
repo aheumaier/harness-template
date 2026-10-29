@@ -39,6 +39,7 @@ From a comparison on 2026-10-28 (`perf/harness-nfr` @ 53ec497). ✅ present · �
 | G9 | `docs/references/*-llms.txt` for the pinned stack | OpenAI | none | ❌ |
 | G10 | Rippable harness: know which rules still fire, retire dead ones | O'Reilly, Osmani | `timings.jsonl` records latency only, not findings | ❌ |
 | G11 | Orphans and duplication: unused scripts and make targets, copy-paste clones, one concept implemented twice | OpenAI (agents replicate existing patterns, garbage collection); core belief "the best code is the code nobody writes" | `go-no-dead-code` weekly only (drift.yml), knip in check-all; nothing for scripts, make targets or clones; reuse left to `code-reviewer` | 🟡 |
+| G12 | Adoption fails on a real brownfield repo | README §(b), walked against two repos (see below) | layout hard-coded in ~15 protected files; `make rename` refuses a bare module; `make setup` needs a root `package.json`; `check` always composes go+db+web; `.github/` is always harness | ❌ |
 | — | Enforced merge gates | Fowler (human input where it matters) | out of scope: [TD-2](../tech-debt-tracker.md), blocked on the GitHub plan | — |
 
 **Doc drift found** (Phase 0 fixes it and adds the sensor that would have caught the first item):
@@ -54,6 +55,44 @@ From a comparison on 2026-10-28 (`perf/harness-nfr` @ 53ec497). ✅ present · �
 - Plan 0002: phase table says `proposed` while P1–P11 are done. `0002-loop-prompt.md:90` says hooks `exec`
   the binary; ADR 0012 says they don't. ADR 0013:12-16 moves the NFRs to `docs/harness/` "by the harness
   PR", which is still pending.
+
+**Adoption failures found** (G12). README §(b) was walked on 2026-10-28 against two real repos: a Go service
+with hand-rolled migrations, and a Go CLI whose product is its `.github/` workflows. Both have a root
+`go.mod`, no `apps/`, and their own CLAUDE.md and `.claude/` hooks. Every file below but
+`scripts/setup-worktree.sh` is `config` in `scripts/harness/protected-paths.txt`, so an agent cannot
+re-point it; P4.6–P4.10 fix the code.
+
+- **Layout hard-coded.** Each assumes `apps/api`, `api/openapi.yaml` or `packages/`. Most fail silently: a
+  sensor skips instead of going red.
+  - `scripts/harness/file-sensors.sh:24-31`: `apps/api/*.go) echo go`, so a root-module Go edit gets no
+    per-file sensor in fast-check or pre-commit.
+  - `scripts/harness/affected.sh:33-36, :67`: no changed file starts with `apps/api/`, so the affected set is
+    empty with exit 0 and `make check` skips `lint-go` and `test-go` without a word.
+  - `scripts/harness/check-specs.sh:59`: `product=('apps/*' 'api/*')`.
+  - `scripts/harness/gen-check.sh:14-18`: `GEN_RE` and `INPUTS` miss every generated file.
+  - `scripts/harness/pre-commit.sh:77` (`apps/api/.golangci.yml`), `selftest.sh:40, :54-55`,
+    `migrations-append-only.sh:12`, `squawk.sh:8`, `contract-check.sh:10` (`SPEC=api/openapi.yaml`).
+  - `scripts/install-tools.sh:97-108` (pnpm and the root `package.json`, see below);
+    `scripts/setup-worktree.sh:93, :99` (compose `db`, `cd apps/api && atlas migrate apply`);
+    `scripts/gen-schema-doc.sh:8`.
+  - `.claude/hooks/fast-check.sh:44-82`: every branch keys on `apps/api` or `packages/`.
+  - `apps/api/tools/harness/integritycheck.go:36-37`: excludes `apps/api/internal/*/store/*` and
+    `packages/api-client/src/gen/*`.
+  - `.github/actions/setup/action.yml:18` (`go-version-file: apps/api/go.mod`), `:44` and `:54-57` (pnpm,
+    `make deps`), `.github/workflows/contract-gate.yml:40, :44`, `harness-integrity.yml:49`, the
+    `generator-probe` job (`ci.yml:67-83`) and the contract and migration paths in CODEOWNERS.
+  - `Makefile:21`: `API  := apps/api` drives `--dir $(API)` in every Go sensor and locates the harness module
+    (`Makefile:99`).
+- **Bare module refused.** `make rename` checks `MODULE` against `host.tld/path`
+  (`apps/api/tools/harness/rename.go:25`). The service's module is a bare name, so step 4 (rename) has no
+  valid input.
+- **Setup needs a JS workspace.** `scripts/install-tools.sh:104-108` exits 1 unless the root `package.json`
+  pins `packageManager`. Neither repo has one, so `make setup` aborts before the other tools land.
+- **Fixed composition.** `make check` (`Makefile:63`) and `check-all` (`:70`) always run the go, db and web
+  sensors. Dropping a rule id does not drop its target.
+- **`.github/` is always harness.** `protected-paths.txt:25-26` marks `.github/workflows/*` and
+  `.github/actions/*` as `config`. In the CLI repo those are the product, so every product edit hits
+  `protect-harness` and `harness-config-not-loosened`.
 
 ## NFRs
 
@@ -73,7 +112,7 @@ They comment, never fail (Phase 3, ADR).
 | 1 | Runtime legibility (G1) | NFR-O1 met: logs by request ID and a p95 latency, per worktree, via `make` | proposed |
 | 2 | Behaviour harness (G2) | NFR-B1 and NFR-B2 met; coverage reported per package; weekly mutation score in the drift issue | proposed |
 | 3 | Inferential sensors and garbage collection (G3, G4, G8, G11) | reviewer comments on every PR (advisory); scheduled reviews and `agent-gc` open issues/PRs; QUALITY.md has a staleness check; orphan scripts, dead Go code and clones fail `check-all`; `reuse-reviewer` exists | proposed |
-| 4 | Taste lints and harness lifecycle (G5, G7, G9, G10) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue | proposed |
+| 4 | Taste lints and harness lifecycle (G5, G7, G9, G10, G12) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue; `adoption-probe` green on a root-module fixture | proposed |
 
 ## Progress
 
@@ -150,6 +189,11 @@ PR; **–** needs none.
 - [ ] P4.3 — H — template version marker (`.harness-version`) + `make harness-sync-check` against upstream
 - [ ] P4.4 — H — per-rule fire counts in `timings.jsonl`; drift issue lists rules that never fired in 90 days
 - [ ] P4.5 — – — `docs/references/*-llms.txt` for oapi-codegen, sqlc, orval, Atlas (pinned versions)
+- [ ] P4.6 — H — `scripts/harness/layout.env` read by every script, the Makefile, the hooks and `.bin/harness`
+- [ ] P4.7 — H — stack profiles: `HARNESS_STACK=go,db,web` selects sensors, tool installs and fixtures
+- [ ] P4.8 — H — `make rename` accepts a bare Go module or `MODULE=skip`
+- [ ] P4.9 — H — protected paths and CODEOWNERS name the harness's own workflows, not `.github/*`
+- [ ] P4.10 — H — CI `adoption-probe`: README §(b) on a root-`go.mod` fixture
 
 ### Phase 0 — quick wins
 
@@ -414,6 +458,45 @@ code: `deadcode` and knip do that without false positives from entry points they
 - **P4.5 — references.** `docs/references/<tool>-llms.txt` for oapi-codegen, sqlc, orval and Atlas, taken
   from upstream at the pinned version. Drift fails when `tool-versions.env` moves and the file doesn't.
 
+Adoption (G12). P4.6–P4.10 turn README §(b) from a list of hand edits into a selection plus one file, and
+give it a sensor. Each touches protected paths.
+
+- **P4.6 — layout.env.** One `scripts/harness/layout.env` (`API_DIR`, `SPEC`, `MIGRATIONS_DIR`,
+  `QUERIES_DIR`, `WEB_GLOBS`, `GENERATED_GLOBS`, `PRODUCT_GLOBS`, `LAYER_GLOB`) is sourced by every script,
+  the Makefile and the hooks; `.bin/harness` reads the same file (integritycheck's excludes, `domainiso`'s
+  layer convention); `check-specs.sh` reads `PRODUCT_GLOBS`. The setup action loads it into `$GITHUB_ENV`,
+  and the gate workflows and `generator-probe` use those variables. `domainiso` reports when `LAYER_GLOB`
+  matches no package, so it is never a silent no-op. Out of scope: `.golangci.yml`, `.go-arch-lint.yml` and
+  CODEOWNERS cannot source a file; they stay hand edits, listed in README §(b) step 5.
+  - Acceptance: `git grep -n 'apps/api\|api/openapi.yaml\|packages/\|apps/\*' -- scripts .claude/hooks
+    Makefile .github apps/api/tools/harness` returns only `layout.env`, fixtures, tests, `new-domain.sh`,
+    path lists (`protected-paths.txt`, `go.mod`), the tool's own module constants (`rename.go`,
+    `integritycheck.go`) and comments; selftest is green with a fixture that sets `API_DIR=.` (root module).
+- **P4.7 — stack profiles.** `HARNESS_STACK=go,db,web` (default: all three) selects the sensor groups `check`
+  and `check-all` compose (`Makefile:63`, `:70`), the tools `install-tools.sh` installs and the fixtures
+  selftest runs. Without `web`, no pnpm and no root `package.json` check (`install-tools.sh:104-108`).
+  Without `db`, `setup-worktree.sh` starts no Postgres (today `SKIP_DB=1`, `:85`) and `schema-doc-fresh`
+  leaves `check`.
+  - Acceptance: in a copy of the template with `apps/web`, `packages/` and `apps/api/db` removed,
+    `HARNESS_STACK=go make setup check harness-selftest` is green.
+- **P4.8 — rename for brownfield.** `make rename` accepts a bare module path, or `MODULE=skip`, which renames
+  only the name and the owner. It prints the harness module's new path (today
+  `<module>/apps/api/tools/harness`, a nested path the product may not have).
+  - Acceptance: `rename_test.go` covers a bare module and `MODULE=skip`.
+- **P4.9 — harness/product overlap.** `protected-paths.txt` (`:25-26`, `:40`) and CODEOWNERS (`/.github/`)
+  list the harness's own workflows and action by name (`ci.yml`, `contract-gate.yml`, `drift.yml`,
+  `harness-integrity.yml`, `harness-nfr.yml`, `migration-gate.yml`, `actions/setup`) instead of
+  `.github/workflows/*` and `.github/actions/*`. The `harness-integrity` remediation says so: a new
+  workflow is product until it is listed.
+  - Acceptance: a case where a product workflow changes passes `harness-integrity`, and
+    `fixtures/harness-config-loosened` still fails.
+- **P4.10 — adoption probe.** A CI job `adoption-probe`, built like `generator-probe` (`ci.yml:67`,
+  [ci.md](../../harness/ci.md)). It copies the harness into a minimal root-`go.mod` repo fixture (no `apps/`,
+  no web, no db), follows README §(b) literally, and runs `make .bin/harness`, `make rename`, then
+  `HARNESS_STACK=go make setup check harness-selftest`. This is the sensor for README §(b); without it the
+  procedure drifts again.
+  - Acceptance: green on the template; red when the fixture's `layout.env` still points at `apps/api`.
+
 ## Open assumptions
 
 - **A1 — feature spec rule.** `platform` middleware (P1.2, P1.3) and scaffold changes touch `apps/`. Under
@@ -668,6 +751,9 @@ code: `deadcode` and knip do that without false positives from entry points they
   steps, not gates. If ADR 0019 is rejected, drop P3.1 and revisit P3.2, P3.3, P3.4 and P3.8. Noticed
   (protected): nfr.md:17 and ADR 0015:39 should link ADR 0019 (P3.2 can add it with the ci.md "Required:
   no" row); the first earned rule adds `earned` to the rules.md status legend.
+- 2026-10-28: README §(b) checked against two brownfield repos; both fail at `make setup` and at the rule
+  drop (steps 7 and 6 of the rewritten §(b)), the one with a bare module also at `make rename` (step 4);
+  details in G12. README rewritten in this change; code slices P4.6–P4.10 added.
 - 2026-10-28: P2.5 integrated (f28e238, rebased from lane eb9a107). Review fixed in one retry: the drift
   job's GH_TOKEN moved into the one "Coverage baseline" step that reads the previous scheduled artifact; the
   `coverage` workflow is `continue-on-error` and not a required check; Vitest stays on 5.0.5 with
