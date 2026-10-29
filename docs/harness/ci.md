@@ -20,7 +20,8 @@ target runs, and it never blocks.
 | `harness-integrity.yml` | PR via `pull_request_target` (incl. label and title changes) | `harness-integrity` | the **base branch's** `make harness-integrity` against the PR head (`HARNESS_ROOT`) | yes |
 | | | `pr-conventions` | the **base branch's** `make commits specs` against the PR head and title (Conventional Commits, PR title ≤ 90 characters, spec-kit specs) | yes |
 | `migration-gate.yml` | PR touching `apps/api/db/migrations/**` | `migrations` | append-only, Atlas lint, squawk | no (path-filtered; same sensors in `check-all`) |
-| `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, Trivy (`vuln-deps`), schema doc, doc links, coverage that fell since the last run ([coverage](#coverage)), a mutation run that could not measure ([mutation testing](#mutation-testing); its scores go to the job summary) → one open `drift` issue | no |
+| `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, Trivy (`vuln-deps`), schema doc, doc links, coverage that fell since the last run ([coverage](#coverage)), a mutation run that could not measure ([mutation testing](#mutation-testing); its scores go to the job summary), the findings of the scheduled reviews → one open `drift` issue | no |
+| | | `review-gate`, `reviews (<review>)` | the [scheduled reviews](#scheduled-reviews): security, data handling, modularity, one read-only agent each, on the default branch only; skipped with a notice without the `ANTHROPIC_API_KEY` secret | no |
 | `harness-nfr.yml` | nightly, manual | `harness-nfr` | p95 per sensor over 7 days of `harness-timings-check-all` artifacts vs `budgets.txt` (`scripts/harness/nfr-report.sh`, alerts only) and `make harness-determinism` (`make check` twice; fails on any difference) → one open `harness-nfr` issue | no |
 
 `.github/actions/setup` installs the pinned toolchain (`scripts/tool-versions.env`) and caches `.bin`,
@@ -122,6 +123,56 @@ and neither job is a required check. A top-level comment opens no review thread,
   confinement test with a dummy key, then add the `ANTHROPIC_API_KEY` repository secret
   ([TD-38](../exec-plans/tech-debt-tracker.md)). Until then every run skips.
 - A finding class accepted twice becomes a computational rule ([ADR 0019](../adr/0019-inferential-sensors-are-advisory.md)).
+
+## Scheduled reviews
+
+Three weekly reviews of the whole repository, the part no linter expresses: security
+([review-security](../../.claude/skills/review-security/SKILL.md)), data handling
+([review-data-handling](../../.claude/skills/review-data-handling/SKILL.md)) and modularity
+([review-modularity](../../.claude/skills/review-modularity/SKILL.md)). Each is a skill, usable
+interactively too, that skips what a sensor already reports. Inferential sensors, so advisory
+([ADR 0019](../adr/0019-inferential-sensors-are-advisory.md)): no rule id, no fixture, no budget row, never
+a required check, in neither `make check` nor `make check-all`; a human decides what to act on, and a
+finding class accepted twice becomes a computational rule.
+
+- `drift.yml` runs them in the `reviews` job, one matrix entry per review, before the `drift` job, on the
+  default branch only (a schedule, or a manual run of the default branch; a run of any other branch skips
+  them with a notice) and one sweep at a time (`concurrency: drift`). Each agent gets the prompt of
+  `make review-prompt REVIEW=<review>` (`scripts/harness/scheduled-review.sh`: a fixed CI preamble, then
+  the skill without its front matter; run it locally to see exactly what is sent) and answers in a JSON
+  schema (`--json-schema`: `file`, `line`, `severity`, `problem`, `fix`; at most 15).
+- **Same CI agent contract as [PR review](#pr-review)** (`scripts/harness/ci-agent.sh`, shared with
+  `pr-review.sh`): Claude Code installed by `scripts/install-tools.sh claude`, run as `.bin/claude -p --bare
+  --restricted --strict-mcp-config --tools Read,Grep,Glob --disallowedTools 'mcp__*' --permission-mode
+  dontAsk --no-session-persistence --output-format json` with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
+  and a `--settings` file that blocks reads outside the working directory and denies Read under system and
+  runner dirs and of every env file. The skills are read-only too. The agent step holds the API key and no
+  write token (`contents: read`, credentials not persisted), and runs only `claude`, the schema and the
+  leak screen (`scheduled-review.sh screen`, a verbatim backstop as in PR review).
+- **Trust boundary: write-access collaborators are trusted with the key.** A manual run executes the
+  dispatched branch's copy of the workflow with the secret, so anyone who can push a branch can edit it to
+  print or spend the key; the default-branch gate keeps reviews on reviewed code but an edited copy can drop
+  it. The key must be a dedicated Anthropic workspace key with a hard spend limit, used for nothing else.
+  Optional hardening: an `environment:` on the `reviews` job limited to the default branch, holding the key
+  as an environment secret.
+- **Cost cap per review**: the `REVIEW_*` values at the top of the workflow: `REVIEW_MODEL`
+  (`claude-sonnet-5-5`), `REVIEW_MAX_TURNS` (40), `REVIEW_MAX_BUDGET_USD` (3.00) and `REVIEW_MAX_MINUTES`
+  (15). The workflow is protected, so raising a cap needs the `harness-change-approved` label.
+- **Skips with a notice** when the secret is missing, off the default branch, or when the agent stops on a
+  cap or an API error. **Red only on harness breakage**: the agent did not start, or it succeeded without
+  structured findings (empty or missing `structured_output`). The `drift` issue names a failed review job
+  and findings that cannot be rendered. Never on a finding.
+- **Untrusted output.** The `reviews` job uploads the screened findings JSON; the `drift` job renders it
+  (`scheduled-review.sh render`, with the pinned `.bin/jq`): findings with a file and line, high severity
+  first, control characters flattened, `sk-ant-` tokens redacted, each field cut at the schema's length and
+  each section at 16000 bytes, all inside one code fence the text cannot close, so no mention, link, image
+  or HTML in it renders. Reviews come last in the report, security first, so the issue's 60000-byte cut
+  (on a line boundary) drops modularity first. The log shows the report between `::stop-commands::`
+  markers, and only the issue step writes to GitHub.
+- **Turning it on** is a human step, with [PR review](#pr-review)'s: set the `ANTHROPIC_API_KEY` repository
+  secret, then start one manual `drift` run on the default branch and check each review's notice or
+  findings ([TD-38](../exec-plans/tech-debt-tracker.md)). Until then the `review-gate` job leaves a notice,
+  `reviews` is skipped and the `drift` job runs as before.
 
 ## Label waivers
 

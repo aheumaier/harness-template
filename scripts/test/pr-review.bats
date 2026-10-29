@@ -6,7 +6,8 @@ bats_require_minimum_version 1.5.0
 load helpers
 
 setup() {
-  sandbox scripts/harness/pr-review.sh scripts/harness/protected-paths.txt .claude/agents/code-reviewer.md
+  sandbox scripts/harness/pr-review.sh scripts/harness/ci-agent.sh scripts/harness/protected-paths.txt \
+    .claude/agents/code-reviewer.md
   mkdir -p "$SANDBOX/apps/api"
   printf 'package api\n' >"$SANDBOX/apps/api/x.go"
   sandbox_base
@@ -145,6 +146,7 @@ change() {
   run -0 "$P" settings /home/runner/work/_temp /opt/hostedtoolcache/
   jq -e '.permissions.blockReadsOutsideWorkingDirectories == true and .disableAllHooks == true' <<<"$output"
   jq -e '.permissions.deny | index("Read(//proc/**)") and index("Read(//etc/**)") and index("Bash") and index("WebFetch")' <<<"$output"
+  jq -e '.permissions.deny | index("Read(./.env*)") and index("Read(**/.env*)")' <<<"$output"
   jq -e '.permissions.deny | index("Read(//home/runner/work/_temp/**)") and index("Read(//opt/hostedtoolcache/**)")' <<<"$output"
   run -2 "$P" settings "$(dirname "$SANDBOX")"
   has 'contains the workspace'

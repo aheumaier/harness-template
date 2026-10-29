@@ -68,6 +68,17 @@ those two lines into a decision the Phase 3 slices can build on.
     hardening. The confinement above protects against PR content (prompt injection), not against PR authors
     with write access. This is no blocking NFR: ADR 0015's line "Inferential sensors get no blocking NFR"
     applies as written.
+  - **One CI agent contract.** Every agent that runs in CI (`pr-review.yml`, P3.2; the scheduled reviews in
+    `drift.yml`, P3.3) shares `scripts/harness/ci-agent.sh` and the same flags, checked by each workflow's
+    bats test: the pinned `.bin/claude` ([ADR 0016](0016-tool-supply-chain.md)) as `claude -p` in a `run:`
+    step, never a marketplace action, with `--bare --restricted --strict-mcp-config --tools Read,Grep,Glob
+    --disallowedTools 'mcp__*' --permission-mode dontAsk --no-session-persistence --output-format json`,
+    `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and a `--settings` file that blocks reads outside the
+    working directory and denies system dirs and env files; one preamble that marks the data untrusted; the
+    key in the agent step's env alone; a verbatim leak screen; agent text shown as one code fence it cannot
+    close, never as live Markdown; caps as `REVIEW_*` env values at the top of the workflow; a cap or an API
+    error is a notice, while no result or a success without output is red (harness breakage).
+    A secret-holding agent on `workflow_dispatch` runs on the default branch only.
   - The agent step holds no write token. Posting the comment or opening the PR is a separate step with its
     own narrowly scoped token, and it treats agent output as text, never as commands.
   - An agent that writes (`agent-gc`) works on a branch, never pushes to `main`, never edits a protected path

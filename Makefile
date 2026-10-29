@@ -143,6 +143,10 @@ MUTATION_SINCE ?= 7 days ago
 mutation: ## Mutation score and surviving mutants (gremlins, Stryker) of the files changed since MUTATION_SINCE (7 days ago)
 	@scripts/harness/mutation.sh collect $(MUTATION_DIR) "$(MUTATION_SINCE)"
 	@scripts/harness/mutation.sh report $(MUTATION_DIR)/mutants.tsv "$(MUTATION_SINCE)"
+# Advisory (ADR 0019): drift.yml feeds this prompt to a read-only agent weekly; locally it is the dry run.
+.PHONY: review-prompt
+review-prompt: ## Prompt of a scheduled review, as drift.yml sends it: make review-prompt REVIEW=security|data-handling|modularity
+	@scripts/harness/scheduled-review.sh prompt "$(REVIEW)"
 
 ##@ Tools
 .PHONY: tools deps
