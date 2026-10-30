@@ -89,7 +89,10 @@ Claude Code hooks fail closed.
      them as leftovers, since `https://shop` is no URL.
    - **Template sync:** it also writes `HARNESS_UPSTREAM=https://github.com/aheumaier/harness-template` to
      `scripts/tool-versions.env`, the one line it neither renames nor reports: from here on the repo is a
-     product that [template sync](#keeping-up-with-the-template) compares with the template.
+     product that [template sync](#keeping-up-with-the-template) compares with the template. The same line
+     switches off the template-only adoption probe, which replays this README's section (b) that you rewrite:
+     `make adoption-probe` and CI's `adoption-probe` job pass without running, and `make harness-selftest` skips
+     its fixture ([ADR 0038](docs/adr/0038-readme-brownfield-adoption-is-probed.md)).
    - **Leftovers:** the tool lists every path and line that still holds `harness-template` or `aheumaier`
      in a form it doesn't rename (an SSH remote, a file name). Fix those by hand.
    - **Running it again:** a second run changes nothing. A value that contains a template token
@@ -101,7 +104,8 @@ Claude Code hooks fail closed.
    - Create the labels `harness-change-approved`, `breaking-change-approved` and `no-spec-needed`
      ([ci.md](docs/harness/ci.md)).
    - Dry-run [scripts/github-branch-protection.sh](scripts/github-branch-protection.sh), then apply it with
-     `CONFIRM=1` to require the seven status checks.
+     `CONFIRM=1` to require the seven status checks. One of them, `adoption-probe`, passes without running once
+     step 3's `make rename WRITE=1` has set `HARNESS_UPSTREAM`.
 5. **Constitution.** Run `/speckit-constitution` to adapt `.specify/memory/constitution.md` to the product.
    This file is protected, so it needs a human or `HARNESS_EDIT=1`.
 6. **First domain.** Follow the [new-domain skill](.claude/skills/new-domain/SKILL.md):
@@ -153,7 +157,8 @@ template changed since. Adopt by hand, in one reviewed harness PR:
 1. **Branch** in the existing repo, for example `harness/adopt`. Note the template commit you copy from, in the
    PR description, in an ADR and in `.harness-version`. `make rename` (step 4) sets `HARNESS_UPSTREAM` in
    `scripts/tool-versions.env` to the template's git URL; until then the value is empty, which means "this
-   repository is the template", so template sync stays silent.
+   repository is the template", so template sync stays silent; once it is set, the template-only adoption probe
+   (step 6) passes without running.
 2. **Build the hooks' parser first.** The template's Claude Code hooks fail closed while `.bin/harness` is
    missing. Every Bash call is then blocked, and without `HARNESS_EDIT=1` every edit too, except `make setup`
    and `make .bin/harness` ([hook-bootstrap.sh](scripts/harness/hook-bootstrap.sh)). The block message says to
@@ -391,8 +396,9 @@ template changed since. Adopt by hand, in one reviewed harness PR:
        its budget in `scripts/harness/budgets.txt`, and the brownfield repo's lines in
        `scripts/harness/protected-paths.txt` and `.github/CODEOWNERS`. These are synced harness files
        ([ADR 0026](docs/adr/0026-template-sync-is-a-drift-report.md)): a hand edit there is a merge by hand at
-       every template bump, and an upstream change merged later would bring the entry back. With the script
-       removed and declined, the CI job passes without running, so the required check stays green; entries
+       every template bump, and an upstream change merged later would bring the entry back. Since step 4's
+       `make rename WRITE=1` set `HARNESS_UPSTREAM`, the CI job passes without running, as it also does with the
+       script removed and declined, so the required check stays green; entries
        for missing paths are harmless, and `make adoption-probe`, which only that job calls, fails for want of
        its script. So far only the adoption probe switches off this way: dropping `make new-domain` (step
        5's table: its target, CI's `generator-probe` job and required check) still edits them by hand (tracker

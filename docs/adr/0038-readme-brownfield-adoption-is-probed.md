@@ -1,4 +1,4 @@
-# ADR 0038: README (b) brownfield adoption is probed by a required check (amends 0009)
+# ADR 0038: README (b) brownfield adoption is probed by a required check (amends 0009, 0026)
 
 Status: proposed · 2026-10-30
 
@@ -44,6 +44,22 @@ layout from one file ([ADR 0030](0030-one-layout-file-for-every-sensor.md), with
   line alone needs no label, while removing the script is a harness config change that does. Only the adoption
   probe works this way so far; step 5 and step 6 still hand-edit those files for `generator-probe` and
   `make new-domain` ([TD-136](../exec-plans/tech-debt-tracker.md)).
+- **Amendment (2026-10-30, exec plan 0003 final review): the adoption probe switches off in every product.**
+  README (a) step 3 has a new product rewrite README.md, section (b) included, while keeping the probe, its
+  fixture and the required check; the probe then reported every path as unnamed and the check was red on every
+  PR, with the escape documented only in the section the adopter deleted. The probe now reuses
+  [ADR 0026](0026-template-sync-is-a-drift-report.md)'s test of "this repo is the template": an empty
+  `HARNESS_UPSTREAM` in `scripts/tool-versions.env`. When it is set (`make rename WRITE=1` writes it, in (a)
+  step 3 and (b) step 4), `adoption-probe.sh` prints a notice and exits 0 before reading anything (silent
+  through `make adoption-probe`, as any passing sensor), CI's `adoption-probe` job skips with a notice before installing tools, and `selftest.sh` skips fixtures marked
+  `TEMPLATE_ONLY=1` (the probe's only fixture). The value is read from the file, never the environment, and
+  the file is protected config, so silencing the probe in the template needs the `harness-change-approved`
+  label. This is a third fixture skip class beside `SELFTEST_SKIP_DOCKER` and the stack's
+  ([ADR 0033](0033-stack-profiles.md)); it cannot hide a fixture in the template, where the value is empty.
+  The removed-and-declined skip above stays for adopted repos that drop the probe's files.
+  **Amends ADR 0026**, which defined `HARNESS_UPSTREAM` and the `# declined` line only for the sync report:
+  a non-empty `HARNESS_UPSTREAM` now also switches a required check off, and so does a `# declined` line for
+  `scripts/harness/adoption-probe.sh` once the script is removed.
 
 ## Consequences
 - Every harness PR pays a CI job of a few minutes, in parallel with `check-all`.

@@ -12,7 +12,9 @@
 #                 match), NEEDS_DOCKER=1 (optional), SCOPE=changed|full (optional HARNESS_SCOPE of the run,
 #                 default the caller's: a scoped sensor's fixture sets changed, so CI's full scope does not
 #                 bypass the affected set it tests), STACK=web|db|... (optional: the groups of layout.env's STACK
-#                 the fixture needs beyond its TARGET's, e.g. an apply.sh that edits apps/web)
+#                 the fixture needs beyond its TARGET's, e.g. an apply.sh that edits apps/web),
+#                 TEMPLATE_ONLY=1 (optional: skipped in a product, i.e. when scripts/tool-versions.env sets
+#                 HARNESS_UPSTREAM (ADR 0026), as its template-only sensor is, ADR 0038)
 # and asserts `make TARGET` fails, its output matches EXPECT, and run.sh printed RULE's remediation.
 # A fixture whose TARGET is in the Makefile's STACK_OFF (sensors of the groups STACK leaves out) or whose STACK
 # names such a group is skipped (ADR 0033); a STACK naming an unknown group is a bad fixture.conf, and a skip
@@ -33,6 +35,8 @@ STACK_OFF="$(printf 'selftest-stack-off:\n\t@echo %s\n' "\$(STACK_OFF)" |
   echo "harness-selftest: could not read STACK_OFF from the Makefile" >&2
   exit 2
 }
+# Empty in the template, the template's URL in a product (ADR 0026); from the file, as adoption-probe.sh reads it.
+upstream="$(sed -n 's/^HARNESS_UPSTREAM=//p' scripts/tool-versions.env | tail -n 1)"
 full_stack=1
 for group in $HARNESS_STACK_GROUPS; do harness_stack_has "$group" || full_stack=0; done
 
@@ -93,16 +97,16 @@ for name in "${names[@]}"; do
     fail=$((fail + 1))
     continue
   }
-  RULE='' TARGET='' EXPECT='' NEEDS_DOCKER=0 SCOPE='' STACK_NEEDS=''
+  RULE='' TARGET='' EXPECT='' NEEDS_DOCKER=0 SCOPE='' STACK_NEEDS='' TEMPLATE_ONLY=0
   # Parsed, not sourced: only these keys, values optionally single- or double-quoted.
   while IFS='=' read -r key val; do
     val="${val#[\'\"]}"
     val="${val%[\'\"]}"
-    case "$key" in RULE) RULE="$val" ;; TARGET) TARGET="$val" ;; EXPECT) EXPECT="$val" ;; NEEDS_DOCKER) NEEDS_DOCKER="$val" ;; SCOPE) SCOPE="$val" ;; STACK) STACK_NEEDS="$val" ;; esac
-  done < <(grep -E '^(RULE|TARGET|EXPECT|NEEDS_DOCKER|SCOPE|STACK)=' "$dir/fixture.conf")
+    case "$key" in RULE) RULE="$val" ;; TARGET) TARGET="$val" ;; EXPECT) EXPECT="$val" ;; NEEDS_DOCKER) NEEDS_DOCKER="$val" ;; SCOPE) SCOPE="$val" ;; STACK) STACK_NEEDS="$val" ;; TEMPLATE_ONLY) TEMPLATE_ONLY="$val" ;; esac
+  done < <(grep -E '^(RULE|TARGET|EXPECT|NEEDS_DOCKER|SCOPE|STACK|TEMPLATE_ONLY)=' "$dir/fixture.conf")
   bad=''
   [[ "$TARGET" =~ ^[a-z0-9-]+$ && -n "$RULE" && -n "$EXPECT" && "$SCOPE" =~ ^(changed|full)?$ &&
-    "$STACK_NEEDS" =~ ^([a-z]+(:[a-z]+)*)?$ ]] || bad=' '
+    "$STACK_NEEDS" =~ ^([a-z]+(:[a-z]+)*)?$ && "$TEMPLATE_ONLY" =~ ^[01]$ ]] || bad=' '
   for group in ${STACK_NEEDS//:/ }; do
     [[ " $HARNESS_STACK_GROUPS " == *" $group "* ]] || bad=" (STACK: unknown group $group; known: $HARNESS_STACK_GROUPS)"
   done
@@ -120,6 +124,11 @@ for name in "${names[@]}"; do
     continue
   elif [[ -n "$off" ]]; then
     echo "- $name: skipped (STACK=$STACK leaves out $off)"
+    skip=$((skip + 1))
+    continue
+  fi
+  if [[ "$TEMPLATE_ONLY" == 1 && -n "$upstream" ]]; then
+    echo "- $name: skipped (template-only: HARNESS_UPSTREAM is set, this repo is a product)"
     skip=$((skip + 1))
     continue
   fi

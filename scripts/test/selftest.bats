@@ -30,3 +30,24 @@ fixture() {
   has "- db-tag: skipped (STACK=go leaves out db)"
   has "harness-selftest: 0 passed, 0 failed, 2 skipped"
 }
+
+@test "a TEMPLATE_ONLY fixture is skipped in a product (HARNESS_UPSTREAM in the file), a bad TEMPLATE_ONLY is a bad fixture.conf" {
+  fixture probe layout-check
+  echo TEMPLATE_ONLY=1 >>"$F/probe/fixture.conf"
+  fixture typo layout-check
+  echo TEMPLATE_ONLY=yes >>"$F/typo/fixture.conf"
+  edit scripts/tool-versions.env 's|^HARNESS_UPSTREAM=.*|HARNESS_UPSTREAM=https://example.com/template|'
+  HARNESS_UPSTREAM='' run -1 --separate-stderr "$SANDBOX/scripts/harness/selftest.sh" probe typo
+  has "- probe: skipped (template-only: HARNESS_UPSTREAM is set, this repo is a product)"
+  grep -qF "✗ typo: bad fixture.conf" <<<"$stderr"
+  has "harness-selftest: 0 passed, 1 failed, 1 skipped"
+}
+
+@test "a TEMPLATE_ONLY fixture runs in the template (HARNESS_UPSTREAM empty in the file), whatever the environment says" {
+  fixture probe layout-check
+  echo TEMPLATE_ONLY=1 >>"$F/probe/fixture.conf"
+  edit scripts/tool-versions.env 's|^HARNESS_UPSTREAM=.*|HARNESS_UPSTREAM=|'
+  HARNESS_UPSTREAM=https://example.com/template run --separate-stderr "$SANDBOX/scripts/harness/selftest.sh" probe
+  [[ "$output" != *"- probe: skipped"* ]]
+  has "harness-selftest: 0 passed, 1 failed, 0 skipped"
+}

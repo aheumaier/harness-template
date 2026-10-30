@@ -25,7 +25,8 @@
 # skips them); harness and golangci-lint-custom are built in the copy. Prints nothing on success; on failure, the
 # step, its output and `README.md:<line>: step <n> … [harness-adoption-probe]`. Exit 1 on a finding, 2 when the
 # probe cannot run (no skeleton, an invalid skeleton layout.env, a drop.txt line naming a path step 3 does not
-# copy). ADOPTION_PROBE_KEEP=1 keeps the temp repo and prints its path.
+# copy). ADOPTION_PROBE_KEEP=1 keeps the temp repo and prints its path. In a product (HARNESS_UPSTREAM set in
+# scripts/tool-versions.env) it prints a notice and exits 0 before anything else.
 set -euo pipefail
 
 RULE=harness-adoption-probe
@@ -40,6 +41,15 @@ cannot() {
   [[ -z "$tmp" ]] || : >"$tmp/cannot"
   exit 2
 }
+
+# Template-only (ADR 0038): a non-empty HARNESS_UPSTREAM means this repo is a product (ADR 0026; make rename
+# WRITE=1 writes it), whose README need not keep (b). Read from the file only, which is protected: a value in the
+# environment (CI's setup action exports the key) never switches this required check off.
+[[ -f "$ROOT/scripts/tool-versions.env" ]] || cannot "scripts/tool-versions.env is missing (copy it from the template)"
+if [[ -n "$(sed -n 's/^HARNESS_UPSTREAM=//p' "$ROOT/scripts/tool-versions.env" | tail -n 1)" ]]; then
+  echo "adoption-probe: HARNESS_UPSTREAM is set in scripts/tool-versions.env: this repo is a product and the probe is template-only (ADR 0038); nothing to run"
+  exit 0
+fi
 # readme_step_line <n>: the line of README (b)'s step n, or of the (b) heading.
 readme_step_line() {
   N="$1" awk '/^## \(b\) Brownfield project/ { b = NR } b && $0 ~ "^" ENVIRON["N"] "\\. \\*\\*" { print NR; f = 1; exit }

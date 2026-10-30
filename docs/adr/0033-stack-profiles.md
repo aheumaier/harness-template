@@ -1,4 +1,4 @@
-# ADR 0033: Stack profiles select the sensor groups a product has (amends 0030, 0009)
+# ADR 0033: Stack profiles select the sensor groups a product has (amends 0030, 0009, 0023)
 
 Status: proposed · 2026-10-29
 
