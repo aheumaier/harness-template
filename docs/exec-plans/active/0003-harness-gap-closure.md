@@ -1,6 +1,6 @@
 # 0003 — Close the harness-engineering gaps
 
-Status: proposed · Owner: @aheumaier · Started: 2026-10-28
+Status: implemented, awaiting review · Owner: @aheumaier · Started: 2026-10-28
 
 ## Goal
 
@@ -117,7 +117,7 @@ They comment, never fail (Phase 3, ADR).
 | 2 | Behaviour harness (G2) | NFR-B1 and NFR-B2 met; coverage reported per package; weekly mutation score in the drift issue | implemented |
 | 3 | Inferential sensors and garbage collection (G3, G4, G8, G11) | reviewer comments on every PR (advisory); scheduled reviews and `agent-gc` open issues/PRs; QUALITY.md has a staleness check; orphan scripts, dead Go code and clones fail `check-all`; `reuse-reviewer` exists | implemented (exit pending: ADR 0019 accepted, first PR comment and drift run observed) |
 | 4 | Taste lints and harness lifecycle (G5, G7, G9, G10, G12) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue; `adoption-probe` green on a root-module fixture; reviewer catches seen twice are earned rules; sensor slices get an evasion review | partial: ADR 0024 (core belief 3) not yet accepted |
-| 5 | Spec-to-test and cross-repo feedback (G13, G14, G15, G16) | every acceptance scenario in `specs/` has a test or a reasoned exemption, checked in `check-all`; upstream spec drift reported weekly on the first adopter; PR template has an Assumptions section the reviewer checks; `test-writer` trial result recorded | partial: upstream drift not yet run on a first adopter (TD-115) |
+| 5 | Spec-to-test and cross-repo feedback (G13, G14, G15, G16) | every acceptance scenario in `specs/` has a test or a reasoned exemption, checked in `make check`; upstream spec drift reported weekly on the first adopter; PR template has an Assumptions section the reviewer checks; `test-writer` trial result recorded | partial: upstream drift not yet run on a first adopter (TD-115) |
 
 ## Progress
 
@@ -1471,3 +1471,21 @@ gates for contract, migration and harness changes. Four are not.
   gate assessed the twelve committed Phase 4 slices; P4.13 (G17) was added outside this run and is not
   part of it. State `partial`: the exit needs ADR 0024 accepted, which is a human step. After the gate:
   `check` green, `harness-selftest` 77/77, `make adoption-probe` green.
+- 2026-10-30: Finish (§6, 6f885ad). §6.1 on a133fad: `check` green, `harness-selftest` 77/77, lint, links and
+  orphans green, `check-all` red only on harness-integrity, int/obs/e2e green, `harness-determinism` 0
+  differences (NFR-R1) but 287.5 s against its 120 s NFR-H4 budget, measured beside two reviewers and a lane's
+  `make setup`; rerun on the final HEAD with no lane running (hand-off). §6.2: `code-reviewer` and
+  `architecture-reviewer` on `main...HEAD`, both CHANGES. The FIN lane closed the blocking one: a greenfield
+  product rewrites README.md, losing (b), which turned the required `adoption-probe` job, the
+  `harness-adoption-stale-layout` fixture and `adoption-probe.bats` red; a non-empty `HARNESS_UPSTREAM` in
+  `tool-versions.env` (ADR 0026, read from the file only) now switches all three off (ADR 0038 amended, also
+  amends 0026; fixture.conf key `TEMPLATE_ONLY`). Also: the ADR README states that proposed ADRs are amended
+  in place and accepted ones superseded, marks 0034 unused, ADR 0033 names what it amends; a rules.md
+  blank line; this plan's Phase 5 exit says `make check` (specs-tested runs there). FIN's own review round
+  found that `adoption-probe.bats` still read the real `tool-versions.env` (a product's `make check` red);
+  fixed in the retry (§5d) and checked on a simulated product copy. Not fixed: AGENTS.md golden principle 5
+  still lists `.github/**` as protected (stale since ADR 0035; AGENTS.md is not the loop's to edit, TD-137,
+  wording in the hand-off), TD-138..141. The PR cuts in the hand-off follow the shared files the review
+  named (layout.go, testfile.go, protectedPaths, printFinding, ci-timings.sh, P4.10's edits to other
+  slices' bats). Every ADR left proposed. After FIN: `check` green, `harness-selftest` 77/77,
+  `make adoption-probe` green.
