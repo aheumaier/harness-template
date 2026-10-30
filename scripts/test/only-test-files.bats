@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# .claude/hooks/only-test-files.sh: the test-writer subagent may write test files inside the repo and nothing
-# else (ADR 0039). The predicate itself is table-tested in apps/api/tools/harness/testfile_test.go.
+# .claude/hooks/only-test-files.sh: the test-writer subagent may write the product test files specs-tested reads
+# and nothing else (ADR 0039). The predicate itself is table-tested in apps/api/tools/harness/testfile_test.go.
 bats_require_minimum_version 1.5.0
 load helpers
 
@@ -18,6 +18,30 @@ write() {
   run -0 write apps/api/internal/x/model/x_test.go MultiEdit
 }
 
+@test "allows exactly the product test files of testdata/test-files.txt, as specs-tested counts them" {
+  local p want n=0
+  while read -r p want; do
+    [[ -z "$p" || "$p" == \#* ]] && continue
+    n=$((n + 1))
+    if [[ "$want" == allow ]]; then
+      run -0 write "$p"
+    else
+      run -2 write "$p"
+      has "only-test-files: blocked: $p is "
+    fi
+  done <"$REPO/apps/api/tools/harness/testdata/test-files.txt"
+  ((n > 0))
+}
+
+@test "names the test file forms and why a test file is refused" {
+  run -2 write packages/domain/src/a.ts
+  has 'is not a test file (*_test.go, or *.test.*, *.spec.* or *.e2e.* ending in .js, .ts, .jsx or .tsx'
+  run -2 write apps/api/internal/x/store/q_test.go
+  has 'is generated code (GENERATED_GLOBS:'
+  run -2 write apps/api/tools/harness/a_test.go
+  has 'is a harness file (apps/api/tools/harness/* in scripts/harness/protected-paths.txt)'
+}
+
 @test "blocks a non-test file and names it" {
   for f in apps/api/internal/x/model/x.go packages/domain/src/a.ts apps/api/internal/x/model/x_test.go.orig; do
     run -2 write "$f"
@@ -25,10 +49,19 @@ write() {
   done
 }
 
-@test "blocks a path outside the repo" {
-  for f in ../x_test.go "$BATS_TEST_TMPDIR/x_test.go" apps/../../x_test.go; do
+@test "blocks a path outside the repo, and any path with a .. part" {
+  run -2 write "$BATS_TEST_TMPDIR/x_test.go"
+  has 'is outside the repository'
+  for f in ../x_test.go apps/../../x_test.go apps/api/internal/x/model/../model/x_test.go; do
     run -2 write "$f"
-    has 'is outside the repository'
+    has "$f has a \`..\` part, which can lead outside the repository"
+  done
+}
+
+@test "blocks a case variant of an excluded path: on a case-insensitive disk it is that path" {
+  for f in apps/api/tools/Harness/zz_test.go apps/api/internal/x/Store/q_test.go packages/API-client/src/a.test.ts; do
+    run -2 write "$f"
+    has "only-test-files: blocked: $f is "
   done
 }
 

@@ -13,9 +13,10 @@ package main
 // one, or the spec none at all: no story, a story heading without a number, below level 3 or numbered twice, a
 // story without a scenario list, and an Acceptance Scenarios paragraph outside a story.
 //
-// Tests: git-known Go and JS/TS test files (`*_test.go`, `*.test.*`, `*.spec.*`, `*.e2e.*`) under
-// PRODUCT_GLOBS and WEB_GLOBS of scripts/harness/layout.env, minus API_CLIENT_DIR, GENERATED_GLOBS and the
-// harness files of protected-paths.txt, so the harness's own tests and fixtures cannot satisfy an id. A test
+// Tests: the git-known files productTests allows (testfile.go, the predicate `harness test-file` guards the
+// test-writer's writes with): Go and JS/TS test files (testFileRE) under PRODUCT_GLOBS and WEB_GLOBS of
+// scripts/harness/layout.env, minus node_modules/, fixtures/, API_CLIENT_DIR, GENERATED_GLOBS and the harness
+// files of protected-paths.txt, so the harness's own tests and fixtures cannot satisfy an id. A test
 // names an id when the id appears in it as a whole token (no letter, digit, `_`, `/`, `.` or `-` next to it),
 // in a title, a string or a `// spec: <id>` comment; test syntax is not parsed. A line that also skips or
 // defers its test (`.todo(`, `.skip(`, `.fixme(`, `xit(`, `xtest(`, `xdescribe(`, `t.Skip`) names nothing.
@@ -31,7 +32,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -46,7 +46,6 @@ const scenarioRule = "specs-scenarios-tested"
 
 var (
 	specDirRE       = regexp.MustCompile(`^specs/([0-9]{3,})-[a-z0-9]+(-[a-z0-9]+)*/spec\.md$`)
-	testFileRE      = regexp.MustCompile(`(_test\.go|\.(test|spec|e2e)\.[cm]?[jt]sx?)$`)
 	scenarioIDRE    = regexp.MustCompile(`[0-9]{3,}/US[0-9]+-AS[0-9]+`)
 	skippedTestRE   = regexp.MustCompile(`\.(todo|skip|fixme)\(|\bx(it|test|describe)\(|\bt\.Skip`)
 	storyRE         = regexp.MustCompile(`(?i)^user story\b`)
@@ -66,7 +65,7 @@ type scenario struct {
 
 // scenariosTested prints one line per finding to stdout and reports whether there was any. root is the repo.
 func scenariosTested(root string, stdout io.Writer) (bool, error) {
-	l, err := loadLayout(root)
+	pt, err := loadProductTests(root)
 	if err != nil {
 		return false, err
 	}
@@ -100,7 +99,7 @@ func scenariosTested(root string, stdout io.Writer) (bool, error) {
 			return false, fmt.Errorf("%s: %w", spec, err)
 		}
 		if named == nil && len(scenarios) > 0 {
-			if named, err = testedIDs(root, l); err != nil {
+			if named, err = testedIDs(root, pt); err != nil {
 				return false, err
 			}
 		}
@@ -138,33 +137,14 @@ func untested(s scenario, named map[string]bool) (finding, bool) {
 }
 
 // testedIDs returns the scenario ids named in the product's test files.
-func testedIDs(root string, l layout) (map[string]bool, error) {
-	protected, err := protectedPaths(filepath.Join(root, "scripts/harness/protected-paths.txt"))
-	if err != nil {
-		return nil, err
-	}
-	var pathspecs []string
-	add := func(prefix string, globs ...string) {
-		for _, g := range globs {
-			if g != "" { // an empty pathspec would match the whole repo
-				pathspecs = append(pathspecs, prefix+g)
-			}
-		}
-	}
-	add("", l.list("PRODUCT_GLOBS")...)
-	add("", l.list("WEB_GLOBS")...)
-	add(":(exclude)", l.get("API_CLIENT_DIR"))
-	add(":(exclude)", l.list("GENERATED_GLOBS")...)
-	for _, p := range protected {
-		add(":(exclude)", p.pattern)
-	}
-	files, err := gitFiles(root, pathspecs...)
+func testedIDs(root string, pt productTests) (map[string]bool, error) {
+	files, err := gitFiles(root, testFilePathspecs...)
 	if err != nil {
 		return nil, err
 	}
 	named := map[string]bool{}
 	for _, f := range files {
-		if !testFileRE.MatchString(path.Base(f)) {
+		if pt.why(f) != "" {
 			continue
 		}
 		regular, err := isRegular(root, f)

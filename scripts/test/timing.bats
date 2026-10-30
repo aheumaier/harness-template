@@ -26,7 +26,7 @@ payload() {
   for h in protect-harness guard-bash only-make-check; do
     run -0 "$SANDBOX/.claude/hooks/$h.sh" <"$PAYLOAD"
   done
-  run -0 "$SANDBOX/.claude/hooks/only-test-files.sh" <<<"{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$SANDBOX/a_test.go\"}}"
+  run -0 "$SANDBOX/.claude/hooks/only-test-files.sh" <<<"{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$SANDBOX/apps/api/internal/x/model/a_test.go\"}}"
   run -0 "$SANDBOX/.claude/hooks/fast-check.sh" budgets.txt
   run cat "$TIMINGS"
   for h in protect-harness guard-bash only-make-check only-test-files fast-check; do

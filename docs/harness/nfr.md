@@ -26,7 +26,7 @@ you re-measure.
 
 | Id | Requirement | Target | Today | Measured by | On violation |
 |----|-------------|--------|-------|-------------|--------------|
-| NFR-H1 | Each PreToolUse hook, per call | ≤ 50 ms | 29 ms (protect-harness, Bash), 34 ms (Edit), 26 ms (guard-bash), 25 ms (only-make-check); median of 9, timing included (2026-10-28, step 8, load avg 11–17) | hook wrapper timing | warn; alert |
+| NFR-H1 | Each PreToolUse hook, per call | ≤ 50 ms | 29 ms (protect-harness, Bash), 34 ms (Edit), 26 ms (guard-bash), 25 ms (only-make-check); median of 9, timing included (2026-10-28, step 8, load avg 11–17); 24 ms (only-test-files, allowed and blocked Write; median of 9, timing included; 2026-10-30, plan 0003 P5 gate, load avg 3–4) | hook wrapper timing | warn; alert |
 | NFR-H2 | fast-check (PostToolUse), per edited file | ≤ 1 s | `.md` 0.08 s, `.sh` 0.14 s, `.go` 0.33 s, `.tsx` in apps/web 0.90 s (was 1.05 s, over budget; 2026-10-28, step 8, load avg 11–17) | fast-check timing | warn; alert |
 | NFR-H3 | `make check`, change without shell or harness files | ≤ 10 s | tsx edit 2.1 s; Go edit 11.2 s, **over budget**: `arch-go` is not scoped (plan 0002, A4) and go-arch-lint took 9.4 s (load avg 11–17; 2.2 s at P11) (2026-10-28, step 8) | `run.sh` + make wall time | warn; alert |
 | NFR-H4 | `make check`, any change | ≤ 60 s | 52 s (shell change, `bats` 49 s; load avg 11–17; 36 s at P11) (2026-10-28, step 8) | same | warn; alert |

@@ -105,6 +105,12 @@ those two lines into a decision the Phase 3 slices can build on.
   rule it evades, with a fixture or near-miss case. A second acceptance of the same `<rule-id>:<class>`
   means that sensor fixes the class as a whole or declares it a blind spot in rules.md. Its technique
   classes are never dropped from the prompt, since they apply to every new sensor.
+- **`test-writer` (plan 0003 P5.4) is a builder, not a sensor.** It writes the unit tests of a spec before
+  the implementation exists ([ADR 0039](0039-tests-are-written-apart-from-the-implementation.md)), so it gets
+  no rules.md entry and no ratchet. Unlike the reviewers it writes files, and that confinement is computational, not prose:
+  `.claude/hooks/only-test-files.sh` lets it write only the product test files `specs-tested` reads, and
+  `only-make-check.sh` limits its shell. What it adds to the sensors is code-reviewer check 7, advisory like
+  the rest: an assertion removed or loosened since its `Test-Writer:` commit.
 
 ## Consequences
 - P3.2, P3.3, P3.4 and P3.8 build on this ADR. `agent-gc` stays off until it is accepted (plan 0003, P3.4).

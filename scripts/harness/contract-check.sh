@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Breaking-change check of the OpenAPI contract (SPEC in scripts/harness/layout.env) against the merge base with BASE_REF (merge-base.sh).
-# Exit 0 when the spec is new or unchanged in a compatible way; exit 1 with oasdiff's findings otherwise.
+# Exit 0 when the spec is new or unchanged in a compatible way; exit 1 with oasdiff's findings when it breaks
+# clients (oasdiff exit 1); exit 2 when oasdiff cannot compare the two (any other exit, e.g. 102: cannot load).
 # BREAKING_CHANGE_APPROVED=1 (CI: the `breaking-change-approved` PR label, set by a human) still prints the
 # findings but exits 0. Used by `make contract-check` (check-all) and .github/workflows/contract-gate.yml.
 # The spec is read from HARNESS_ROOT (default: this repo), so CI can judge a PR with the base branch's script.
@@ -34,7 +35,12 @@ base_spec="$tmp.yaml" # oasdiff picks the parser by extension
 trap 'rm -f "$tmp" "$base_spec"' EXIT
 git show "$base_commit:$SPEC" >"$base_spec"
 
-if ! oasdiff breaking "$base_spec" "$SPEC" --fail-on ERR --format text; then
+status=0
+oasdiff breaking "$base_spec" "$SPEC" --fail-on ERR --format text || status=$?
+if ((status > 1)); then # not a verdict, so the human label cannot approve it
+  echo "[api-no-breaking-change] cannot compare $SPEC with $BASE_REF ($base_commit): oasdiff exit $status (above). Make both load with oasdiff breaking, then rerun." >&2
+  exit 2
+elif ((status == 1)); then
   if ((${#CONTRACT_CONSUMERS[@]} > 0)); then
     echo "[api-no-breaking-change] repos that vendor this contract (CONTRACT_CONSUMERS), which the approval must cover: ${CONTRACT_CONSUMERS[*]}" >&2
   fi

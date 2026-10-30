@@ -22,10 +22,11 @@ commit() {
   git -C "$1" rev-parse HEAD
 }
 
-# vendor <entry...>: sets UPSTREAM_SPECS in the sandbox's layout.env.
+# vendor <entry...>: sets UPSTREAM_SPECS in the sandbox's layout.env, whether or not the optional key is there.
 vendor() {
   local IFS=:
-  edit scripts/harness/layout.env "s|^UPSTREAM_SPECS=.*|UPSTREAM_SPECS=$*|"
+  edit scripts/harness/layout.env '/^UPSTREAM_SPECS=/d'
+  echo "UPSTREAM_SPECS=$*" >>"$SANDBOX/scripts/harness/layout.env"
 }
 
 drift() { run "$@" "$SANDBOX/scripts/harness/upstream-drift.sh"; }

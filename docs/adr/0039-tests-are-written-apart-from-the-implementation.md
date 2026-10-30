@@ -1,6 +1,6 @@
 # ADR 0039: Tests are written apart from the implementation, from the spec (amends 0019)
 
-Status: proposed · 2026-10-30
+Status: proposed · 2026-10-30 · amends [ADR 0019](0019-inferential-sensors-are-advisory.md)
 
 ## Context
 Gap G16 of exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`, slice P5.4), from Nandyala and
@@ -70,11 +70,17 @@ from the tests without a mutant.
 **Relationship to ADR 0019 (amended).** 0019 makes the inferential sensors advisory. `test-writer` is not one:
 it is a builder, so it gets no rules.md entry, and check 7 is one more advisory check of the existing
 code-reviewer sensor. The agent's write guard is computational: `.claude/hooks/only-test-files.sh` on
-`Edit|Write|MultiEdit|NotebookEdit` asks `harness test-file` whether the path is a test file inside the repo
-(the predicate `specs-tested` uses), times itself and fails closed like the other hooks; its shell is limited
-by `only-make-check.sh`. It relies on the session's `protect-harness` hook (`.claude/settings.json`) still
-firing for subagent calls, which keeps it out of harness test files such as `apps/api/tools/harness/*_test.go`
-and `scripts/harness/fixtures/`.
+`Edit|Write|MultiEdit|NotebookEdit` asks `harness test-file` whether the path is a product test file, times
+itself and fails closed like the other hooks; its shell is limited by `only-make-check.sh`. The predicate is
+the one `specs-tested` reads tests with (`productTests` in `apps/api/tools/harness/testfile.go`, held to
+both by the shared vectors in `testdata/test-files.txt`): a test file name under `PRODUCT_GLOBS` or
+`WEB_GLOBS`, outside `node_modules/`, `fixtures/`, `API_CLIENT_DIR`, `GENERATED_GLOBS` and the harness files
+of `scripts/harness/protected-paths.txt`. So the guard itself keeps the agent out of harness tests such as
+`apps/api/tools/harness/*_test.go`, without relying on the session's `protect-harness` hook firing for
+subagent calls. The exclusions ignore case, since on a case-insensitive disk `tools/Harness/` is
+`tools/harness/`, and a path with a `..` part is refused before anything resolves it. It is wider than the
+scope above (it allows `api` package tests and e2e files too); the agent's prompt narrows it. It reads no git
+state, so a git-ignored test file passes it although `specs-tested` never sees one (TD-128).
 
 ## Alternatives considered
 - **The test-quality guidance in `apps/api/internal/AGENTS.md` and code-reviewer check 4, for every builder,

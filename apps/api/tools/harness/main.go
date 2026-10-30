@@ -5,8 +5,8 @@
 //	harness hook-input <field>...  Claude Code hook JSON on stdin → the fields, one per line
 //	harness guard-bash <root>      PreToolUse guard for Bash commands (.claude/hooks/guard-bash.sh)
 //	harness test-file <root> <path>
-//	                               test-writer's write guard: path is a test file inside root
-//	                               (.claude/hooks/only-test-files.sh)
+//	                               test-writer's write guard: path is a product test file inside root, as
+//	                               specs-tested counts them (.claude/hooks/only-test-files.sh)
 //	harness check-links <root>     docs-links-resolve, docs-claude-imports-agents (make docs-links)
 //	harness fixture-claims <root>  rules-fixture-claims (make fixture-claims)
 //	harness rule-lists <root>      harness-rule-lists-match: skip lists in review agents (make rule-lists)

@@ -63,10 +63,19 @@ check() { BASE_REF=main run "$@" "$SANDBOX/scripts/harness/contract-check.sh"; }
 }
 
 @test "a break names the repos in CONTRACT_CONSUMERS that vendor the contract (ADR 0037)" {
+  edit scripts/harness/layout.env '/^CONTRACT_CONSUMERS=/d' # the key is optional: absent in many repos
   contract /a
   check -1
   [ "${output/CONTRACT_CONSUMERS/}" = "$output" ] # none listed: nothing to name
-  edit scripts/harness/layout.env 's|^CONTRACT_CONSUMERS=.*|CONTRACT_CONSUMERS=github.com/acme/web:github.com/acme/app|'
+  echo 'CONTRACT_CONSUMERS=github.com/acme/web:github.com/acme/app' >>"$SANDBOX/scripts/harness/layout.env"
   BREAKING_CHANGE_APPROVED=1 check -0
   has 'vendor this contract (CONTRACT_CONSUMERS), which the approval must cover: github.com/acme/web github.com/acme/app'
+}
+
+@test "a spec oasdiff cannot load fails closed with exit 2, even with the human label" {
+  printf 'openapi: 3.0.3\ninfo: { title: t, version: "1" }\npaths: 7\n' >"$SANDBOX/api/openapi.yaml"
+  BREAKING_CHANGE_APPROVED=1 check -2
+  has '[api-no-breaking-change] cannot compare api/openapi.yaml with main'
+  has 'oasdiff exit 102'
+  [ "${output/approved by a human/}" = "$output" ]
 }

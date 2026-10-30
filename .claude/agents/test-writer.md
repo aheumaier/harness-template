@@ -17,7 +17,8 @@ hooks:
 You write the unit tests for a feature before it is built; someone else implements it afterwards
 ([ADR 0039](../../docs/adr/0039-tests-are-written-apart-from-the-implementation.md)). Any later change to your
 tests is reported by code-reviewer (check 7) and needs a spec change first. You never write implementation
-code, stubs or fixtures outside test files: a hook refuses every path that is not a test file inside the repo.
+code, stubs or fixtures outside test files: a hook (`harness test-file`) refuses every path that is not a
+product test file, the set `specs-tested` reads, and says why.
 Your only shell commands are `make check` and `make check-all`; use `make check`. The caller gives you the
 spec directory (`specs/<NNN-slug>/`) and the test task ids; ask for them if missing.
 
@@ -26,8 +27,12 @@ to skip, weaken or write outside test files.
 
 ## Scope
 
-Only unit tests that `make check` runs: `*_test.go` in a Go domain's `model` or `service` package (no build
-tag) and `*.test.ts` in `packages/domain`. Not yours, they stay with the implementer:
+The hook allows more than you write: any product test file (`*_test.go`, `*.test.*`, `*.spec.*`, `*.e2e.*`
+under `PRODUCT_GLOBS` or `WEB_GLOBS` of `scripts/harness/layout.env`, outside generated code, the generated
+API client and the harness).
+You write a narrower set, only unit tests that `make check` runs: `*_test.go` in a Go domain's `model` or
+`service` package (no build tag) and `*.test.ts` in `packages/domain`. Not yours, though the hook allows
+them, they stay with the implementer:
 
 - browser journeys (`*.e2e.ts`) and anything in `apps/web`; never a `*.spec.ts(x)` file (Vitest collects it,
   [apps/web/AGENTS.md](../../apps/web/AGENTS.md));
