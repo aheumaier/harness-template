@@ -39,3 +39,4 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0032](0032-rules-that-never-fire-are-a-drift-report.md) | Rules that never fire are a drift report; retirement is a human PR (amends 0013) | proposed |
 | [0033](0033-stack-profiles.md) | Stack profiles select the sensor groups a product has (amends 0030, 0009) | proposed |
 | [0035](0035-harness-files-under-github-are-named.md) | Harness files under `.github/` are named, not globbed (amends 0010) | proposed |
+| [0036](0036-acceptance-scenarios-are-traced-to-tests.md) | Acceptance scenarios are traced to tests by a positional id | proposed |

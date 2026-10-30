@@ -103,7 +103,7 @@ db-reset: ## Drop this worktree's database volume (and the obs stack), recreate,
 
 check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=60s any: NFR-H3/H4): format, lint, arch, unit tests, secrets, gen-check
 	@$(if $(STACK_OFF),echo "STACK=$(STACK) leaves out: $(sort $(STACK_OFF)) (ADR 0033)" >&2,true)
-	@$(MAKE) -k -j4 $(call stacked,layout-check lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned fixture-claims rule-lists approved-check lint-web arch-web typecheck-web test-web)
+	@$(MAKE) -k -j4 $(call stacked,layout-check lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned fixture-claims rule-lists approved-check specs-tested lint-web arch-web typecheck-web test-web)
 	@$(MAKE) gen-check
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
@@ -352,7 +352,7 @@ vuln-deps: $(GCL) ## Known vulns in pnpm-lock.yaml and every go.mod (fetches the
 	@$(RUN) trivy-vuln deps-no-known-vulns -- scripts/harness/trivy.sh vuln
 
 ##@ CI and harness integrity (.github/, protected harness files)
-.PHONY: lint-ci layout-check harness-integrity orphans harness-sync-check commits specs
+.PHONY: lint-ci layout-check harness-integrity orphans harness-sync-check commits specs specs-tested
 lint-ci: ## actionlint (+ shellcheck on run: blocks) on .github/workflows
 	@$(RUN) actionlint ci-workflows-valid -- actionlint -no-color
 
@@ -377,6 +377,12 @@ commits: ## Commit subjects (and PR_TITLE) since BASE_REF follow Conventional Co
 
 specs: ## spec-kit specs/ are well formed; feat changes to PRODUCT_GLOBS (layout.env) come with a spec (vs BASE_REF)
 	@$(RUN) specs specs-structure,specs-required-for-features -- env BASE_REF="$(BASE_REF)" scripts/harness/check-specs.sh
+
+# In make check, runs only when specs/, a test file or another harness file changed (rules.md#harness-scope).
+specs-tested: $(HARNESS) ## Every acceptance scenario in specs/ is named by a Go or TS test, or marked (untested: <reason>)
+	@if scripts/harness/unchanged.sh 'specs/*' '*_test.go' '*.test.*' '*.spec.*' '*.e2e.*'; then \
+	  echo "$@: skipped, neither specs/ nor a test file changed (make check-all runs it)"; \
+	else $(RUN) specs-tested specs-scenarios-tested -- $(HARNESS) specs-tested .; fi
 
 ##@ Docs
 .PHONY: docs-links references-pinned docs-quality-shape docs-quality fixture-claims rule-lists
