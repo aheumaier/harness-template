@@ -242,8 +242,7 @@ PR; **–** needs none.
   `harness-reads-layout`; TD-103
 - [x] P4.12 — 8445e4d — done — `evasion-reviewer` agent for sensor slices; ADR 0019 amended, TD-107..110;
   the diff-only re-review and §5c wiring are hand-off proposals
-- [ ] P5.1 — H — `specs-scenarios-tested`: each acceptance scenario has a test that names its id, or an exemption
-  with a reason
+- [x] P5.1 — 9f6771d — done — `specs-scenarios-tested` (ADR 0036 proposed); TD-111..113
 - [ ] P5.2 — H — upstream specs and contract consumers in `layout.env`; weekly upstream drift via oasdiff;
   consumers named in `api-no-breaking-change`'s remediation
 - [ ] P5.3 — H — PR template "Assumptions" section; code-reviewer flags guessed defaults missing from it
@@ -1358,3 +1357,12 @@ gates for contract, migration and harness changes. Four are not.
   retry. Rebased onto 749e76a (tracker rows only). Lane `check` and `harness-selftest` green, `check-all`
   red only on harness-integrity, `test-obs` failed once under three-lane load and passed on rerun. Noticed: references.go:73 could use printFinding; protect-harness does
   not fire in lane worktrees (hand-off).
+- 2026-10-30: P5.1 done (9f6771d). `harness specs-tested` traces each acceptance scenario to a test naming
+  `NNN/US<n>-AS<m>` or an `(untested: <reason>)` exemption; goldmark parse, fails closed on a spec without a
+  recognised story; web tests count except the API client and generated code; placeholder tests and reasons
+  rejected; `protectedPaths` extracted from integritycheck.go. Review: code-reviewer CHANGES with 2 blocking
+  (a spec with no story passed; `sc.Err` unchecked) plus medium and low items; reuse 6 items: R1 goldmark and
+  R2 protectedPaths accepted, R5 not applied (rename.go needs Perm), R3 rejected (TD-113, one gated make
+  macro), R4 rejected (P4.11's `printFinding` landed after; unify as a follow-up), R6 noted; all fixed in one
+  retry. Rebased onto ed1d5c7 (three one-line list conflicts: ARCHITECTURE.md, Makefile `check`, main.go).
+  Lane `check` green, `harness-selftest` 75/75, `check-all` red only on harness-integrity, int/obs/e2e green.
