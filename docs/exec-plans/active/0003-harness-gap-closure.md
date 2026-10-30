@@ -44,6 +44,7 @@ From a comparison on 2026-10-28 (`perf/harness-nfr` @ 53ec497). ✅ present · �
 | G14 | Contract changes judged across repos: the upstream specs a product consumes, and the consumers of its own contract | Thoughtworks (multi-repo impact analysis and confirmation gate) | `api-no-breaking-change` compares the contract with its own merge base only; vendored upstream specs (first adopter: 7ed-emergencies `api/upstream`) and consumers are unknown to the harness | ❌ |
 | G15 | Defaults an agent picked without asking are recorded and reviewable | Thoughtworks (explicit defaults instead of guesses) | loop slices record Decisions; other PRs have no place for them; `speckit-clarify` covers specs only | 🟡 |
 | G16 | Tests written apart from the implementation, so the implementer cannot fit the test to its code | Thoughtworks (RED test agent, GREEN implementer agent) | the same agent writes test and code; weekly mutation testing (P2.6) finds weak tests only afterwards | 🟡 |
+| G17 | Leftover runtime: per-worktree compose stacks outlive their worktree or session | CLAUDE.md "leave no loose ends"; OpenAI (garbage collection) | `make down` exists but nothing calls it; lane close (loop prompt §5g) tears down by prose only; on 2026-10-29 five `harness-*` Postgres stacks ran, one from a scratchpad copy that was no git worktree | ❌ |
 | — | Enforced merge gates | Fowler (human input where it matters) | out of scope: [TD-2](../tech-debt-tracker.md), blocked on the GitHub plan | — |
 
 **Doc drift found** (Phase 0 fixes it and adds the sensor that would have caught the first item):
@@ -116,7 +117,7 @@ They comment, never fail (Phase 3, ADR).
 | 1 | Runtime legibility (G1) | NFR-O1 met: logs by request ID and a p95 latency, per worktree, via `make` | implemented |
 | 2 | Behaviour harness (G2) | NFR-B1 and NFR-B2 met; coverage reported per package; weekly mutation score in the drift issue | implemented |
 | 3 | Inferential sensors and garbage collection (G3, G4, G8, G11) | reviewer comments on every PR (advisory); scheduled reviews and `agent-gc` open issues/PRs; QUALITY.md has a staleness check; orphan scripts, dead Go code and clones fail `check-all`; `reuse-reviewer` exists | implemented (exit pending: ADR 0019 accepted, first PR comment and drift run observed) |
-| 4 | Taste lints and harness lifecycle (G5, G7, G9, G10, G12) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue; `adoption-probe` green on a root-module fixture; reviewer catches seen twice are earned rules; sensor slices get an evasion review | partial: ADR 0024 (core belief 3) not yet accepted |
+| 4 | Taste lints and harness lifecycle (G5, G7, G9, G10, G12, G17) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue; `adoption-probe` green on a root-module fixture; reviewer catches seen twice are earned rules; sensor slices get an evasion review; stacks without a live worktree are listed and prunable | partial: ADR 0024 (core belief 3) not yet accepted |
 | 5 | Spec-to-test and cross-repo feedback (G13, G14, G15, G16) | every acceptance scenario in `specs/` has a test or a reasoned exemption, checked in `make check`; upstream spec drift reported weekly on the first adopter; PR template has an Assumptions section the reviewer checks; `test-writer` trial result recorded | partial: upstream drift not yet run on a first adopter (TD-115) |
 
 ## Progress
@@ -243,6 +244,8 @@ PR; **–** needs none.
   `harness-reads-layout`; TD-103
 - [x] P4.12 — 8445e4d — done — `evasion-reviewer` agent for sensor slices; ADR 0019 amended, TD-107..110;
   the diff-only re-review and §5c wiring are hand-off proposals
+- [ ] P4.13 — H — `make stacks` lists `harness-*` compose projects whose working dir is no live git worktree;
+  `make stacks-prune` removes them; `make setup` prints the count
 - [x] P5.1 — 9f6771d — done — `specs-scenarios-tested` (ADR 0036 proposed); TD-111..113
 - [x] P5.2 — cfce60f — done — `UPSTREAM_SPECS`/`CONTRACT_CONSUMERS` in `layout.env`; weekly `upstream-drift`
   report; consumers named on a break; `harness spec-refs`; ADR 0037 (proposed); TD-115..118
@@ -587,6 +590,23 @@ found only after integration.
   prompt's §5c and for the CLAUDE.md "before calling a change done" line; a human applies both (hand-off).
   - Acceptance: run on 3edf728's diff, the agent reproduces at least three of the eleven bypasses filed as
     TD-75..TD-78; the proposed §5c and CLAUDE.md text is in the hand-off.
+
+- **P4.13 — leftover stacks (G17).** `scripts/setup-worktree.sh` names each worktree's compose project
+  `harness-<slug>-<hash>`, and compose labels its containers and volumes with
+  `com.docker.compose.project.working_dir`. Lanes, aborted sessions and scratch copies leave these running.
+  - `make stacks` lists every `harness-*` project, running or stopped, with its volumes, whose working dir is
+    missing or not in `git worktree list`. Read-only, exit 0; without a reachable Docker daemon it prints a
+    notice and exits 0.
+  - `make stacks-prune` runs `docker compose -p <project> down -v` for the listed projects only: never a live
+    worktree's stack, never a project without the `harness-` prefix (an adopter's own stacks). The loop
+    prompt's §5g calls it after `git worktree remove` instead of the hand-typed `down -v` (hand-off, since a
+    slice never edits the loop prompt).
+  - `make setup` prints "N leftover harness stacks, see make stacks" when N > 0. No sensor verdict: the
+    answer depends on Docker state, not the tree, so it cannot meet NFR-R1, and CI has no local stacks to
+    see.
+  - Acceptance: a bats test with a fake `docker` on `PATH` lists and prunes a project whose worktree was
+    removed and leaves a live worktree's project and a non-`harness-` project alone; run on 2026-10-29's
+    machine state it would have listed `harness-go-only-r2`.
 
 ### Phase 5 — spec-to-test and cross-repo feedback
 
@@ -1345,6 +1365,9 @@ gates for contract, migration and harness changes. Four are not.
   harness-integrity. Hand-off: the agent's proposed loop-prompt §5c/§5d text (run it on sensor slices;
   a retry gets a diff-only re-review), the slice-rule line and the CLAUDE.md review row; the PR needs
   the `harness-change-approved` label.
+- 2026-10-29: G17 and P4.13 added. A load check found five `harness-*` Postgres stacks running, one from
+  another session's scratchpad copy (`harness-go-only-r2`, stopped by hand with 7ed-emergencies' leaked
+  `emergencies-ci`); teardown exists (`make down`, §5g) but only as prose.
 - 2026-10-29: P4.11 done (0e03d34). Earned (ADR 0019), each with fixtures:
   `harness-rule-lists-match` (P3.8 lane review, TD-94 as opened in d8a6ff9; a `requiredSkips` manifest in
   rulelists.go names the ids and section claims each rule list must keep, fails closed on a file with no
