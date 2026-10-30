@@ -18,6 +18,7 @@
 //	harness approved-check <root>  api-approved-match-contract (make approved-check)
 //	harness specs-tested <root>    specs-scenarios-tested (make specs-tested)
 //	harness layout-check <root>    harness-layout-valid: scripts/harness/layout.env (make layout-check)
+//	harness spec-refs <file>...    every $ref internal: contract-check.sh, upstream-drift.sh (ADR 0037)
 //	harness integrity-check <root> harness-suppression-reason, harness-config-not-loosened (make
 //	                               harness-integrity; env BASE_REF, HARNESS_ROOT, HARNESS_CHANGE_APPROVED)
 //	harness rename [-write] <root> <name> <module|skip> <owner>
@@ -39,7 +40,7 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness check-links <root> | harness fixture-claims <root> | harness rule-lists <root> | harness orphans <root> | harness quality-rows [-no-clock] <root> | harness references-pinned <root> | harness approved-check <root> | harness specs-tested <root> | harness layout-check <root> | harness integrity-check <root> | harness rename [-write] <root> <name> <module|skip> <owner>"
+const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness check-links <root> | harness fixture-claims <root> | harness rule-lists <root> | harness orphans <root> | harness quality-rows [-no-clock] <root> | harness references-pinned <root> | harness approved-check <root> | harness specs-tested <root> | harness layout-check <root> | harness spec-refs <file>... | harness integrity-check <root> | harness rename [-write] <root> <name> <module|skip> <owner>"
 
 // rootSensors are the sensors run as `harness <name> <root>`: findings on stdout, whether there was any, and an
 // error when they cannot run.
@@ -121,6 +122,19 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		switch {
 		case err != nil:
 			fmt.Fprintf(stderr, "harness quality-rows: %v\n", err)
+			return 2
+		case bad:
+			return 1
+		}
+		return 0
+	case "spec-refs":
+		if len(args) < 2 {
+			break
+		}
+		bad, err := specRefs(args[1:], stdout)
+		switch {
+		case err != nil:
+			fmt.Fprintf(stderr, "harness spec-refs: %v\n", err)
 			return 2
 		case bad:
 			return 1

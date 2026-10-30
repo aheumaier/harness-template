@@ -13,11 +13,20 @@ package main
 // package.json in a WEB_GLOBS workspace or an API_CLIENT_DIR) is a finding, so a narrowed stack never silently
 // drops sensors whose code is still there.
 //
+// UPSTREAM_SPECS and CONTRACT_CONSUMERS (cross-repo contracts, ADR 0037) are optional and the only keys that may be
+// empty. Each UPSTREAM_SPECS entry is `<vendored spec>@<source repo>@<spec path in the source>@<revision>`, read
+// by scripts/harness/upstream-drift.sh, which repeats these checks at run time (drift.yml runs it without make
+// check): the shape; a vendored spec inside this repo (not absolute, no `..`) that is a file; a source that is a
+// host path (github.com/<owner>/<repo>, fetched over https) or an absolute local path (tests and fixtures only),
+// never starting with `-` and without `..`; a spec path that is plain (not absolute, no `.`, `..` or empty
+// segment); a 7 to 40 digit hex revision. testdata/upstream-spec-vectors.txt holds both to the same rule.
+// CONTRACT_CONSUMERS names repos for people (contract-check.sh prints it), so it is not checked.
+//
 // layout-check (harness-layout-valid, make layout-check in make check) prints one line per finding:
 //
 //	scripts/harness/layout.env[:<line>]: <message> [harness-layout-valid]
 //
-// for a malformed line, a missing, unknown or repeated key, a STACK that is invalid or leaves out a group the tree has, API_DIR without a go.mod, SPEC that is not a file,
+// for a malformed line, a missing, unknown or repeated key, an UPSTREAM_SPECS entry that is refused, a STACK that is invalid or leaves out a group the tree has, API_DIR without a go.mod, SPEC that is not a file,
 // MIGRATIONS_DIR or API_CLIENT_DIR that is not a directory (QUERIES_DIR: nor its parent), a WEB_GLOBS entry
 // that is not `<existing dir>/*`, and a LAYER_GLOB that is not `<dir>[/<dir>…]/*/*`-shaped (literal segments,
 // then exactly two `*` segments: domain and layer, as the analyzer reads them), matches no `<dir>/*/*`
@@ -42,11 +51,15 @@ import (
 const layoutFile = "scripts/harness/layout.env"
 
 var (
-	layoutKeys   = []string{"API_DIR", "SPEC", "MIGRATIONS_DIR", "QUERIES_DIR", "API_CLIENT_DIR", "WEB_GLOBS", "GENERATED_GLOBS", "PRODUCT_GLOBS", "LAYER_GLOB", "STACK"}
+	layoutKeys   = []string{"API_DIR", "SPEC", "MIGRATIONS_DIR", "QUERIES_DIR", "API_CLIENT_DIR", "WEB_GLOBS", "GENERATED_GLOBS", "PRODUCT_GLOBS", "LAYER_GLOB", "STACK", "UPSTREAM_SPECS", "CONTRACT_CONSUMERS"}
+	optionalKeys = []string{"STACK", "UPSTREAM_SPECS", "CONTRACT_CONSUMERS"} // absent: the default stack, no entries
+	emptyKeys    = []string{"UPSTREAM_SPECS", "CONTRACT_CONSUMERS"}          // the only values that may be empty
 	stackGroups  = []string{"go", "db", "web"}
 	defaultStack = "go:db:web" // a layout.env without STACK
 	stackRE      = regexp.MustCompile(`^[a-z]+(?::[a-z]+)*$`)
-	layoutLineRE = regexp.MustCompile(`^([A-Z_]+)=([A-Za-z0-9_./*@+-]+(?::[A-Za-z0-9_./*@+-]+)*)$`)
+	layoutLineRE = regexp.MustCompile(`^([A-Z_]+)=((?:[A-Za-z0-9_./*@+-]+(?::[A-Za-z0-9_./*@+-]+)*)?)$`)
+	revisionRE   = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
+	hostPathRE   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.-]*(?:/[A-Za-z0-9_.+-]+)+$`) // github.com/<owner>/<repo>
 	layoutSkipRE = regexp.MustCompile(`^[[:space:]]*(#|$)`)
 )
 
@@ -60,7 +73,13 @@ type layout struct {
 
 func (l layout) get(key string) string { return l.values[key] }
 
-func (l layout) list(key string) []string { return strings.Split(l.values[key], ":") }
+// list splits a list value at `:`; an empty (or absent) one has no entries.
+func (l layout) list(key string) []string {
+	if l.values[key] == "" {
+		return nil
+	}
+	return strings.Split(l.values[key], ":")
+}
 
 // has reports whether STACK names group.
 func (l layout) has(group string) bool { return slices.Contains(l.list("STACK"), group) }
@@ -89,7 +108,7 @@ func parseLayout(root string) (layout, []string, error) {
 		}
 		m := layoutLineRE.FindStringSubmatch(line)
 		switch {
-		case m == nil:
+		case m == nil, m[2] == "" && !slices.Contains(emptyKeys, m[1]):
 			problems = append(problems, fmt.Sprintf("%s:%d: not KEY=value (no spaces, quotes, $ or empty list entries)", layoutFile, n))
 		case !known[m[1]]:
 			problems = append(problems, fmt.Sprintf("%s:%d: unknown key %s (known: %s)", layoutFile, n, m[1], strings.Join(layoutKeys, " ")))
@@ -100,7 +119,7 @@ func parseLayout(root string) (layout, []string, error) {
 		}
 	}
 	for _, k := range layoutKeys {
-		if l.lines[k] == 0 && k != "STACK" {
+		if l.lines[k] == 0 && !slices.Contains(optionalKeys, k) {
 			problems = append(problems, fmt.Sprintf("%s: missing %s", layoutFile, k))
 		}
 	}
@@ -197,6 +216,13 @@ func (l layout) problems(root string) ([]string, error) {
 			report("QUERIES_DIR", "neither it nor its parent directory exists")
 		}
 	}
+	for _, e := range l.list("UPSTREAM_SPECS") {
+		if problem := upstreamEntryProblem(e); problem != "" {
+			report("UPSTREAM_SPECS", "%s: %s", e, problem)
+		} else if vendored, _, _ := strings.Cut(e, "@"); !isFile(vendored) {
+			report("UPSTREAM_SPECS", "%s: no such file %s (the vendored copy)", e, vendored)
+		}
+	}
 	if l.has("web") {
 		if !isDir(l.get("API_CLIENT_DIR")) {
 			report("API_CLIENT_DIR", "no such directory")
@@ -228,6 +254,28 @@ func (l layout) problems(root string) ([]string, error) {
 		report("LAYER_GLOB", "%s is a package with no layer (expected %s/<domain>/<layer>): the domain-isolation analyzer skips it", dir, path.Dir(dir))
 	}
 	return out, nil
+}
+
+// upstreamEntryProblem says why an UPSTREAM_SPECS entry is refused, or "" (upstream-drift.sh's entry_problem, with
+// the same messages: keep the two in step, testdata/upstream-spec-vectors.txt checks both).
+func upstreamEntryProblem(e string) string {
+	f := strings.Split(e, "@")
+	if len(f) != 4 || slices.Contains(f, "") {
+		return "not <vendored spec>@<source repo>@<spec path in the source>@<revision>"
+	}
+	vendored, src, specPath, revision := f[0], f[1], f[2], f[3]
+	segs := func(p string) []string { return strings.Split(p, "/") }
+	switch {
+	case strings.HasPrefix(vendored, "/") || slices.Contains(segs(vendored), ".."):
+		return fmt.Sprintf("vendored spec %s is not a path inside this repo", vendored)
+	case !strings.HasPrefix(src, "/") && !hostPathRE.MatchString(src) || slices.Contains(segs(src), ".."):
+		return fmt.Sprintf("source %s is neither a host path (github.com/<owner>/<repo>) nor an absolute local path", src)
+	case strings.HasPrefix(specPath, "/") || slices.ContainsFunc(segs(specPath), func(s string) bool { return s == "" || s == "." || s == ".." }):
+		return fmt.Sprintf("spec path %s is not a plain path inside the source", specPath)
+	case !revisionRE.MatchString(revision):
+		return fmt.Sprintf("revision %s is not a 7 to 40 digit hex commit", revision)
+	}
+	return ""
 }
 
 // hiddenGroups reports each group the stack leaves out while the tree still has its code: its sensors would leave

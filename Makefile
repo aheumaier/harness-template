@@ -276,7 +276,7 @@ clones-web: ## Copy-pasted code in the JS workspaces (jscpd)
 	@$(RUN) jscpd repo-no-clones -- bash -c 'root="$$(pwd -P)"; out="$$(jscpd --config "$$root/scripts/harness/jscpd.json" --reporters xcode --absolute --exit-code 1 --fail-on-empty --no-colors --no-tips $(foreach d,$(WEB_DIRS),"$$root/$(d)"))" && s=0 || s=$$?; echo "$${out//"$$root"\//}"; ((s == 0)) || { ((s == 1)) && grep -Eq ": warning: Found [0-9]+ lines " <<<"$$out" && s=1 || s=2; }; exit $$s'
 
 ##@ Contract (SPEC)
-.PHONY: lint-api contract-check approve approved-check
+.PHONY: lint-api contract-check upstream-drift approve approved-check
 API_RULES := api-kebab-case-paths,api-camel-case-properties,api-operation-metadata,api-documented-errors,api-errors-problem-json
 
 lint-api: ## Spectral style + error-contract rules on the OpenAPI spec
@@ -292,8 +292,12 @@ approved-check: $(HARNESS) ## Every approved response (testdata/approved/*.json)
 	  echo "$@: skipped, neither the spec nor an approved response changed (make check-all runs it)"; \
 	else $(RUN) approved-check api-approved-match-contract -- $(HARNESS) approved-check .; fi
 
-contract-check: ## oasdiff breaking-change check vs merge base with BASE_REF (contract-gate)
+contract-check: $(HARNESS) ## oasdiff breaking-change check vs merge base with BASE_REF (contract-gate)
 	@$(RUN) oasdiff api-no-breaking-change -- env BASE_REF="$(BASE_REF)" scripts/harness/contract-check.sh
+
+# Network (fetches each source's head): drift.yml runs it weekly; never in make check or check-all.
+upstream-drift: $(HARNESS) ## oasdiff breaking changes from each vendored upstream spec (UPSTREAM_SPECS in layout.env) to its source's head; changes nothing
+	@$(RUN) upstream-drift api-upstream-no-breaking-change -- scripts/harness/upstream-drift.sh
 
 ##@ Database
 .PHONY: lint-migrations squawk migrations-append-only gen-schema-doc schema-doc-fresh test-integration test-scaffold

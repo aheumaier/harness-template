@@ -14,24 +14,31 @@
 # forms. Either way it must name each of go, db and web at most once, and go always; harness_stack_has <group>
 # tests it.
 #
+# UPSTREAM_SPECS and CONTRACT_CONSUMERS (cross-repo contracts, ADR 0037) are optional too, and the only keys whose
+# value may be empty: a layout.env without them, or with `KEY=`, has none.
+#
 # Sourced, it sets API_DIR, SPEC, MIGRATIONS_DIR, QUERIES_DIR, API_CLIENT_DIR, LAYER_GLOB and STACK as strings;
-# WEB_GLOBS, GENERATED_GLOBS and PRODUCT_GLOBS as arrays (the `:`-separated entries); WEB_DIRS (each WEB_GLOBS
+# WEB_GLOBS, GENERATED_GLOBS, PRODUCT_GLOBS, UPSTREAM_SPECS and CONTRACT_CONSUMERS as arrays (the `:`-separated
+# entries; the last two may be empty); WEB_DIRS (each WEB_GLOBS
 # entry without its `/*`); API_PREFIX, the prefix of a repo path inside API_DIR ("" for API_DIR=., else
 # "$API_DIR/"); and DOMAINS_DIR, the repo path of the domains' parent (API_PREFIX + LAYER_GLOB without `/*/*`).
 # Both forms fail closed (return 1, exit 2) with `<file>:<line>: <message> [harness-layout-valid]` on stderr
-# when the file is missing, a line is not KEY=value, a key is unknown, repeated or missing (STACK aside), or a
-# value is empty,
+# when the file is missing, a line is not KEY=value, a key is unknown, repeated or missing (the optional ones
+# aside), or a value is empty (the two above aside),
 # holds a character outside [A-Za-z0-9_./*@+-] or an empty list entry, or when STACK (after HARNESS_STACK) is
 # not a valid stack.
 
-HARNESS_LAYOUT_KEYS='API_DIR SPEC MIGRATIONS_DIR QUERIES_DIR API_CLIENT_DIR WEB_GLOBS GENERATED_GLOBS PRODUCT_GLOBS LAYER_GLOB STACK'
+HARNESS_LAYOUT_KEYS='API_DIR SPEC MIGRATIONS_DIR QUERIES_DIR API_CLIENT_DIR WEB_GLOBS GENERATED_GLOBS PRODUCT_GLOBS LAYER_GLOB STACK UPSTREAM_SPECS CONTRACT_CONSUMERS'
+# Optional lists, empty when unset (never inherited from the environment, where CI's setup action exports them).
+HARNESS_LAYOUT_EMPTY_OK='UPSTREAM_SPECS CONTRACT_CONSUMERS'
 HARNESS_STACK_GROUPS='go db web'
 HARNESS_STACK_DEFAULT='go:db:web'
 
 # harness_layout_parse sets each key as a plain string; nothing else.
 harness_layout_parse() { # <layout.env>
   local file="$1" line key value n=0 seen=' ' bad='' stack_line=''
-  local re='^([A-Z_]+)=([A-Za-z0-9_./*@+-]+(:[A-Za-z0-9_./*@+-]+)*)$'
+  local re='^([A-Z_]+)=(([A-Za-z0-9_./*@+-]+(:[A-Za-z0-9_./*@+-]+)*)?)$'
+  for key in $HARNESS_LAYOUT_EMPTY_OK; do printf -v "$key" '%s' ''; done
   [[ -r "$file" ]] || {
     echo "$file: missing or unreadable; restore scripts/harness/layout.env [harness-layout-valid]" >&2
     return 1
@@ -39,7 +46,7 @@ harness_layout_parse() { # <layout.env>
   while IFS= read -r line || [[ -n "$line" ]]; do
     n=$((n + 1))
     [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
-    if [[ ! "$line" =~ $re ]]; then
+    if [[ ! "$line" =~ $re ]] || [[ -z "${BASH_REMATCH[2]}" && " $HARNESS_LAYOUT_EMPTY_OK " != *" ${BASH_REMATCH[1]} "* ]]; then
       bad+="$file:$n: not KEY=value (no spaces, quotes, \$ or empty list entries) [harness-layout-valid]"$'\n'
       continue
     fi
@@ -55,7 +62,7 @@ harness_layout_parse() { # <layout.env>
     fi
   done <"$file"
   for key in $HARNESS_LAYOUT_KEYS; do
-    [[ "$seen" == *" $key "* || "$key" == STACK ]] || bad+="$file: missing $key [harness-layout-valid]"$'\n'
+    [[ "$seen" == *" $key "* || "$key" == STACK || " $HARNESS_LAYOUT_EMPTY_OK " == *" $key "* ]] || bad+="$file: missing $key [harness-layout-valid]"$'\n'
   done
   if [[ -n "$bad" ]]; then
     printf '%s' "$bad" >&2
@@ -105,6 +112,8 @@ harness_layout_load() { # <layout.env>
   IFS=: read -ra WEB_GLOBS <<<"$WEB_GLOBS"
   IFS=: read -ra GENERATED_GLOBS <<<"$GENERATED_GLOBS"
   IFS=: read -ra PRODUCT_GLOBS <<<"$PRODUCT_GLOBS"
+  IFS=: read -ra UPSTREAM_SPECS <<<"$UPSTREAM_SPECS"
+  IFS=: read -ra CONTRACT_CONSUMERS <<<"$CONTRACT_CONSUMERS"
   WEB_DIRS=()
   for value in "${WEB_GLOBS[@]}"; do WEB_DIRS+=("${value%/\*}"); done
   API_PREFIX=''

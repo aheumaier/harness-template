@@ -1,6 +1,7 @@
 # Harness file (protected). Weekly sweep for drift that accumulates without any single PR causing it:
 # dead code, known vulnerabilities in dependencies, a stale schema doc, dead doc links, harness files behind the
-# template (make harness-sync-check; anonymous fetch, so a private template exits 2), QUALITY.md rows not
+# template (make harness-sync-check; anonymous fetch, so a private template exits 2), vendored upstream specs
+# that their sources broke since (make upstream-drift, ADR 0037; anonymous too), QUALITY.md rows not
 # graded in the last 30 days (ADR 0028), test coverage that fell since the last run, mutants that survived in
 # the week's changes, rules that never fired in 90 days (ADR 0032; a human decides to keep or retire each),
 # and the advisory findings of three read-only review agents (security, data handling,
@@ -317,9 +318,13 @@ jobs:
           report="$RUNNER_TEMP/drift.md"
           fence='```'
           : >"$report"
-          for target in deadcode-go knip vuln-go vuln-deps docs-links harness-sync-check docs-quality; do
+          for target in deadcode-go knip vuln-go vuln-deps docs-links harness-sync-check upstream-drift docs-quality; do
             if ! out="$(make "$target" 2>&1)"; then
-              printf '### make %s\n\n%s\n%s\n%s\n\n' "$target" "$fence" "$out" "$fence" >>"$report"
+              # One backtick more than the longest run in the output (at least three), so the output (upstream
+              # specs' paths among it) cannot close the block: no mention, link, image or HTML in it renders.
+              f="$fence"
+              while [[ "$out" == *"$f"* ]]; do f="$f\`"; done
+              printf '### make %s\n\n%s\n%s\n%s\n\n' "$target" "$f" "$out" "$f" >>"$report"
             fi
           done
           if ! out="$(make gen-schema-doc 2>&1)"; then

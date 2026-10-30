@@ -115,6 +115,16 @@ func TestLayoutCheck(t *testing.T) {
 			at + "12: STACK=db:db:ui: unknown group ui (known: go db web) [harness-layout-valid]",
 			at + "12: STACK=db:db:ui: no go (every stack has the Go API and the harness) [harness-layout-valid]",
 		}},
+		{"empty cross-repo lists pass", append(withLayout(), "UPSTREAM_SPECS=", "CONTRACT_CONSUMERS="), nil},
+		{"only the cross-repo lists may be empty", append(withLayout("SPEC", ""), "SPEC="), []string{
+			at + "12: not KEY=value (no spaces, quotes, $ or empty list entries) [harness-layout-valid]",
+			layoutFile + ": missing SPEC [harness-layout-valid]",
+		}},
+		{"UPSTREAM_SPECS entries", append(withLayout(), "UPSTREAM_SPECS=api/openapi.yaml@github.com/acme/up@spec/openapi.yaml@0123abc:api/x.yaml@github.com/acme/up@x.yaml@0123abc:api/openapi.yaml@github.com/acme/up@x.yaml@HEAD:a@b", "CONTRACT_CONSUMERS=github.com/acme/web"), []string{
+			at + "13: UPSTREAM_SPECS=api/openapi.yaml@github.com/acme/up@spec/openapi.yaml@0123abc:api/x.yaml@github.com/acme/up@x.yaml@0123abc:api/openapi.yaml@github.com/acme/up@x.yaml@HEAD:a@b: api/x.yaml@github.com/acme/up@x.yaml@0123abc: no such file api/x.yaml (the vendored copy) [harness-layout-valid]",
+			at + "13: UPSTREAM_SPECS=api/openapi.yaml@github.com/acme/up@spec/openapi.yaml@0123abc:api/x.yaml@github.com/acme/up@x.yaml@0123abc:api/openapi.yaml@github.com/acme/up@x.yaml@HEAD:a@b: api/openapi.yaml@github.com/acme/up@x.yaml@HEAD: revision HEAD is not a 7 to 40 digit hex commit [harness-layout-valid]",
+			at + "13: UPSTREAM_SPECS=api/openapi.yaml@github.com/acme/up@spec/openapi.yaml@0123abc:api/x.yaml@github.com/acme/up@x.yaml@0123abc:api/openapi.yaml@github.com/acme/up@x.yaml@HEAD:a@b: a@b: not <vendored spec>@<source repo>@<spec path in the source>@<revision> [harness-layout-valid]",
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -283,6 +293,29 @@ func TestStackVectors(t *testing.T) {
 	}
 	if n == 0 {
 		t.Fatal("no vectors in testdata/stack-vectors.txt")
+	}
+}
+
+// TestUpstreamSpecVectors runs the UPSTREAM_SPECS entry vectors upstream-drift.bats shares, so layout-check
+// refuses what upstream-drift.sh would (ADR 0037).
+func TestUpstreamSpecVectors(t *testing.T) {
+	b, err := os.ReadFile("testdata/upstream-spec-vectors.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, line := range strings.Split(string(b), "\n") {
+		entry, want, ok := strings.Cut(line, " ")
+		if !ok || strings.HasPrefix(line, "#") {
+			continue
+		}
+		n++
+		if problem := upstreamEntryProblem(entry); (problem == "") != (want == "ok") {
+			t.Errorf("%s: problem %q; want %s", entry, problem, want)
+		}
+	}
+	if n == 0 {
+		t.Fatal("no vectors in testdata/upstream-spec-vectors.txt")
 	}
 }
 

@@ -73,9 +73,26 @@ teardown_file() {
   return 1
 }
 
+# commit_all <repo> <msg>: commits everything in <repo> with a test identity, unsigned and without hooks.
+commit_all() {
+  git -C "$1" add -A
+  git -C "$1" -c core.hooksPath=/dev/null -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false \
+    commit -qm "$2"
+}
+
 # sandbox_base: commit everything in $SANDBOX as branch main (the BASE_REF for diff-based checks).
 sandbox_base() {
-  git -C "$SANDBOX" add -A
-  git -C "$SANDBOX" -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false commit -qm base
+  commit_all "$SANDBOX" base
   git -C "$SANDBOX" branch -M main
+}
+
+# spec <file> <path...>: writes a minimal OpenAPI document with one GET per path to <file>.
+spec() {
+  local f="$1"
+  shift
+  mkdir -p "$(dirname "$f")"
+  {
+    printf 'openapi: 3.0.3\ninfo: { title: t, version: "1" }\npaths:\n'
+    printf '  %s:\n    get:\n      responses:\n        "200":\n          description: ok\n' "$@"
+  } >"$f"
 }

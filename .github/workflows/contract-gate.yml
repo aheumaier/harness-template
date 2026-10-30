@@ -7,7 +7,8 @@
 # pull_request_target, like harness-integrity.yml: workflow, Makefile, script and oasdiff version come from
 # the base branch; the PR's spec is only parsed. Same safety constraints (docs/adr/0010-base-branch-gates.md):
 # no PR code executed, only head.sha used (as the checkout ref), `contents: read`, no secrets.
-# The PR's spec must not have external $refs (contract-check.sh), so oasdiff reads nothing else.
+# The PR's spec must not have external $refs (contract-check.sh, via the base branch's `.bin/harness spec-refs`,
+# which make builds), so oasdiff reads nothing else.
 name: contract-gate
 
 on:

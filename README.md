@@ -271,7 +271,9 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      module (`API_DIR`, `.` for the repo root), the contract, migrations, queries, generated client, JS
      workspaces, generated code and product code live, the domain layers' path (`LAYER_GLOB`), and which sensor groups
      the product has (`STACK`: `go`, plus `db` for Postgres migrations and queries, `web` for the JS
-     workspaces; [ADR 0033](docs/adr/0033-stack-profiles.md)). The scripts
+     workspaces; [ADR 0033](docs/adr/0033-stack-profiles.md)). If the product vendors another repo's spec, list
+     it in `UPSTREAM_SPECS` with its source and revision; if other repos vendor this contract, name them in
+     `CONTRACT_CONSUMERS` ([ADR 0037](docs/adr/0037-upstream-spec-drift-is-a-drift-report.md)). The scripts
      in `scripts/harness/`, the Makefile, `.bin/harness`, the domainiso analyzer and the CI workflows read it
      ([ADR 0030](docs/adr/0030-one-layout-file-for-every-sensor.md)), so this one file re-points them.
      `make layout-check` (in `make check`, [harness-layout-valid](docs/harness/rules.md#harness-layout-valid))
