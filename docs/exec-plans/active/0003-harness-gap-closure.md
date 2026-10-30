@@ -245,7 +245,7 @@ PR; **–** needs none.
 - [x] P5.1 — 9f6771d — done — `specs-scenarios-tested` (ADR 0036 proposed); TD-111..113
 - [ ] P5.2 — H — upstream specs and contract consumers in `layout.env`; weekly upstream drift via oasdiff;
   consumers named in `api-no-breaking-change`'s remediation
-- [ ] P5.3 — H — PR template "Assumptions" section; code-reviewer flags guessed defaults missing from it
+- [x] P5.3 — 0117216 — done — PR template `## Assumptions`; code-reviewer check 6 (advisory); TD-119
 - [ ] P5.4 — H — trial: a spec-only `test-writer` subagent writes the failing tests before the implementer
   runs; kept only if mutation scores and reviews show it
 
@@ -1366,3 +1366,14 @@ gates for contract, migration and harness changes. Four are not.
   macro), R4 rejected (P4.11's `printFinding` landed after; unify as a follow-up), R6 noted; all fixed in one
   retry. Rebased onto ed1d5c7 (three one-line list conflicts: ARCHITECTURE.md, Makefile `check`, main.go).
   Lane `check` green, `harness-selftest` 75/75, `check-all` red only on harness-integrity, int/obs/e2e green.
+- 2026-10-30: P5.3 done (0117216). PR template `## Assumptions` (`path — value — why this value`, or "none");
+  code-reviewer check 6 lists added defaults the section misses, matched by path and value, advisory only;
+  without the PR body one grouped line. Acceptance: run on 1b33d8e it named the unlisted defaults at
+  pr-review.yml:60-63 (REVIEW_MODEL, REVIEW_MAX_DIFF_BYTES 100000, REVIEW_MAX_TURNS 20, REVIEW_MAX_BUDGET_USD
+  1.00) and `timeout-minutes` 15 (:68) and 5 (:157); negative controls stayed quiet (MAX_COMMENT_BYTES 60000
+  has its comment, `5*time.Second` is in ADR 0021). Review: code-reviewer CHANGES (noise without the PR body,
+  "one option chosen from several" too broad, contract and migration names, moved values, line-number
+  matching, template/agent drift, TD-119 plan, agent-gc body); all 10 fixed in one retry. TD-119: CI review
+  gets no PR body (two harness PRs: `pr-review.sh prompt` input, then the workflow with an `edited` trigger).
+  Lane `check` green, `harness-selftest` 75/75, `check-all` red only on harness-integrity, int/obs/e2e green.
+  Proposal (AGENTS.md, protected): Working agreements also name the Assumptions section.
