@@ -117,7 +117,7 @@ They comment, never fail (Phase 3, ADR).
 | 2 | Behaviour harness (G2) | NFR-B1 and NFR-B2 met; coverage reported per package; weekly mutation score in the drift issue | implemented |
 | 3 | Inferential sensors and garbage collection (G3, G4, G8, G11) | reviewer comments on every PR (advisory); scheduled reviews and `agent-gc` open issues/PRs; QUALITY.md has a staleness check; orphan scripts, dead Go code and clones fail `check-all`; `reuse-reviewer` exists | implemented (exit pending: ADR 0019 accepted, first PR comment and drift run observed) |
 | 4 | Taste lints and harness lifecycle (G5, G7, G9, G10, G12) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue; `adoption-probe` green on a root-module fixture; reviewer catches seen twice are earned rules; sensor slices get an evasion review | proposed |
-| 5 | Spec-to-test and cross-repo feedback (G13, G14, G15, G16) | every acceptance scenario in `specs/` has a test or a reasoned exemption, checked in `check-all`; upstream spec drift reported weekly on the first adopter; PR template has an Assumptions section the reviewer checks; `test-writer` trial result recorded | proposed |
+| 5 | Spec-to-test and cross-repo feedback (G13, G14, G15, G16) | every acceptance scenario in `specs/` has a test or a reasoned exemption, checked in `check-all`; upstream spec drift reported weekly on the first adopter; PR template has an Assumptions section the reviewer checks; `test-writer` trial result recorded | partial: upstream drift not yet run on a first adopter (TD-115) |
 
 ## Progress
 
@@ -1411,3 +1411,25 @@ gates for contract, migration and harness changes. Four are not.
   budget under three parallel lanes; nfr.md's NFR-H1 row does not list it; TD-107 is stale. Rule candidates
   for a harness PR: `harness-hooks-tested`, `test-first-commit-untouched`. Lane `check` green, `harness-selftest`
   76/76, `check-all` red only on harness-integrity, int/obs/e2e green.
+- 2026-10-30: Phase 5 gate. Reviews of 9f6771d, cfce60f, 0117216, 5b7ee88 together: code-reviewer CHANGES
+  (10, harness grade B, no security defect), architecture-reviewer CHANGES (7). Main green after P5.4
+  (`make check` 0, `harness-selftest` 76/76). Fixed in 1368b9b: one product test-file predicate for
+  `harness test-file` and specs-tested (the guard let test-writer write into generated code, the API client,
+  store packages and harness files) with shared vectors run through Go, specs-tested and the hook; after
+  code-reviewer CHANGES on the fix itself (one retry), exclusions match ignoring case (`tools/Harness/` reached
+  the harness package on macOS), `..` parts, an empty protected list and `?`/`[`/`\` patterns fail closed,
+  gitignored product paths are a stated limit (TD-128) and `**/vite.config.*` joins check 7's runner configs;
+  contract-check exits 2 on an oasdiff exit other than 1, so the label cannot approve an uncompared spec;
+  check 7 covers every test-file form and is silent without the diff; hook message from `harness test-file`;
+  ADR 0039 amends 0019 explicitly; hook median 24 ms (load 3–4) in nfr.md; tracker newest first, TD-107/118/125
+  updated, TD-127 new; and contract-check.bats/upstream-drift.bats no longer assume optional `layout.env` keys,
+  which P4.10's adoption probe caught. Deferred: the bash upstream entry parser (TD-127); the revision in
+  protected `layout.env` (TD-117, settle before ADR 0037 is accepted); the Makefile `specs-tested` pathspecs
+  remain a second spelling of the test-file forms. Rejected: renaming `spec-refs` to `openapi-refs` (naming
+  churn for two callers). TD-114 and TD-120..122 are unassigned: ids were handed to lanes in flight and not all
+  used. ci.md and rules.md#api-no-breaking-change do not yet mention the cannot-compare exit, and
+  `protect-harness.sh` still compares case-sensitively (hand-off: protected `.claude/hooks/`). Exit
+  criterion: scenarios traced or exempted in `check` and `check-all` (fixture `specs-scenarios-tested`; the
+  template has no `specs/`); PR template Assumptions checked by code-reviewer check 6 (in CI without the PR
+  body, TD-119); trial recorded in ADR 0039 and the P5.4 Log line; weekly upstream drift exists in drift.yml
+  but has not run on a first adopter (TD-115: anonymous fetch exits 2 on private upstreams). State: partial.
