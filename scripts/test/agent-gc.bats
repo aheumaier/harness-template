@@ -396,6 +396,7 @@ reset_tree() {
   git -C "$SANDBOX" checkout -q -- docs/other.md
   run -0 "$S" body "$T/two.txt" "$T/other.patch"
   has "## What and why"
+  has "## Assumptions"
   has "edited 1 doc file(s)"
   has "$O1"
   [[ $output != *"docs/guide.md"* ]] || false

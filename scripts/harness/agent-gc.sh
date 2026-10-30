@@ -341,6 +341,10 @@ change, and close this PR if the fix is wrong. The findings in the edited files,
 $fence
 $kept$fence
 
+## Assumptions
+
+none (a doc link fix)
+
 ## Checklist
 
 - **Contract change** (\`$SPEC\`): N

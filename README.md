@@ -121,7 +121,8 @@ Claude Code hooks fail closed.
      lands in `specs/NNN-slug/`. A `feat` commit touching `apps/` or `api/` without a spec fails
      `make specs`.
    - Run `make check-all` before the PR.
-   - Fill in [the PR template](.github/pull_request_template.md): contract, migration and harness change (Y/N).
+   - Fill in [the PR template](.github/pull_request_template.md): contract, migration and harness change
+     (Y/N), and under Assumptions each default you picked without asking (a timeout, limit, name or fallback).
    - Use Conventional Commit titles.
 
 ## (b) Brownfield project

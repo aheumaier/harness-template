@@ -150,7 +150,9 @@ and neither job is a required check. A top-level comment opens no review thread,
   the working directory and denies Read under `/proc`, `/etc`, the runner's temp, tool cache and config dirs.
   A separate `comment` job with `pull-requests: write` and no secret posts the text, fenced so no mention,
   link or image in it renders. The workflow header lists every invariant and `scripts/test/pr-review.bats`
-  checks them; keep them in any edit.
+  checks them; keep them in any edit. The agent gets no PR body, so its defaults check (check 6) cannot see
+  the PR's `## Assumptions` section and lists every default the diff adds
+  ([TD-119](../exec-plans/tech-debt-tracker.md)).
 - **Leak screen** (`pr-review.sh screen`): output holding the key verbatim, or `sk-ant-` in any case, is
   withheld with a warning. It is a backstop for a verbatim leak, not the main control: an encoded key passes
   it. The tool confinement above is the control.
