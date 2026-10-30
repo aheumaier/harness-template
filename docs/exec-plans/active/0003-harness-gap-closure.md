@@ -237,7 +237,8 @@ PR; **–** needs none.
 - [x] P4.9 — dbaaa39 — done — protected paths and CODEOWNERS name the harness's 8 workflows,
   `actions/setup`, CODEOWNERS and the PR template; product workflows stay owner-reviewed; ADR 0035, TD-24
   paid, TD-95..97
-- [ ] P4.10 — H — CI `adoption-probe`: README §(b) on a root-`go.mod` fixture
+- [x] P4.10 — 84399b7 — done — required CI job `adoption-probe` replays README (b) on a protected root-`go.mod`
+  skeleton; rule `harness-adoption-probe`; ADR 0038 (proposed); TD-99..101
 - [x] P4.11 — 0e03d34 — done — two earned rules with fixtures: `harness-rule-lists-match`,
   `harness-reads-layout`; TD-103
 - [x] P4.12 — 8445e4d — done — `evasion-reviewer` agent for sensor slices; ADR 0019 amended, TD-107..110;
@@ -1433,3 +1434,24 @@ gates for contract, migration and harness changes. Four are not.
   template has no `specs/`); PR template Assumptions checked by code-reviewer check 6 (in CI without the PR
   body, TD-119); trial recorded in ADR 0039 and the P5.4 Log line; weekly upstream drift exists in drift.yml
   but has not run on a first adopter (TD-115: anonymous fetch exits 2 on private upstreams). State: partial.
+- 2026-10-30: P4.10 done (84399b7). `adoption-probe.sh` (`make adoption-probe`) commits the skeleton in
+  `scripts/templates/adoption-probe/` (root `go.mod`, `internal/<domain>/<layer>`, a contract, no db or web)
+  into a temp repo, follows README (b) steps 1–7 with this checkout's harness and ends with
+  `HARNESS_STACK=go make setup`, `make check`, `make harness-selftest` green there; step 3 and step 6 must name
+  exactly the paths it copies, skips or drops (fixture `harness-adoption-stale-layout`). Required CI job beside
+  `check-all`; skeleton is protected config owned in CODEOWNERS; ADR 0038 amends 0009. After the rebase onto
+  P4.12/P5.1 the probe went red on two Go tests with a hard-coded `../../../..` root; the integration retry
+  moved them to `repoRoot` and changed `harness-reads-layout-literal`'s EXPECT path from `apps/api` to
+  `internal` (still one exact path, LAYER_GLOB's prefix, reported in both layouts). Second catch: P5.2's
+  contract-check.bats edited an optional `layout.env` key the adopted repo lacks (fixed in 1368b9b). Third
+  catch, after the rebase onto the Phase 5 gate: only-test-files.bats, timing.bats and upstream-drift.bats
+  built paths under `apps/api` (G5, P5.2); fixed here from `layout.env`. Not counted as P4.10's second
+  failure: the defect was in code integrated after its review round, outside its diff (§5f.3). The class
+  recurs; rule candidate `bats-paths-from-layout` (hand-off). Declined review items:
+  dropping `HARNESS_STACK=go`, a `.go-arch-lint` exclusion, a second red fixture. Not done: TD-99 (eleven
+  bats files dropped instead of ported), TD-100, TD-101 (four shell helpers duplicated). Measured: the probe
+  took 164 s locally on the final run against its 600 s NFR-H7 budget (1233 s earlier, under three parallel
+  lanes); the third catch also fixed `api-upstream-breaking` (renamed `/healthz`, edited an optional
+  `UPSTREAM_SPECS` line) and a test-writer.md link the probe drops; its timing artifact is not
+  read by `ci-timings.sh` or `nfr-report.sh` yet (hand-off). Lane `check` green, `harness-selftest` 77/77,
+  `check-all` red only on harness-integrity, int/obs/e2e green, `make adoption-probe` green.
