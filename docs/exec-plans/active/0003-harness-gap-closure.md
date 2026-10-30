@@ -246,8 +246,8 @@ PR; **–** needs none.
 - [x] P5.2 — cfce60f — done — `UPSTREAM_SPECS`/`CONTRACT_CONSUMERS` in `layout.env`; weekly `upstream-drift`
   report; consumers named on a break; `harness spec-refs`; ADR 0037 (proposed); TD-115..118
 - [x] P5.3 — 0117216 — done — PR template `## Assumptions`; code-reviewer check 6 (advisory); TD-119
-- [ ] P5.4 — H — trial: a spec-only `test-writer` subagent writes the failing tests before the implementer
-  runs; kept only if mutation scores and reviews show it
+- [x] P5.4 — 5b7ee88 — done — trial kept the `test-writer` agent (spec-only, unit tests, cost cap);
+  `only-test-files` hook and `harness test-file`; code-reviewer check 7; ADR 0039 (proposed); TD-123..126
 
 ### Phase 0 — quick wins
 
@@ -1394,3 +1394,20 @@ gates for contract, migration and harness changes. Four are not.
   exit-124 timeout test, other fixed fences in drift.yml. Lane `check` green, `harness-selftest` 75/75,
   `check-all` red only on harness-integrity, int/obs/e2e green. Proposal: code-reviewer checks that the PR body
   addresses each named consumer.
+- 2026-10-30: P5.4 done (5b7ee88). Trial: four small spec'd features, two built test-first (a subagent that saw
+  only spec, plan and tasks wrote tests committed red before a separate implementer ran), two the usual way.
+  Mutation scores tied once equivalent mutants are set aside; scenario tracing tied; a blind review found one
+  weakly checked case and three bugs the tests miss in the usual arm (one confirmed by a hand mutant), none in
+  the test-first arm. By the plan's rule: KEEP. Caveats in ADR 0039 (proposed, amends 0019): n=2 per arm, one
+  arm per feature, pure model functions only. Review: architecture CHANGES (11), code-reviewer CHANGES (16),
+  reuse 2; one retry fixed all 16: writes confined by `.claude/hooks/only-test-files.sh` through the new
+  `harness test-file` subcommand (same pattern as `specs-tested`, bats, budget row `only-test-files 50 NFR-H1`);
+  only-make-check.sh's message speaks to any agent; the agent writes unit tests for model/service and
+  packages/domain only, needs pinned names in plan.md, commits red with a `Test-Writer: specs/<NNN-slug>`
+  trailer. Decided defaults: cost cap 4 test files, 3 `make check` runs, 30 minutes. code-reviewer check 7
+  (advisory) lists assertions loosened since the first Test-Writer commit; skipped without a diff, so in CI
+  today (TD-125). Not done: CLAUDE.md and constitution wiring (TD-124, hand-off), the gremlins mutator gap
+  (TD-123), a re-measure on the first adopter (TD-126). Measured: the hook's median is 57 ms against its 50 ms
+  budget under three parallel lanes; nfr.md's NFR-H1 row does not list it; TD-107 is stale. Rule candidates
+  for a harness PR: `harness-hooks-tested`, `test-first-commit-untouched`. Lane `check` green, `harness-selftest`
+  76/76, `check-all` red only on harness-integrity, int/obs/e2e green.
