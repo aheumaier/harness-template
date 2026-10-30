@@ -17,7 +17,8 @@ import (
 // literal prefix. A sensor that spells one checks the template's tree, not the product's. `apps/web` has no
 // key yet (TD-46).
 func layoutPaths(t *testing.T) [][]string {
-	l, err := loadLayout("../../../..")
+	t.Helper()
+	l, err := loadLayout(repoRoot(t))
 	if err != nil {
 		t.Fatal(err)
 	}

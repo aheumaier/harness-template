@@ -3,6 +3,9 @@
 # source's head (rules.md#api-upstream-no-breaking-change). Sources here are local repos: no network.
 bats_require_minimum_version 1.5.0
 load helpers
+# API_PREFIX: where README "(b) Brownfield project" puts the harness tool and its testdata in this repo.
+# shellcheck source=scripts/harness/layout.sh
+source "$REPO/scripts/harness/layout.sh"
 
 setup() {
   sandbox scripts/harness/upstream-drift.sh
@@ -88,7 +91,7 @@ drift() { run "$@" "$SANDBOX/scripts/harness/upstream-drift.sh"; }
     run "$SANDBOX/scripts/harness/upstream-drift.sh"
     grep -qE "$refused" <<<"$output" && got=reject || got=ok
     [[ "$status" -eq 2 && "$got" == "$want" ]] || bad+="$entry: $got (exit $status), want $want"$'\n'
-  done <"$REPO/apps/api/tools/harness/testdata/upstream-spec-vectors.txt"
+  done <"$REPO/${API_PREFIX}tools/harness/testdata/upstream-spec-vectors.txt"
   [ "$n" -gt 0 ]
   [ -z "$bad" ] || {
     printf '%s' "$bad" >&2

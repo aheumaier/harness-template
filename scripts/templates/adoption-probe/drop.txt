@@ -1,0 +1,26 @@
+# What README.md "(b) Brownfield project" step 6 drops by path in the adoption probe's repo
+# (scripts/harness/adoption-probe.sh), one git path per line. Each must be a path that step 3 copies, or the probe
+# exits 2. A dropped test also leaves its rule's Fixture line in docs/harness/rules.md. The probe itself goes by
+# README (b) step 6's adoption-probe bullet, not by this list. Protected (protected-paths.txt): a new line needs
+# the harness-change-approved label and a code owner, and lines leave as their tests are fixed.
+#
+# Tests of scripts that step 3 does not copy or that the go stack drops (obs-query.sh, new-domain.sh and its
+# templates, squawk with db).
+scripts/test/obs-query.bats
+scripts/test/new-domain.bats
+scripts/test/scaffold-tests.bats
+scripts/test/squawk.bats
+#
+# Tests that assert the template's own layout or identity through the real layout.env, tool-versions.env or
+# apps/api paths instead of a sandbox of their own (tracker TD-99). Remove a line when its test is fixed.
+scripts/test/affected.bats
+scripts/test/check-specs.bats
+scripts/test/coverage.bats
+scripts/test/fast-check.bats
+scripts/test/file-sensors.bats
+scripts/test/gen-check.bats
+scripts/test/layout.bats
+scripts/test/migrations-append-only.bats
+scripts/test/mutation.bats
+scripts/test/pre-commit.bats
+scripts/test/sync-check.bats

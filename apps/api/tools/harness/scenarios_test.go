@@ -185,8 +185,7 @@ func TestScenariosTested(t *testing.T) {
 
 // The vendored spec-kit template is what /speckit-specify copies: its stories and scenarios must keep their ids.
 func TestScenariosTestedReadsSpecKitTemplate(t *testing.T) {
-	const repo = "../../../.."
-	src, err := os.ReadFile(filepath.Join(repo, ".specify/templates/spec-template.md"))
+	src, err := os.ReadFile(filepath.Join(repoRoot(t), ".specify/templates/spec-template.md"))
 	if err != nil {
 		t.Fatal(err)
 	}

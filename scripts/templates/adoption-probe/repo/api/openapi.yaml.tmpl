@@ -1,0 +1,73 @@
+openapi: 3.1.0
+info:
+  title: hello API
+  version: 0.1.0
+  contact:
+    name: API owners
+    url: https://example.com/hello
+  description: The greeting service's contract.
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: greeting
+    description: Greets by name.
+paths:
+  /greeting:
+    get:
+      operationId: getGreeting
+      summary: Greet by name
+      description: Returns a greeting for the name given, or for the world.
+      tags: [greeting]
+      security: []
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The greeting.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Greeting'
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+components:
+  schemas:
+    Greeting:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+    Problem:
+      description: RFC 9457 problem details.
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+  responses:
+    ClientError:
+      description: The request was invalid.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ServerError:
+      description: Unexpected server error.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

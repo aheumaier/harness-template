@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -188,10 +190,17 @@ func TestQualityFresh(t *testing.T) {
 }
 
 // The row scripts/new-domain.sh renders from its template, under the real QUALITY.md header, passes both modes
-// on the day it is written: the generator and the sensor agree on the table's shape.
+// on the day it is written: the generator and the sensor agree on the table's shape. A repo that dropped
+// make new-domain with its generator (README "(b) Brownfield project" step 5) has nothing to agree with.
 func TestQualityRowTemplateMatchesHeader(t *testing.T) {
-	const repo = "../../../.."
+	repo := repoRoot(t)
 	tmpl, err := os.ReadFile(filepath.Join(repo, "scripts/templates/new-domain/quality-row.md.tmpl"))
+	if errors.Is(err, fs.ErrNotExist) {
+		if _, gerr := os.Stat(filepath.Join(repo, "scripts/new-domain.sh")); errors.Is(gerr, fs.ErrNotExist) {
+			t.Skip("no scripts/new-domain.sh and no template: make new-domain was dropped")
+		}
+		t.Fatal("scripts/new-domain.sh exists, but its scripts/templates/new-domain/quality-row.md.tmpl does not")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -308,7 +308,7 @@ func TestIntegrityCheck(t *testing.T) {
 // With the repo's real protected-paths.txt, the harness's own workflows and action are configs and a product's
 // workflow or action beside them is not (exec plan 0003 P4.9): a product CI change needs no label.
 func TestIntegrityCheckRealListSparesProductWorkflows(t *testing.T) {
-	const repo = "../../../.."
+	repo := repoRoot(t)
 	list, err := os.ReadFile(filepath.Join(repo, "scripts/harness/protected-paths.txt"))
 	if err != nil {
 		t.Fatal(err)

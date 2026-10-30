@@ -101,7 +101,7 @@ Claude Code hooks fail closed.
    - Create the labels `harness-change-approved`, `breaking-change-approved` and `no-spec-needed`
      ([ci.md](docs/harness/ci.md)).
    - Dry-run [scripts/github-branch-protection.sh](scripts/github-branch-protection.sh), then apply it with
-     `CONFIRM=1` to require the six status checks.
+     `CONFIRM=1` to require the seven status checks.
 5. **Constitution.** Run `/speckit-constitution` to adapt `.specify/memory/constitution.md` to the product.
    This file is protected, so it needs a human or `HARNESS_EDIT=1`.
 6. **First domain.** Follow the [new-domain skill](.claude/skills/new-domain/SKILL.md):
@@ -186,14 +186,16 @@ template changed since. Adopt by hand, in one reviewed harness PR:
    Do this before step 3 merges `.claude/settings.json`, because that file is what turns the hooks on.
 3. **Copy and merge the harness.** Copy these:
    - `docs/harness/`, `docs/adr/` (format and the ADRs you keep), `docs/exec-plans/`;
-   - `scripts/harness/`, `scripts/git-hooks/`, `scripts/test/`, `scripts/install-tools.sh`,
-     `scripts/setup-worktree.sh`, `scripts/github-branch-protection.sh`;
+   - `scripts/harness/` (but `layout.env`, which step 2 copied and edited), `scripts/git-hooks/`,
+     `scripts/test/`, `scripts/install-tools.sh`, `scripts/setup-worktree.sh`,
+     `scripts/github-branch-protection.sh`;
    - the workflows and action listed in [protected-paths.txt](scripts/harness/protected-paths.txt),
      `.github/CODEOWNERS` and `.github/pull_request_template.md` (not `.github/` whole: the repo's own
      workflows there stay its own), `trivy.yaml`, `.shellcheckrc` and `.editorconfig`;
    - every guide the template's `AGENTS.md` "Where to look" table links to: `ARCHITECTURE.md`,
-     `docs/design-docs/`, `docs/QUALITY.md`, `docs/SECURITY.md`, `docs/RELIABILITY.md`, `docs/generated/` and
-     the area `AGENTS.md`/`CLAUDE.md` pairs. Step 5 rewrites or prunes them; a link to a missing file turns
+     `docs/design-docs/`, `docs/QUALITY.md`, `docs/SECURITY.md`, `docs/RELIABILITY.md`, `docs/generated/`,
+     `docs/references/` and the area `AGENTS.md`/`CLAUDE.md` pairs (`apps/api/internal/`'s pair goes to
+     `<API_DIR>/internal/`). Step 5 rewrites or prunes them; a link to a missing file turns
      [docs-links-resolve](docs/harness/rules.md#docs-links-resolve) red in `make check`;
    - `compose.yaml`, if you keep db (`setup-worktree.sh` starts its `db` service);
    - the linter configs of each stack you keep, for example `.spectral.yaml` for api and `.squawk.toml` for db.
@@ -205,12 +207,12 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      template's sections. `CLAUDE.md` keeps an `@AGENTS.md` line plus Claude-only notes, nothing else. The
      [docs-claude-imports-agents](docs/harness/rules.md#docs-claude-imports-agents) rule requires exactly
      this: every `AGENTS.md` has a sibling `CLAUDE.md` with an `@AGENTS.md` line.
-   - **`.claude/`.** Copy the template's hook scripts and agents. In your own `.claude/settings.json`, add the
+   - **`.claude/`.** Copy the template's hook scripts, agents and skills. In your own `.claude/settings.json`, add the
      template's three hooks (`protect-harness.sh`, `guard-bash.sh`, `fast-check.sh`) and its
      `permissions.deny` list next to what is there. Decide per existing hook whether it stays, and say so in
      the PR. Never drop a Stop or dev-gate hook silently: it may be the repo's definition of done. Keep one
-     copy of each `speckit-*` skill. Copy `new-domain`, `add-endpoint` and `add-migration` only if the stack
-     matches.
+     copy of each `speckit-*` skill. Leave out the stack skills you have no use for: `add-endpoint` without
+     the api set, `add-migration` without db, and `new-domain` when you drop `make new-domain` (step 5's table).
    - **`.specify/`.** Keep one copy. A repo that already runs spec-kit keeps its own constitution and
      `feature.json`. Once the harness is in, `.specify/memory/` is protected, so a later constitution change
      needs a human or `HARNESS_EDIT=1`.
@@ -309,8 +311,11 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      | [action.yml](.github/actions/setup/action.yml) | the `Install JS dependencies` step (`make deps`, a no-op without `web` in `STACK`); node is set up in every job | with `web`, every CI job fails in setup without a root `package.json` and lockfile |
      | [install-tools.sh](scripts/install-tools.sh) | with `web` in `STACK`: installs pnpm and exits 1 unless the root `package.json` pins `packageManager` | `make setup` aborts after the other tools land; leave `web` out of `STACK` if you have no JS workspaces |
      | [setup-worktree.sh](scripts/setup-worktree.sh) | `make tools deps`, with `db` in `STACK` compose `db` and `atlas migrate apply` in `API_DIR` | `make setup` fails in `pnpm install` without a lockfile (with `web`) or without Docker (with `db`) |
-     | `make new-domain`: [new-domain.sh](scripts/new-domain.sh) and `scripts/templates/new-domain/*` | `apps/api/internal/<name>`, `apps/api/db/queries`, `apps/api/db/migrations`, `apps/api/cmd/api/routes.go`, `apps/api/sqlc.yaml` | it writes the template layout, and CI's `make new-domain` probe job fails; rewrite it for your layout or drop the probe and the skill (tracker TD-67) |
-     | `scripts/test/*.bats`, for example [affected.bats](scripts/test/affected.bats) | template paths in the test cases | they keep testing the template layout; update each with the script it tests |
+     | `make new-domain`: [new-domain.sh](scripts/new-domain.sh) and `scripts/templates/new-domain/*` | `apps/api/internal/<name>`, `apps/api/db/queries`, `apps/api/db/migrations`, `apps/api/cmd/api/routes.go`, `apps/api/sqlc.yaml` | it writes the template layout, and CI's `make new-domain` probe job fails; rewrite it for your layout, or in step 6 drop its `Makefile` target, CI's `generator-probe` job and required check, that job's `ci.md` row and the skill (tracker TD-67) |
+     | `scripts/test/*.bats`, for example [affected.bats](scripts/test/affected.bats) | template paths and the template's identity in the test cases; tests of scripts step 3 does not copy (`new-domain.bats`, `obs-query.bats`, `scaffold-tests.bats`) | `make check`'s bats fails; update each with the script it tests, or drop it as in step 6 ([drop.txt](scripts/templates/adoption-probe/drop.txt) lists them for a root module, tracker TD-99) |
+     | [rules.md](docs/harness/rules.md) | test paths on `**Fixture:**` lines, `apps/api/tools/...` | [rules-fixture-claims](docs/harness/rules.md#rules-fixture-claims) fails; replace `apps/api/` by `<API_DIR>/` |
+     | `<API_DIR>/internal/AGENTS.md` | links `../../../docs/`, relative to `apps/api/internal/` | [docs-links-resolve](docs/harness/rules.md#docs-links-resolve) fails |
+     | [QUALITY.md](docs/QUALITY.md) | no rows: the template has no domain | `make check-all`'s [docs-quality-rows-match-domains](docs/harness/rules.md#docs-quality-rows-match-domains) fails; add one row per domain under `LAYER_GLOB`, linking its `AGENTS.md` |
 6. **Keep, adapt or drop each rule in [rules.md](docs/harness/rules.md).**
    - A dropped rule takes out more than its id. Remove all of this, plus one ADR line saying why:
      - its whole `make` target from the `check` and `check-all` targets' lists in the [Makefile](Makefile);
@@ -319,7 +324,8 @@ template changed since. Adopt by hand, in one reviewed harness PR:
        `layout.env`). `gen-check`, the last step of `make check`, runs `make gen`
        ([gen-up-to-date](docs/harness/rules.md#gen-up-to-date)); a deleted target that `gen` still names fails
        with `No rule to make target`;
-     - its fixture directory under `scripts/harness/fixtures/`;
+     - its fixture directory under `scripts/harness/fixtures/`, and its tests in `scripts/test/` with their
+       mentions on its `**Fixture:**` line;
      - its branch in `fast-check.sh` and its kind in `file-sensors.sh`;
      - its tool from `install-tools.sh` and `tool-versions.env`, or from the root `package.json`;
      - its gate workflow and its CODEOWNERS lines.
@@ -337,8 +343,10 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      `make harness-selftest`, so the Makefile, `gen-check.sh`, `install-tools.sh` and the fixtures stay as
      they are. Still remove the dropped rules' rules.md entries, and the links to the directories you deleted:
      `make docs-links` and `make references-pinned` name them (in the template: the `apps/web/` and
-     `apps/api/db/` area links in `AGENTS.md`, the orval link in `AGENTS.md` and
-     `docs/references/orval-llms.txt`, whose pin file is `packages/api-client/package.json`). The api set is
+     `apps/api/db/` area links in `AGENTS.md`, the `apps/web/AGENTS.md` link in
+     `.claude/agents/test-writer.md`, the orval link in `AGENTS.md` and
+     `docs/references/orval-llms.txt`, whose pin file is `packages/api-client/package.json`; the links to the
+     skills step 3 left out, in `AGENTS.md` and `.specify/memory/constitution.md`). The api set is
      part of `go` and drops by hand as above. bats, squawk and spectral are pinned in `tool-versions.env`, so
      no set needs a root `package.json` but web.
    - A rule you keep must still reject its fixture. Port fixtures to your layout until these are green:
@@ -349,6 +357,30 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      ```
      `make harness-selftest` cannot be green until the dropped fixtures are gone. It asserts each fixture's
      `EXPECT` pattern, and a fixture for a missing `apps/web` fails for the wrong reason.
+     When only `API_DIR` moves, the port is mechanical: `git mv` each fixture's `files/apps/api/*` and
+     `base/apps/api/*` to `files/<API_DIR>/` and `base/<API_DIR>/`, and replace `apps/api/` by `<API_DIR>/`
+     (nothing for `.`) in each `apply.sh` and `fixture.conf` and in the depguard path of
+     `<API_DIR>/.golangci.yml`. Five fixtures edit the template's own product code and have no mechanical port:
+     `api-approved-violates-contract` and `api-response-not-approved` (`platform/health`), `go-dead-function`
+     (`platform/problem`), `go-test-helper-in-prod` (`platform/approvaltest`) and `specs-feat-without-spec` (a
+     file under `apps/`, which must stay under `PRODUCT_GLOBS`). Rewrite them against your code, as
+     [scripts/templates/adoption-probe/fixtures/](scripts/templates/adoption-probe/fixtures/) does for a root
+     module, or drop them with their rules. Your approved-response tests then name
+     `[api-responses-approved]` when they fail ([ADR 0022](docs/adr/0022-approved-api-responses.md)). Fixture
+     directory names stay, so the `**Fixture:**` lines do not change.
+   - Delete with `git rm`: the shell sensors list git-known files, so a deleted script still in the index fails
+     `make check`'s shfmt and shellcheck.
+   - The adoption probe is the template's own ([ADR 0038](docs/adr/0038-readme-brownfield-adoption-is-probed.md)):
+     drop it like a rule and decline its template-only files for [template sync](#keeping-up-with-the-template).
+     - `git rm` the probe `scripts/harness/adoption-probe.sh`, its fixture
+       `scripts/harness/fixtures/harness-adoption-stale-layout/` and its tests `scripts/test/adoption-probe.bats`
+       (step 3 never copied its brownfield repo, `scripts/templates/adoption-probe/`).
+     - Remove its entry in `docs/harness/rules.md`, its target in the `Makefile`, its job in
+       `.github/workflows/ci.yml`, its required check in `scripts/github-branch-protection.sh` and
+       `docs/harness/ci.md`, its budget in `scripts/harness/budgets.txt`, and the brownfield repo's lines in
+       `scripts/harness/protected-paths.txt` and `.github/CODEOWNERS`.
+     - Add a `# declined <path>: template-only` line to `.harness-version` for each file of the probe, its
+       fixture, its tests and its brownfield repo, so template sync stops offering them back.
 7. **Run `make setup && make check`.** Expect `make setup` to need steps 5–6 first, because of the
    `install-tools.sh`, `make deps` and `setup-worktree.sh` assumptions in step 2. Without Postgres, leave
    `db` out of `STACK` (or run `SKIP_DB=1 make setup` once). Then run `make check` and expect red. Don't loosen a sensor to get green

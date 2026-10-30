@@ -3,6 +3,9 @@
 # budget it warns (and, in GitHub Actions, annotates) without changing the exit status.
 bats_require_minimum_version 1.5.0
 load helpers
+# DOMAINS_DIR: where a product test file goes in this repo's layout (the sandbox copies its layout.env).
+# shellcheck source=scripts/harness/layout.sh
+source "$REPO/scripts/harness/layout.sh"
 
 setup() {
   unset GITHUB_ACTIONS GITHUB_STEP_SUMMARY HARNESS_EDIT
@@ -26,7 +29,7 @@ payload() {
   for h in protect-harness guard-bash only-make-check; do
     run -0 "$SANDBOX/.claude/hooks/$h.sh" <"$PAYLOAD"
   done
-  run -0 "$SANDBOX/.claude/hooks/only-test-files.sh" <<<"{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$SANDBOX/apps/api/internal/x/model/a_test.go\"}}"
+  run -0 "$SANDBOX/.claude/hooks/only-test-files.sh" <<<"{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$SANDBOX/$DOMAINS_DIR/x/model/a_test.go\"}}"
   run -0 "$SANDBOX/.claude/hooks/fast-check.sh" budgets.txt
   run cat "$TIMINGS"
   for h in protect-harness guard-bash only-make-check only-test-files fast-check; do

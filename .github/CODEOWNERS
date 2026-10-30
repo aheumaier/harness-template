@@ -23,6 +23,7 @@ knip.json                   @aheumaier
 tsconfig*.json              @aheumaier
 /Makefile                   @aheumaier
 /scripts/harness/           @aheumaier
+/scripts/templates/adoption-probe/  @aheumaier
 /scripts/test/              @aheumaier
 /scripts/git-hooks/         @aheumaier
 /scripts/tool-versions.env  @aheumaier

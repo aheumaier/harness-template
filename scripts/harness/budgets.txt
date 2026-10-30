@@ -27,3 +27,8 @@ obs-e2e 30000 NFR-H7
 # Playwright starting make dev itself, Go build cache warm: 5.4 s; attached to a running make dev: 1.1 s.
 # A cold Go build cache compiles the API first.
 e2e 30000 NFR-H7
+# make adoption-probe, CI's adoption-probe job: a parallel CI job, held to NFR-H7 (exec plan 0003 P4.10). Its
+# wall time: adopts the harness into a temp repo, then make setup, check and harness-selftest there. Green run
+# 161-468 s local, tools and Go caches warm (the high end while other worktrees run checks); the stale-layout
+# fixture stops at step 5 in 4-22 s of harness-selftest.
+adoption-probe 600000 NFR-H7

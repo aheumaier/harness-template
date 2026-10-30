@@ -79,11 +79,24 @@ func TestTestFile(t *testing.T) {
 
 // TestProductTestFileVectors runs every row of testdata/test-files.txt through the test-writer's write guard
 // (testFile) and through the files specs-tested reads (testedIDs), so the agent may write exactly the test files
-// that specs-tested counts (ADR 0039). only-test-files.bats runs the same rows through the hook.
+// that specs-tested counts (ADR 0039). The rows are template paths, so it uses the template's layout and the
+// template protected paths the rows meet; only-test-files.bats runs the same rows through the hook with the
+// repo's own layout.env and protected-paths.txt.
 func TestProductTestFileVectors(t *testing.T) {
-	protected, err := os.ReadFile("../../../../scripts/harness/protected-paths.txt")
-	if err != nil {
-		t.Fatal(err)
+	protected := append(slices.Clone(protectedList), "*playwright.config.* config", "scripts/test/*",
+		"apps/api/tools/analyzers/* config", "apps/api/internal/platform/approvaltest/* config")
+	var hinges []string // the third fields a row may carry: entries the template has
+	for _, l := range templateLayout {
+		if globs, ok := strings.CutPrefix(l, "GENERATED_GLOBS="); ok {
+			for _, g := range strings.Split(globs, ":") {
+				hinges = append(hinges, "generated:"+g)
+			}
+		}
+	}
+	for _, l := range protected {
+		if p, _, _ := strings.Cut(l, " "); !strings.HasPrefix(p, "#") {
+			hinges = append(hinges, "protected:"+p)
+		}
 	}
 	b, err := os.ReadFile("testdata/test-files.txt")
 	if err != nil {
@@ -94,16 +107,21 @@ func TestProductTestFileVectors(t *testing.T) {
 		allow    bool
 	}
 	var rows []row
-	files := map[string][]string{"scripts/harness/protected-paths.txt": strings.Split(string(protected), "\n")}
+	files := map[string][]string{"scripts/harness/protected-paths.txt": protected}
 	for _, line := range strings.Split(string(b), "\n") {
-		p, want, ok := strings.Cut(line, " ")
-		if !ok || strings.HasPrefix(line, "#") {
+		f := strings.Fields(line)
+		if len(f) == 0 || strings.HasPrefix(line, "#") {
 			continue
 		}
-		if want != "allow" && want != "reject" {
-			t.Fatalf("%s: want allow or reject, got %q", p, want)
+		switch {
+		case len(f) == 2 && (f[1] == "allow" || f[1] == "reject"):
+		case len(f) == 3 && f[1] == "reject" && slices.Contains(hinges, f[2]):
+		default:
+			t.Fatalf("%q: want <path> allow|reject, or <path> reject <entry of the template it hinges on: %s>",
+				line, strings.Join(hinges, ", "))
 		}
-		r := row{p, fmt.Sprintf("001/US1-AS%d", len(rows)+1), want == "allow"}
+		p := f[0]
+		r := row{p, fmt.Sprintf("001/US1-AS%d", len(rows)+1), f[1] == "allow"}
 		files[p] = []string{"// spec: " + r.id} // each file names its own id, so testedIDs shows whether it read it
 		rows = append(rows, r)
 	}

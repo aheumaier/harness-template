@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Runs in the repo copy: the greeting service words its message differently; the approved file is unchanged.
+set -euo pipefail
+f=internal/greeting/service/service.go
+sed -i.bak 's/"hello, "/"hi, "/' "$f"
+rm "$f.bak"

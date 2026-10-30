@@ -110,3 +110,25 @@ jobs:
           git clean -fdq -- "$API_DIR/${LAYER_GLOB%/\*/\*}/zzz_probe" "$QUERIES_DIR/zzz_probe.sql" \
             "$MIGRATIONS_DIR/*_zzz_probe.sql" "$API_CLIENT_DIR/src/gen"
           test -z "$(git status --porcelain)" || { git status --porcelain; exit 1; }
+
+  adoption-probe:
+    # README.md "(b) Brownfield project", followed step by step on a minimal root-go.mod repo
+    # (scripts/templates/adoption-probe), must end with make setup, check and harness-selftest green.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Its make tools installs the pinned tools, which the probe links into its repo.
+      - uses: ./.github/actions/setup
+      - run: make adoption-probe
+      # The probe's timing against its budget (scripts/harness/budgets.txt), as check-all uploads its own.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: harness-timings-adoption-probe
+          path: .cache/harness/timings.jsonl
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 8

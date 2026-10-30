@@ -44,6 +44,7 @@ scripts/github-branch-protection.sh config
 scripts/install-tools.sh config
 scripts/gen-schema-doc.sh config
 scripts/harness/* config
+scripts/templates/adoption-probe/* config
 scripts/git-hooks/* config
 scripts/test/*
 apps/api/tools/analyzers/* config
