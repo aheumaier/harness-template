@@ -1,6 +1,6 @@
 # ADR 0019: Inferential sensors are advisory; a finding class seen twice becomes a computational rule
 
-Status: proposed · 2026-10-28
+Status: proposed · 2026-10-28 · amended 2026-10-30 by [ADR 0040](0040-ci-agents-may-use-a-subscription-token.md) (subscription token, flags, cost cap)
 
 ## Context
 Gap G3 of exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`, slice P3.1). Today the only
@@ -38,7 +38,8 @@ those two lines into a decision the Phase 3 slices can build on.
   (no secret, an API error, a fork), the job skips and prints a notice saying why.
 - **This amends plan 0003's "every new sensor ships complete" for inferential sensors.** They get no
   rules.md entry, no fixture and no `budgets.txt` row. Each one instead has a hard cost cap per run, set
-  by the slice that adds it. P3.2, for example, caps by diff size and skips harness-only PRs, where the
+  by the slice that adds it (under a subscription token, ADR 0040, the turn and minute caps are the hard
+  ones). P3.2, for example, caps by diff size and skips harness-only PRs, where the
   human gate applies anyway. The cap lives in a protected `config` file (its workflow under
   `.github/workflows/`), so raising it is a harness-config change that needs a human
   ([harness-config-not-loosened](../harness/rules.md#harness-config-not-loosened)).
@@ -66,19 +67,21 @@ those two lines into a decision the Phase 3 slices can build on.
   - **Write-access collaborators are trusted with the key.** Because the PR's copy of the workflow runs with
     the secret, anyone who can push a branch can edit it to read or spend the key in that run; a red
     `harness-integrity` check does not stop the run. So the key is a dedicated Anthropic workspace key with a
-    hard spend limit, used for nothing else, and an `environment:` with required reviewers is optional
+    hard spend limit, used for nothing else (or, with no spend limit, the owner's subscription token,
+    [ADR 0040](0040-ci-agents-may-use-a-subscription-token.md)), and an `environment:` with required reviewers is optional
     hardening. The confinement above protects against PR content (prompt injection), not against PR authors
     with write access. This is no blocking NFR: ADR 0015's line "Inferential sensors get no blocking NFR"
     applies as written. The agent-gc write token is an environment secret limited to the default branch,
     held by a non-admin identity outside every branch-protection bypass and without Workflows or
-    Administration permission; write collaborators are trusted with the key, not with this token.
+    Administration permission; write collaborators are trusted with the key, not with this write token.
   - **One CI agent contract.** Every agent that runs in CI (`pr-review.yml`, P3.2; the scheduled reviews and
     `agent-gc` in `drift.yml`, P3.3 and P3.4) shares `scripts/harness/ci-agent.sh` and the same flags, checked by
     `scripts/test/pr-review.bats` (a sweep over every `.bin/claude -p` in `.github/workflows/*.yml`, where only
     agent-gc's step may add Edit), `scheduled-review.bats` and `agent-gc.bats`: the pinned `.bin/claude` ([ADR 0016](0016-tool-supply-chain.md)) as `claude -p` in a `run:`
-    step, never a marketplace action, with `--bare --restricted --strict-mcp-config --tools Read,Grep,Glob
-    --disallowedTools 'mcp__*' --permission-mode dontAsk --no-session-persistence --output-format json`,
-    `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and a `--settings` file that blocks reads outside the
+    step, never a marketplace action, with `--restricted --disable-slash-commands --strict-mcp-config --tools
+    Read,Grep,Glob --disallowedTools 'mcp__*' --permission-mode dontAsk --no-session-persistence --output-format
+    json`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`,
+    `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1` (no `--bare`, ADR 0040) and a `--settings` file that blocks reads outside the
     working directory and denies system dirs and env files; one preamble that marks the data untrusted; the
     key in the agent step's env alone; a verbatim leak screen; agent text shown as one code fence it cannot
     close, never as live Markdown; caps as `REVIEW_*` env values at the top of the workflow; a cap or an API

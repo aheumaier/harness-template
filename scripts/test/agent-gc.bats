@@ -262,14 +262,15 @@ reset_tree() {
   has "'.git/hooks/pre-commit' was written after the baseline"
 }
 
-@test "screen: the key verbatim or an sk-ant- prefix in any file withholds" {
+@test "screen: the key or token verbatim or an sk-ant- prefix in any file withholds" {
   printf 'clean\n' >"$T/a"
   printf 'leak sk-ant-x\n' >"$T/b"
   ANTHROPIC_API_KEY=secret-value run -0 "$S" screen "$T/a"
   ANTHROPIC_API_KEY=secret-value run -1 "$S" screen "$T/a" "$T/b"
   printf 'x secret-value y\n' >"$T/b"
   ANTHROPIC_API_KEY=secret-value run -1 "$S" screen "$T/b"
-  ANTHROPIC_API_KEY='' run -2 "$S" screen "$T/a"
+  CLAUDE_CODE_OAUTH_TOKEN=secret-value run -1 "$S" screen "$T/b"
+  ANTHROPIC_API_KEY='' CLAUDE_CODE_OAUTH_TOKEN='' run -2 "$S" screen "$T/a"
 }
 
 @test "result: edited on success with structured output; a cap is a skip; every other ending is red" {
@@ -434,10 +435,11 @@ step() { awk -v id="        id: $1" '/^      - / { if (s) exit; buf = "" } { buf
 
 @test "drift.yml: agent-gc's agent runs with the shared CI agent flags plus Edit, in a read-only job" {
   agent=$(step gc-agent)
-  for flag in '.bin/claude -p' --bare --restricted --strict-mcp-config '--tools Read,Grep,Glob,Edit' "--disallowedTools 'mcp__*'" \
+  for flag in '.bin/claude -p' --restricted --disable-slash-commands --strict-mcp-config '--tools Read,Grep,Glob,Edit' "--disallowedTools 'mcp__*'" \
     '--permission-mode dontAsk' '--settings "$d/settings.json"' '--no-session-persistence' '--output-format json' \
     '--json-schema "$GC_SCHEMA"' '--model "$REVIEW_MODEL"' '--max-turns "$REVIEW_MAX_TURNS"' \
     '--max-budget-usd "$REVIEW_MAX_BUDGET_USD"' 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"' \
+    'CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1"' 'CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1"' 'CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: "1"' \
     'timeout -k 30 "${REVIEW_MAX_MINUTES}m"' 'agent-gc.sh added "$d/added.txt"' \
     'agent-gc.sh screen "$d/out.json" "$d/err.txt" "$d/added.txt"'; do
     [[ $agent == *"$flag"* ]] || {

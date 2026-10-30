@@ -20,7 +20,9 @@ Defaults this template ships with, and what a product built on it must do before
   container images ([ADR 0016](adr/0016-tool-supply-chain.md)).
 - **The CI PR reviewer's key trusts write-access collaborators.** `pr-review.yml` runs on `pull_request`,
   where GitHub runs the PR's own copy of the workflow with the `ANTHROPIC_API_KEY` secret: anyone who can push
-  a branch can read or spend it. It must be a dedicated Anthropic workspace key with a hard spend limit; an
+  a branch can read or spend it. It must be a dedicated Anthropic workspace key with a hard spend limit. The
+  alternative `CLAUDE_CODE_OAUTH_TOKEN` secret is the owner's subscription token: exposed the same way as the
+  key, with no spend limit, valid for a year and revocable by the owner alone ([ADR 0040](adr/0040-ci-agents-may-use-a-subscription-token.md)); an
   `environment:` with required reviewers is optional hardening. Forks get no secrets. Against PR content
   (prompt injection) the agent has read-only file tools confined to the base checkout and no shell, web or
   MCP tool; a verbatim screen of its output is a backstop, not the control

@@ -69,16 +69,19 @@ agent_found() {
   return "$rc"
 }
 
-# agent_screen <file...>: 1 when a file holds ANTHROPIC_API_KEY (from the environment) verbatim or, in any
-# case, the `sk-ant-` key prefix; 0 when none does. A verbatim backstop; the agent's confinement is the control.
+# agent_screen <file...>: 1 when a file holds ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN (from the
+# environment, each one that is set) verbatim or, in any case, the `sk-ant-` prefix; 0 when none does. A
+# verbatim backstop; the agent's confinement is the control.
 agent_screen() {
-  [[ -n ${ANTHROPIC_API_KEY:-} ]] || die "screen needs ANTHROPIC_API_KEY in its environment"
-  local f
+  local f secrets=()
+  [[ -z ${ANTHROPIC_API_KEY:-} ]] || secrets+=("$ANTHROPIC_API_KEY")
+  [[ -z ${CLAUDE_CODE_OAUTH_TOKEN:-} ]] || secrets+=("$CLAUDE_CODE_OAUTH_TOKEN")
+  [[ ${#secrets[@]} -gt 0 ]] || die "screen needs ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN in its environment"
   for f in "$@"; do
     [[ -f $f ]] || die "no file at '$f'"
-    # The key as a pattern file, never an argument: it stays out of the process list.
-    if agent_found -F -f <(printf '%s\n' "$ANTHROPIC_API_KEY") -- "$f" || agent_found -i -e 'sk-ant-' -- "$f"; then
-      echo "$AGENT_SCRIPT: $f contains the API key or an sk-ant- prefix" >&2
+    # The secrets as a pattern file, never an argument: they stay out of the process list.
+    if agent_found -F -f <(printf '%s\n' "${secrets[@]}") -- "$f" || agent_found -i -e 'sk-ant-' -- "$f"; then
+      echo "$AGENT_SCRIPT: $f contains the API key, the OAuth token or an sk-ant- prefix" >&2
       return 1
     fi
   done

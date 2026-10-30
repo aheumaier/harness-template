@@ -45,3 +45,4 @@ only through a new ADR. Architectural PRs link an ADR in the PR template.
 | [0037](0037-upstream-spec-drift-is-a-drift-report.md) | Cross-repo contracts: vendored upstream specs are a weekly drift report, consumers are named on a break (amends 0030) | proposed |
 | [0038](0038-readme-brownfield-adoption-is-probed.md) | README (b) brownfield adoption is probed by a required check (amends 0009, 0026) | proposed |
 | [0039](0039-tests-are-written-apart-from-the-implementation.md) | Tests are written apart from the implementation, from the spec (amends 0019) | proposed |
+| [0040](0040-ci-agents-may-use-a-subscription-token.md) | CI agents may authenticate with a Claude subscription token (amends 0019) | proposed |

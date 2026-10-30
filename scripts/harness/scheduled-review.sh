@@ -13,7 +13,7 @@
 #       the agent's --settings JSON (as pr-review.sh settings): reads outside the working directory blocked,
 #       Read denied under system directories, each absolute <deny-dir> and for every env file
 #   scheduled-review.sh screen <file...>
-#       exit 1 when a file holds ANTHROPIC_API_KEY verbatim or an `sk-ant-` prefix (as pr-review.sh screen)
+#       exit 1 when a file holds ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN verbatim or an `sk-ant-` prefix (as pr-review.sh screen)
 #   scheduled-review.sh result <exit> <out.json> <stderr> <findings-out>
 #       reads the agent's `--output-format json` result: on success writes its structured output to
 #       <findings-out> and prints `findings`; when the agent stopped on a cap or an error (an error_* subtype,

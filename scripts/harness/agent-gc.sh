@@ -30,7 +30,7 @@
 #   agent-gc.sh added <out>
 #       writes the lines the working-tree diff adds to <out>, the part of the edit the leak screen reads
 #   agent-gc.sh screen <file...>
-#       exit 1 when a file holds ANTHROPIC_API_KEY verbatim or an `sk-ant-` prefix (as pr-review.sh screen)
+#       exit 1 when a file holds ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN verbatim or an `sk-ant-` prefix (as pr-review.sh screen)
 #   agent-gc.sh confined <targets> <baseline>
 #       after the agent, whatever its outcome: exit 2 when the tree holds anything but edits of target files
 #       (a new, deleted, renamed or other file, a mode change, an ignored file or a file under .git written

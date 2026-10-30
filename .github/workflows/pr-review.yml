@@ -2,15 +2,17 @@
 # runs headless on the PR's diff and posts one top-level PR comment (exec plan 0003 P3.2,
 # docs/harness/ci.md#pr-review). An inferential sensor (docs/adr/0019-inferential-sensors-are-advisory.md):
 # never a required check, and a finding never turns a job red. When the agent cannot run (no
-# ANTHROPIC_API_KEY secret, a fork, a draft, an API error, a cap reached) the job prints a notice and skips.
+# ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN secret, a fork, a draft, an API error, a cap reached) the job prints a notice and skips.
 # Harness breakage turns it red: the agent did not start (bad flag, broken install), or a commit is missing
 # (the head lost to a force-push race included).
 #
 # Trust boundary: write-access collaborators are trusted with the key. On `pull_request` GitHub runs the PR's
 # own copy of this file, with the secret: anyone who can push a branch here can edit it to print or use the
 # key in that run (a red harness-integrity check does not stop the run). So ANTHROPIC_API_KEY must be a
-# dedicated Anthropic workspace key with a hard spend limit, used for nothing else. Optional hardening: an
-# `environment:` with required reviewers on the review job, so a human releases the key per run.
+# dedicated Anthropic workspace key with a hard spend limit, used for nothing else. CLAUDE_CODE_OAUTH_TOKEN,
+# a subscription token from `claude setup-token`, is the alternative when no API key is set: it bills one
+# person's subscription and has no spend limit (ADR 0040). Optional hardening: an `environment:` with required
+# reviewers on the review job, so a human releases the key per run.
 #
 # The diff is untrusted input to an agent that holds the key (prompt injection, secret exfiltration). Safe
 # against PR content, as opposed to PR authors with write access, only while all of these hold (ADR 0010, 0019):
@@ -22,12 +24,13 @@
 #     checks fork, draft and secret before it calls any base script, and skips a base without pr-review.sh
 #     (the PR that adds this file). Change the script's interface and this file in separate PRs.
 #   - the review job holds `contents: read` only; the key is in the env of the agent step alone, which runs
-#     only `claude` and the leak screen. The agent's flags (all in the CLI reference): --bare, --restricted
+#     only `claude` and the leak screen. The agent's flags (all in the CLI reference): --restricted
 #     (no command or code tools, no WebFetch, file tools confined to the working directories, only --settings
 #     loaded), --tools Read,Grep,Glob, --disallowedTools 'mcp__*', --strict-mcp-config, --permission-mode
-#     dontAsk; the --settings file blocks reads outside the working directory and denies Read under /proc,
+#     dontAsk, --disable-slash-commands, with CLAUDE_CODE_DISABLE_CLAUDE_MDS, CLAUDE_CODE_DISABLE_AUTO_MEMORY
+#     and CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS set (no --bare: it never reads the OAuth token, ADR 0040); the --settings file blocks reads outside the working directory and denies Read under /proc,
 #     /etc, the runner's temp, tool cache and config dirs (`pr-review.sh settings`).
-#   - `pr-review.sh screen` withholds output holding the key verbatim or an `sk-ant-` prefix: a backstop for
+#   - `pr-review.sh screen` withholds output holding either secret verbatim or an `sk-ant-` prefix: a backstop for
 #     a verbatim leak, not the control (an encoded key passes it; the confinement above is the control).
 #   - the comment job holds `pull-requests: write`, no checkout and no secret. It posts the body as a file
 #     (`-F body=@`), never through `run:` interpolation, and the body shows the agent's text as one fenced
@@ -85,13 +88,13 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
           DRAFT: ${{ github.event.pull_request.draft }}
-          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }} # a boolean: the key's value never reaches this step
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }} # a boolean: no secret's value reaches this step
           MAX_DIFF_BYTES: ${{ env.REVIEW_MAX_DIFF_BYTES }}
         run: |
           skip() { echo "::notice title=pr-review skipped::$1"; exit 0; }
           [[ $FORK == false ]] || skip "the PR comes from a fork, which gets no secrets"
           [[ $DRAFT == false ]] || skip "the PR is a draft; marking it ready for review runs the review"
-          [[ $HAS_KEY == true ]] || skip "the ANTHROPIC_API_KEY repository secret is not set (docs/harness/ci.md#pr-review)"
+          [[ $HAS_KEY == true ]] || skip "neither the ANTHROPIC_API_KEY nor the CLAUDE_CODE_OAUTH_TOKEN repository secret is set (docs/harness/ci.md#pr-review)"
           [[ -x scripts/harness/pr-review.sh ]] || skip "base commit has no pr-review.sh"
           d=.cache/pr-review
           mkdir -p "$d"
@@ -112,16 +115,20 @@ jobs:
         id: agent
         if: steps.gate.outputs.run == 'true'
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }} # wins over the token when both are set
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }} # from `claude setup-token` (ADR 0040)
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" # no auto-update, telemetry or error reporting
+          CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" # no CLAUDE.md from the checkout in the system prompt
+          CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" # no memory read or written under ~/.claude
+          CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: "1" # no git status snapshot in the system prompt
         run: |
           d=.cache/pr-review
           code=0
           # The minutes cap is a notice like the others (124: timed out, 137: killed after the grace period).
           timeout -k 30 "${REVIEW_MAX_MINUTES}m" \
-            .bin/claude -p --bare --restricted --strict-mcp-config --tools Read,Grep,Glob --disallowedTools 'mcp__*' \
+            .bin/claude -p --restricted --strict-mcp-config --tools Read,Grep,Glob --disallowedTools 'mcp__*' \
             --permission-mode dontAsk --settings "$d/settings.json" --no-session-persistence \
-            --output-format json --model "$REVIEW_MODEL" \
+            --output-format json --model "$REVIEW_MODEL" --disable-slash-commands \
             --max-turns "$REVIEW_MAX_TURNS" --max-budget-usd "$REVIEW_MAX_BUDGET_USD" \
             <"$d/prompt.txt" >"$d/out.json" 2>"$d/err.txt" || code=$?
           if [[ $code == 124 || $code == 137 ]]; then
@@ -136,7 +143,7 @@ jobs:
             0) echo "screened=true" >>"$GITHUB_OUTPUT" ;;
             1)
               rm -f "$d/out.json" "$d/err.txt"
-              echo "::warning title=pr-review withheld::the agent output holds the API key or an sk-ant- prefix; nothing posted (rotate the key if it is the key)"
+              echo "::warning title=pr-review withheld::the agent output holds the API key, the OAuth token or an sk-ant- prefix; nothing posted (rotate the secret if it is one)"
               ;;
             *) exit "$rc" ;;
           esac

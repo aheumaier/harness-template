@@ -156,7 +156,7 @@ change() {
   has 'must be an absolute path'
 }
 
-@test "screen withholds the key verbatim or an sk-ant- prefix in any case, fails closed without a key" {
+@test "screen withholds the key or token verbatim or an sk-ant- prefix in any case, fails closed without either" {
   key='sk-ant-api03-Zm9vYmFy.test'
   printf 'APPROVE\nclean\n' >"$T/clean.txt"
   printf 'leak: %s\n' "$key" >"$T/key.txt"
@@ -169,8 +169,14 @@ change() {
   ANTHROPIC_API_KEY=$key run -1 "$P" screen "$T/prefix.txt"
   ANTHROPIC_API_KEY='plain-key.*' run -1 "$P" screen "$T/plain.txt"
   ANTHROPIC_API_KEY='plain-key.*' run -0 "$P" screen "$T/regex.txt" # fixed string, not a regex
-  ANTHROPIC_API_KEY='' run -2 "$P" screen "$T/clean.txt"
-  has 'needs ANTHROPIC_API_KEY'
+  printf 'x oauth-token.* y\n' >"$T/token.txt"
+  CLAUDE_CODE_OAUTH_TOKEN='oauth-token.*' run -0 "$P" screen "$T/clean.txt"
+  CLAUDE_CODE_OAUTH_TOKEN='oauth-token.*' run -1 "$P" screen "$T/token.txt"
+  has 'the OAuth token'
+  ANTHROPIC_API_KEY='plain-key.*' CLAUDE_CODE_OAUTH_TOKEN='oauth-token.*' run -1 "$P" screen "$T/token.txt"
+  ANTHROPIC_API_KEY='plain-key.*' CLAUDE_CODE_OAUTH_TOKEN='oauth-token.*' run -1 "$P" screen "$T/plain.txt"
+  ANTHROPIC_API_KEY='' CLAUDE_CODE_OAUTH_TOKEN='' run -2 "$P" screen "$T/clean.txt"
+  has 'needs ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN'
   ANTHROPIC_API_KEY=$key run -2 "$P" screen "$T/missing.txt"
   has 'no file at'
 }
@@ -211,15 +217,16 @@ change() {
 
 # The workflow's trust invariants (its header), read from the real file. HAS_KEY is the one other secrets
 # reference: a boolean, never the key's value.
-@test "pr-review.yml: no pull_request_target, the key in the agent step alone, no \${{ in run blocks" {
+@test "pr-review.yml: no pull_request_target, the key and token in the agent step alone, no \${{ in run blocks" {
   run -1 grep -nE '^[^#]*pull_request_target' "$W"
   run -0 awk '
     /^      - / { s++ }
     /^        id: / { id[s] = $2 }
     /^[^#]*secrets\./ { t = $0; sub(/^ +/, "", t); sub(/ +#.*/, "", t); hit[++n] = s; txt[n] = t }
     END { for (i = 1; i <= n; i++) print ((hit[i] in id) ? id[hit[i]] : "?") ": " txt[i] }' "$W"
-  [ "$output" = "gate: HAS_KEY: \${{ secrets.ANTHROPIC_API_KEY != '' }}
-agent: ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}" ]
+  [ "$output" = "gate: HAS_KEY: \${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+agent: ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}
+agent: CLAUDE_CODE_OAUTH_TOKEN: \${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" ]
   [ "$(grep -c '^ *run:' "$W")" -ge 5 ]
   run -0 awk '
     inrun { match($0, /^ */); if ($0 ~ /^ *$/ || RLENGTH > ind) { if (index($0, "${{")) print NR ": " $0; next } inrun = 0 }
@@ -257,8 +264,8 @@ comment pull-requests: write" ]
   [ "$minutes" -lt "$job" ]
 }
 
-# Every `.bin/claude -p` in every workflow, read from the real files (ADR 0019): one call per step, the shared
-# CI agent flags, the minutes cap whose 124/137 ends as a notice, and the read-only tools; only agent-gc's step
+# Every `.bin/claude -p` in every workflow, read from the real files (ADR 0019, 0040): one call per step, the
+# shared CI agent flags (never --bare, which skips the OAuth token), the minutes cap whose 124/137 ends as a notice, and the read-only tools; only agent-gc's step
 # (drift.yml, id gc-agent) adds Edit. A new agent call in any workflow is covered without a new test.
 @test "workflows: every .bin/claude -p runs with the shared CI agent flags and the minutes cap" {
   seen=""
@@ -272,10 +279,21 @@ comment pull-requests: write" ]
       tools=Read,Grep,Glob
       [[ ${wf##*/}:$id != drift.yml:gc-agent ]] || tools=Read,Grep,Glob,Edit
       [ "$(grep -c '\.bin/claude -p' <<<"$step")" -eq 1 ]
-      for flag in --bare --restricted --strict-mcp-config "--tools $tools --" "--disallowedTools 'mcp__*'" \
+      [[ $step != *--bare* ]] || {
+        echo "${wf##*/} step $id runs --bare, which never reads CLAUDE_CODE_OAUTH_TOKEN (ADR 0040)" >&2
+        return 1
+      }
+      # Each on a line of its own, so a commented-out one fails: the CLI ignores an unknown or missing variable.
+      for var in NONESSENTIAL_TRAFFIC CLAUDE_MDS AUTO_MEMORY GIT_INSTRUCTIONS; do
+        grep -Eq "^ +CLAUDE_CODE_DISABLE_$var: \"1\"( |$)" <<<"$step" || {
+          echo "${wf##*/} step $id lacks: CLAUDE_CODE_DISABLE_$var: \"1\"" >&2
+          return 1
+        }
+      done
+      for flag in --restricted --disable-slash-commands --strict-mcp-config "--tools $tools --" "--disallowedTools 'mcp__*'" \
         '--permission-mode dontAsk' '--settings "$d/settings.json"' '--no-session-persistence' '--output-format json' \
         '--model "$REVIEW_MODEL"' '--max-turns "$REVIEW_MAX_TURNS"' '--max-budget-usd "$REVIEW_MAX_BUDGET_USD"' \
-        'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"' 'timeout -k 30 "${REVIEW_MAX_MINUTES}m"' \
+        'timeout -k 30 "${REVIEW_MAX_MINUTES}m"' \
         'if [[ $code == 124 || $code == 137 ]]; then' '::notice title='; do
         [[ $step == *"$flag"* ]] || {
           echo "${wf##*/} step $id lacks: $flag" >&2

@@ -30,7 +30,7 @@ check's name: branch protection matches checks by name, so such a job could stan
 | | | `pr-conventions` | the **base branch's** `make commits specs` against the PR head and title (Conventional Commits, PR title ≤ 90 characters, spec-kit specs) | yes |
 | `migration-gate.yml` | every PR; its gates run only when `MIGRATIONS_DIR` (`scripts/harness/layout.env`) changed | `migrations` | append-only, Atlas lint, squawk | no (same sensors in `check-all`) |
 | `drift.yml` | weekly, manual | `drift` | dead code, knip, govulncheck, Trivy (`vuln-deps`), schema doc, doc links, harness files behind the template (`make harness-sync-check`; anonymous fetch, so a private template exits 2 here and is checked locally), vendored upstream specs their sources broke since (`make upstream-drift`, `UPSTREAM_SPECS` in `scripts/harness/layout.env`, [ADR 0037](../adr/0037-upstream-spec-drift-is-a-drift-report.md); anonymous fetch too, so a private source exits 2 here and is checked locally), `QUALITY.md` rows not graded in the last 30 days (`make docs-quality`, the only clock-dependent half; the deterministic `make docs-quality-shape` is in `check-all`, [ADR 0028](../adr/0028-quality-grades-per-domain-and-layer.md)), coverage that fell since the last run ([coverage](#coverage)), the weekly mutation score table, or a mutation run that could not measure ([mutation testing](#mutation-testing); survivors go to the job summary only), rules that never fired in 90 days ([rule fires](#rule-fires); a human decides to keep or retire each), the findings of the scheduled reviews → one open `drift` issue | no |
-| | | `review-gate`, `reviews (<review>)` | the [scheduled reviews](#scheduled-reviews): security, data handling, modularity, one read-only agent each, on the default branch only; skipped with a notice without the `ANTHROPIC_API_KEY` secret | no |
+| | | `review-gate`, `reviews (<review>)` | the [scheduled reviews](#scheduled-reviews): security, data handling, modularity, one read-only agent each, on the default branch only; skipped with a notice without the `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` secret | no |
 | | | `gc-gate`, `agent-gc`, `agent-gc-pr` | [agent GC](#agent-gc): one agent fixes broken doc links in unprotected docs → one small PR labelled `agent-gc` for human review; off until the `AGENT_GC_ENABLED` variable is `true` | no |
 | `harness-nfr.yml` | nightly, manual | `harness-nfr` | p95 per sensor over 7 days of `harness-timings-check-all` artifacts vs `budgets.txt` (`scripts/harness/nfr-report.sh`, alerts only) and `make harness-determinism` (`make check` twice; fails on any difference) → one open `harness-nfr` issue | no |
 
@@ -139,25 +139,31 @@ and neither job is a required check. A top-level comment opens no review thread,
 - **Trust boundary: write-access collaborators are trusted with the key.** On `pull_request` GitHub runs the
   PR's own copy of the workflow, with the secret, so anyone who can push a branch can edit it to print or
   spend the key in that run; a red `harness-integrity` does not stop the run. The key must therefore be a
-  dedicated Anthropic workspace key with a hard spend limit, used for nothing else. Optional hardening: an
+  dedicated Anthropic workspace key with a hard spend limit, used for nothing else. The alternative is
+  `CLAUDE_CODE_OAUTH_TOKEN`, a subscription token from `claude setup-token`: it is the owner's personal
+  credential, has no spend limit and shares the owner's usage limits; an API key, when also set, wins
+  ([ADR 0040](../adr/0040-ci-agents-may-use-a-subscription-token.md)). "The key" below means whichever of the two runs the agent. Optional hardening: an
   `environment:` with required reviewers on the `review` job, so a human releases the key for each run.
 - **Untrusted diff.** The workspace is the PR's base commit (prompt, scripts, protected-path list); the head
   is read with `git diff` only, and the diff reaches the agent between nonce-tagged delimiters as data. The
   gate step builds the prompt and the agent's settings without the key; the agent step runs only `claude` and
-  the leak screen, with a `contents: read` token. The agent runs with `--bare --restricted --tools
-  Read,Grep,Glob --disallowedTools 'mcp__*' --strict-mcp-config --permission-mode dontAsk`, every flag in the
-  [CLI reference](https://code.claude.com/docs/en/cli-reference): no shell, web or MCP tool, and file tools
-  confined to the working directories. Its `--settings` file (`pr-review.sh settings`) also blocks reads outside
+  the leak screen, with a `contents: read` token. The agent runs with `--restricted --tools
+  Read,Grep,Glob --disallowedTools 'mcp__*' --strict-mcp-config --permission-mode dontAsk
+  --disable-slash-commands`, every flag in the [CLI reference](https://code.claude.com/docs/en/cli-reference),
+  and `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` and
+  `CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1`: no shell, web or MCP tool, no repository settings, hooks, skills,
+  CLAUDE.md, memory or git status snapshot, and file tools confined to the working directories. Never `--bare`: it does not read the OAuth token ([ADR 0040](../adr/0040-ci-agents-may-use-a-subscription-token.md)). Its `--settings` file (`pr-review.sh settings`) also blocks reads outside
   the working directory and denies Read under `/proc`, `/etc`, the runner's temp, tool cache and config dirs.
   A separate `comment` job with `pull-requests: write` and no secret posts the text, fenced so no mention,
   link or image in it renders. The workflow header lists every invariant and `scripts/test/pr-review.bats`
   checks them; keep them in any edit. The agent gets no PR body, so its defaults check (check 6) cannot see
   the PR's `## Assumptions` section and lists every default the diff adds
   ([TD-119](../exec-plans/tech-debt-tracker.md)).
-- **Leak screen** (`pr-review.sh screen`): output holding the key verbatim, or `sk-ant-` in any case, is
+- **Leak screen** (`pr-review.sh screen`): output holding either secret verbatim, or `sk-ant-` in any case, is
   withheld with a warning. It is a backstop for a verbatim leak, not the main control: an encoded key passes
   it. The tool confinement above is the control.
-- **Skips with a notice** when the `ANTHROPIC_API_KEY` repository secret is missing, on a fork (no secrets),
+- **Skips with a notice** when neither the `ANTHROPIC_API_KEY` nor the `CLAUDE_CODE_OAUTH_TOKEN` repository
+  secret is set, on a fork (no secrets),
   a draft, a base commit without `pr-review.sh`, an empty or harness-only diff (every path, both sides of a
   rename, in `scripts/harness/protected-paths.txt`, where the code-owner review applies), a diff over the size
   cap, or when the agent stops (API error, turn or budget cap; the notice gives the exit code, the error and
@@ -165,12 +171,18 @@ and neither job is a required check. A top-level comment opens no review thread,
 - **Red only on harness breakage**: the agent did not start (no JSON result: a bad flag, a broken install),
   or a commit is missing (fetch depth, or a head lost to a force-push race). Never on a finding.
 - **Cost cap per run**: the `REVIEW_*` values at the top of the workflow (diff size, turns, US dollars,
-  model, minutes: `REVIEW_MAX_MINUTES` stops the agent with a notice before the job's own timeout); a new push cancels the running review. The workflow is protected, so raising a cap needs the
+  model, minutes: `REVIEW_MAX_MINUTES` stops the agent with a notice before the job's own timeout); a new push cancels the running review.
+  Under the subscription token the dollar cap may not apply, so turns and minutes are the hard bounds
+  ([ADR 0040](../adr/0040-ci-agents-may-use-a-subscription-token.md)). The workflow is protected, so raising a cap needs the
   `harness-change-approved` label.
 - **Dry run** of what the agent gets: `scripts/harness/pr-review.sh prompt <(git diff main...)`.
-- **Turning it on** is a human step, after ADR 0019 is accepted: run `.bin/claude --help` and a
-  confinement test with a dummy key, then add the `ANTHROPIC_API_KEY` repository secret
-  ([TD-38](../exec-plans/tech-debt-tracker.md)). Until then every run skips.
+- **Turning it on**: the `CLAUDE_CODE_OAUTH_TOKEN` secret is set (2026-10-30), so the first PR whose base
+  carries [ADR 0040](../adr/0040-ci-agents-may-use-a-subscription-token.md) runs the agent; the PR that brings it runs the base's older leak screen, which needs
+  `ANTHROPIC_API_KEY`, so that one review goes red. A dummy key cannot test the confinement (it fails
+  authentication before any tool runs), so the test is live: a test PR whose diff asks the agent to read
+  `/proc/self/environ` and to quote any CLAUDE.md or git status in its prompt must get a review that shows the
+  Read refused and no such text ([TD-38](../exec-plans/tech-debt-tracker.md)). A workspace key replaces the
+  token without a change: add `ANTHROPIC_API_KEY`, then delete the token secret and revoke the token.
 - A finding class accepted twice becomes a computational rule ([ADR 0019](../adr/0019-inferential-sensors-are-advisory.md)).
 
 ## Scheduled reviews
@@ -191,22 +203,25 @@ finding class accepted twice becomes a computational rule.
   the skill without its front matter; run it locally to see exactly what is sent) and answers in a JSON
   schema (`--json-schema`: `file`, `line`, `severity`, `problem`, `fix`; at most 15).
 - **Same CI agent contract as [PR review](#pr-review)** (`scripts/harness/ci-agent.sh`, shared with
-  `pr-review.sh`): Claude Code installed by `scripts/install-tools.sh claude`, run as `.bin/claude -p --bare
+  `pr-review.sh`): Claude Code installed by `scripts/install-tools.sh claude`, run as `.bin/claude -p
   --restricted --strict-mcp-config --tools Read,Grep,Glob --disallowedTools 'mcp__*' --permission-mode
-  dontAsk --no-session-persistence --output-format json` with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
-  and a `--settings` file that blocks reads outside the working directory and denies Read under system and
-  runner dirs and of every env file. The skills are read-only too. The agent step holds the API key and no
+  dontAsk --disable-slash-commands --no-session-persistence --output-format json` with
+  `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`,
+  `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1` and a `--settings` file that blocks reads outside the working directory and denies Read under system and
+  runner dirs and of every env file. The skills are read-only too. The agent step holds the key or token and no
   write token (`contents: read`, credentials not persisted), and runs only `claude`, the schema and the
   leak screen (`scheduled-review.sh screen`, a verbatim backstop as in PR review).
 - **Trust boundary: write-access collaborators are trusted with the key.** A manual run executes the
   dispatched branch's copy of the workflow with the secret, so anyone who can push a branch can edit it to
   print or spend the key; the default-branch gate keeps reviews on reviewed code but an edited copy can drop
-  it. The key must be a dedicated Anthropic workspace key with a hard spend limit, used for nothing else.
+  it. The key must be a dedicated Anthropic workspace key with a hard spend limit, used for nothing else, or
+  the subscription token with PR review's caveats ([ADR 0040](../adr/0040-ci-agents-may-use-a-subscription-token.md)).
   Optional hardening: an `environment:` on the `reviews` job limited to the default branch, holding the key
   as an environment secret.
 - **Cost cap per review**: the `REVIEW_*` values at the top of the workflow: `REVIEW_MODEL`
   (`claude-sonnet-5-5`), `REVIEW_MAX_TURNS` (40), `REVIEW_MAX_BUDGET_USD` (3.00) and `REVIEW_MAX_MINUTES`
-  (15). The workflow is protected, so raising a cap needs the `harness-change-approved` label.
+  (15); under the subscription token turns and minutes are the hard bounds. The workflow is protected, so
+  raising a cap needs the `harness-change-approved` label.
 - **Skips with a notice** when the secret is missing, off the default branch, or when the agent stops on a
   cap or an API error. **Red only on harness breakage**: the agent did not start, or it succeeded without
   structured findings (empty or missing `structured_output`). The `drift` issue names a failed review job
@@ -218,8 +233,8 @@ finding class accepted twice becomes a computational rule.
   or HTML in it renders. Reviews come last in the report, security first, so the issue's 60000-byte cut
   (on a line boundary) drops modularity first. The log shows the report between `::stop-commands::`
   markers, and only the issue step writes to GitHub.
-- **Turning it on** is a human step, with [PR review](#pr-review)'s: set the `ANTHROPIC_API_KEY` repository
-  secret, then start one manual `drift` run on the default branch and check each review's notice or
+- **Turning it on** is a human step, with [PR review](#pr-review)'s: set the `ANTHROPIC_API_KEY` or
+  `CLAUDE_CODE_OAUTH_TOKEN` repository secret, then start one manual `drift` run on the default branch and check each review's notice or
   findings ([TD-38](../exec-plans/tech-debt-tracker.md)). Until then the `review-gate` job leaves a notice,
   `reviews` is skipped and the `drift` job runs as before.
 
@@ -293,7 +308,7 @@ no budget row, never a required check; its PR is a proposal like any other, merg
   Playwright cache) and keeps every file it writes (findings, targets, prompt, settings, the agent's output,
   the patch) under `$RUNNER_TEMP`. Before the agent runs the tree must be clean, untracked files included
   (`agent-gc.sh baseline` records the ignored ones), and the checkout is made read-only, `.git` included,
-  except the target files (`agent-gc.sh lock`). The agent step holds the API key and runs only `claude`, the
+  except the target files (`agent-gc.sh lock`). The agent step holds the key or token and runs only `claude`, the
   schema, `git diff-files` and the leak screen (on the agent's output and on the lines its edit adds).
 - **Confined, whatever the agent's outcome** (success, cap, timeout or withheld output): `agent-gc.sh
   confined` turns the job red when the tree holds anything but edits of target files: a new, deleted or
@@ -313,7 +328,7 @@ no budget row, never a required check; its PR is a proposal like any other, merg
   while one is open.
 - **The write token.** The agent-gc write token is an environment secret limited to the default branch, held
   by a non-admin identity outside every branch-protection bypass and without Workflows or Administration
-  permission; write collaborators are trusted with the key, not with this token. So `AGENT_GC_TOKEN` is a
+  permission; write collaborators are trusted with the key, not with this write token. So `AGENT_GC_TOKEN` is a
   secret of the `agent-gc` environment, whose deployment-branch policy is the default branch only, and only
   `agent-gc-pr` names that environment. It belongs to a machine user that is not an admin, not the code
   owner (a PR its owner authored cannot be approved by them, so a code-owner token would leave its PRs
@@ -323,8 +338,8 @@ no budget row, never a required check; its PR is a proposal like any other, merg
   ([TD-50](../exec-plans/tech-debt-tracker.md)).
 - **Cost cap per run**: the scheduled reviews' `REVIEW_MODEL`, `REVIEW_MAX_TURNS`, `REVIEW_MAX_BUDGET_USD`
   and `REVIEW_MAX_MINUTES`, plus `REVIEW_GC_MAX_FILES` (5) and `REVIEW_GC_MAX_CHANGED_LINES` (40), at the top
-  of the protected workflow.
-- **Skips with a notice** when it is off, the API key is missing, off the default branch (`review-gate`), an
+  of the protected workflow; under the subscription token turns and minutes are the hard bounds.
+- **Skips with a notice** when it is off, neither secret is set, off the default branch (`review-gate`), an
   `agent-gc` PR is open, there is nothing to fix, or the agent stops on a cap or an API error. **Red only on
   harness breakage**: the doc check broke, the tree was not clean, the agent did not start or succeeded
   without structured output, the confinement failed, the patch fails its second check, or the `agent-gc`

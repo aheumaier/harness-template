@@ -20,7 +20,7 @@
 #       under system directories, each absolute <deny-dir> (the runner's temp, tool and home config dirs)
 #       and for every env file.
 #   pr-review.sh screen <file...>
-#       exit 1 when a file contains ANTHROPIC_API_KEY (from the environment) verbatim or, in any case, the
+#       exit 1 when a file contains ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN (from the environment) verbatim or, in any case, the
 #       `sk-ant-` key prefix; 0 when none does. A verbatim backstop, not the main control: the agent's tool
 #       confinement is (docs/harness/ci.md#pr-review).
 #   pr-review.sh result <exit> <out.json> <stderr> <review-out>
