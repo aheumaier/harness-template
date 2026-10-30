@@ -67,6 +67,8 @@ SIZE_RULES := code-function-length,code-complexity,code-parameters,code-file-len
 ANALYZERS_SRC := $(shell find $(API_DIR)/tools/analyzers -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
 HARNESS     := .bin/harness
 HARNESS_SRC := $(shell find $(API_DIR)/tools/harness -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
+# install-tools.sh's stamp (TD-9): a target that needs a pinned tool from .bin depends on this, never on $(GCL).
+TOOLS_STAMP := .bin/.tools-stamp
 
 ##@ Workflow
 .PHONY: help setup check check-all harness-selftest harness-determinism new-domain rename dev db-up db-migrate db-reset
@@ -108,10 +110,10 @@ db-up: ## Start this worktree's Postgres
 db-migrate: db-up ## Apply pending migrations to this worktree's Postgres
 	@$(WITH_ENV) cd $(API_DIR) && atlas migrate apply --env local >/dev/null
 
+# Two sub-makes, not prerequisites: down must finish before db-migrate starts, also under -j.
 db-reset: ## Drop this worktree's database volume (and the obs stack), recreate, migrate
-	@$(MAKE) --no-print-directory down
-	@$(WITH_ENV) docker compose --progress quiet up -d --wait db
-	@$(WITH_ENV) cd $(API_DIR) && atlas migrate apply --env local >/dev/null
+	@$(MAKE) down
+	@$(MAKE) db-migrate
 
 check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=60s any: NFR-H3/H4): format, lint, arch, unit tests, secrets, gen-check
 	@$(if $(STACK_OFF),echo "STACK=$(STACK) leaves out: $(sort $(STACK_OFF)) (ADR 0033)" >&2,true)
@@ -216,14 +218,22 @@ review-prompt: ## Prompt of a scheduled review, as drift.yml sends it: make revi
 
 ##@ Tools
 .PHONY: tools deps
-tools: $(GCL) $(HARNESS) ## Install pinned CLI tools into .bin
+# Always runs install-tools.sh (once), so it also repairs a deleted .bin tool the stamp cannot see.
+tools: ## Install pinned CLI tools into .bin
 	@scripts/install-tools.sh
+	@touch $(TOOLS_STAMP)
+	@$(MAKE) -s $(GCL) $(HARNESS)
 
 deps: ## Install JS dependencies from the lockfile (make e2e installs its browser itself); none without web in STACK
 	@$(if $(call stack_has,web),pnpm install --frozen-lockfile --silent,true)
 
-$(GCL): $(API_DIR)/.custom-gcl.yml $(ANALYZERS_SRC) scripts/tool-versions.env
+$(TOOLS_STAMP): scripts/tool-versions.env scripts/install-tools.sh
 	@scripts/install-tools.sh
+	@touch $@
+
+# Order-only on the stamp: CI restores .bin from cache and touches $(GCL) (.github/actions/setup), and a
+# checkout's newer tool-versions.env remakes the stamp; a normal prerequisite would then rebuild $(GCL) too.
+$(GCL): $(API_DIR)/.custom-gcl.yml $(ANALYZERS_SRC) scripts/tool-versions.env | $(TOOLS_STAMP)
 	@grep -q "^version: $(GOLANGCI_LINT_VERSION)$$" $(API_DIR)/.custom-gcl.yml || { echo ".custom-gcl.yml version != GOLANGCI_LINT_VERSION ($(GOLANGCI_LINT_VERSION))" >&2; exit 1; }
 	@cd $(API_DIR) && golangci-lint custom
 	@touch $@
@@ -359,12 +369,12 @@ test-sh: $(HARNESS) ## bats tests for scripts/ and .claude/hooks/ (scripts/test)
 
 ##@ Secrets and dependency vulnerabilities (Trivy: trivy.yaml, scripts/harness/trivy.sh)
 .PHONY: secrets vuln-deps
-# The sensor id is the rule id: budgets.txt row repo-no-secrets (NFR-H9). $(GCL) runs install-tools.sh
+# The sensor id is the rule id: budgets.txt row repo-no-secrets (NFR-H9). $(TOOLS_STAMP) runs install-tools.sh
 # (Trivy too) once tool-versions.env changes, before the scan, not racing it under -j4.
-secrets: $(GCL) ## Offline secret scan of the git-known files (in make check, only the changed ones)
+secrets: $(TOOLS_STAMP) ## Offline secret scan of the git-known files (in make check, only the changed ones)
 	@$(RUN) repo-no-secrets repo-no-secrets -- scripts/harness/trivy.sh secret
 
-vuln-deps: $(GCL) ## Known vulns in pnpm-lock.yaml and every go.mod (fetches the Trivy DB into .cache/trivy)
+vuln-deps: $(TOOLS_STAMP) ## Known vulns in pnpm-lock.yaml and every go.mod (fetches the Trivy DB into .cache/trivy)
 	@$(RUN) trivy-vuln deps-no-known-vulns -- scripts/harness/trivy.sh vuln
 
 ##@ CI and harness integrity (.github/, protected harness files)

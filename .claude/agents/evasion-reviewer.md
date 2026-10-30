@@ -53,7 +53,7 @@ can delete it again (guard-bash refuses `rm -r` outside the repository); so it w
 - **Run only these:** `"$scratch"/.bin/harness <sub> "$scratch"`; `env PATH=<root>/.bin:$PATH make -C
   "$scratch" <target>` for a target whose only prerequisite is `$(HARNESS)` (as `orphans`) and for
   `deadcode-go`; a script under `"$scratch"/scripts/harness/` that a target runs, with the same `PATH`.
-  Targets that depend on `$(GCL)`, `node_modules/.bin` or `WITH_ENV` (`lint-go`, `fmt`, `secrets`,
+  Targets that depend on `$(GCL)`, `$(TOOLS_STAMP)`, `node_modules/.bin` or `WITH_ENV` (`lint-go`, `fmt`, `secrets`,
   `vuln-deps`, the web targets) would install tools or need the env file: run the pinned binary from
   `<root>/.bin` directly against the copy, or report the sensor as "cannot run in scratch".
 - **Time limits.** Wrap every build and run in this limit; it kills the whole process group (a bare `alarm`
