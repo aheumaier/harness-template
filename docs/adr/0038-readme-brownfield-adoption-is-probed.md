@@ -14,7 +14,7 @@ layout from one file ([ADR 0030](0030-one-layout-file-for-every-sensor.md), with
 - **README (b) is a procedure that a probe replays.** `scripts/harness/adoption-probe.sh` (`make adoption-probe`)
   commits a minimal brownfield repo (a root `go.mod`, `internal/<domain>/<layer>`, an OpenAPI contract, no db,
   no web) into a temp git repo, follows steps 1–7 on it with this checkout's harness, and ends with
-  `HARNESS_STACK=go make setup`, `make check` and `make harness-selftest` green there. It does only the hand
+  `make setup`, `make check` and `make harness-selftest` green there. It does only the hand
   edits the README asks for; each must change its file. Before any heavy step it checks that README (b) step 3
   names exactly the paths it copies or skips and step 6's probe bullet exactly the paths it drops. A mismatch,
   a no-op hand edit or a failed step is a finding at that step's README line (rule `harness-adoption-probe`).
@@ -31,6 +31,19 @@ layout from one file ([ADR 0030](0030-one-layout-file-for-every-sensor.md), with
   script, fixture, tests, rules.md entry, make target, CI job, required check, budget and the skeleton's
   protected-paths and CODEOWNERS lines) and to decline its files in `.harness-version` so template sync stops
   offering them. The probe does this itself, so the instruction is probed too.
+- **Amendment (exec plan 0003, Phase 4 gate): the adoption probe switches off when its script is removed and
+  declined.** This supersedes the drop list of the bullet above. An adopted repo removes only the probe's own
+  files (script, fixture, tests) and its rules.md entry, and declines them in `.harness-version`; it never
+  hand-edits the synced harness files that wire the probe up (`.github/workflows/ci.yml`, the `Makefile`,
+  `scripts/github-branch-protection.sh`, `docs/harness/ci.md`, `scripts/harness/budgets.txt`,
+  `scripts/harness/protected-paths.txt`, `.github/CODEOWNERS`). A hand edit there would be a merge by hand at
+  every template bump, and an upstream change merged later would bring the entry back. Instead the
+  `adoption-probe` job passes with a notice without running when `scripts/harness/adoption-probe.sh` is
+  removed and `.harness-version` has `# declined scripts/harness/adoption-probe.sh: <why>` (sync-check.sh's
+  syntax), so the required check stays green. Both are needed: harness-integrity skips `#` lines, so a decline
+  line alone needs no label, while removing the script is a harness config change that does. Only the adoption
+  probe works this way so far; step 5 and step 6 still hand-edit those files for `generator-probe` and
+  `make new-domain` ([TD-136](../exec-plans/tech-debt-tracker.md)).
 
 ## Consequences
 - Every harness PR pays a CI job of a few minutes, in parallel with `check-all`.

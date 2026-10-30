@@ -62,11 +62,40 @@ move_dir() { # <mv|copy>
   has 'apps/api/db/migrations/1_a.sql: migration on main was modified [db-append-only-migrations]'
 }
 
+@test "passes when MIGRATIONS_DIR is copied with its migrations unchanged" {
+  move_dir copy
+  check -0
+}
+
+@test "passes a copy checked out with CRLF line endings under core.autocrlf" {
+  git -C "$SANDBOX" config core.autocrlf true
+  move_dir copy
+  sed -i.bak 's/$/\r/' "$SANDBOX/apps/api/db/schema/1_a.sql"
+  rm "$SANDBOX/apps/api/db/schema/1_a.sql.bak"
+  check -0
+}
+
 @test "flags an edit left in the base's MIGRATIONS_DIR after the layout points elsewhere" {
   move_dir copy
   printf '%s\n' '-- edited' >>"$MIG/1_a.sql"
   check -1
   has 'apps/api/db/migrations/1_a.sql: migration on main was modified [db-append-only-migrations]'
+}
+
+@test "flags an edit to the copy in the new MIGRATIONS_DIR while the base's dir stays unchanged" {
+  move_dir copy
+  printf '%s\n' '-- edited' >>"$SANDBOX/apps/api/db/schema/1_a.sql"
+  git -C "$SANDBOX" add -A
+  check -1
+  has 'apps/api/db/migrations/1_a.sql: migration on main was modified [db-append-only-migrations]'
+  [ "$(grep -c 'migration on main' <<<"$output")" -eq 1 ]
+}
+
+@test "flags a migration missing from the copy in the new MIGRATIONS_DIR" {
+  move_dir copy
+  git -C "$SANDBOX" rm -qf apps/api/db/schema/2_b.sql
+  check -1
+  has 'apps/api/db/migrations/2_b.sql: migration on main was deleted [db-append-only-migrations]'
 }
 
 @test "reads a base layout.env written before STACK (9 keys) and still flags an edit (ADR 0033)" {

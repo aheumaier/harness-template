@@ -333,11 +333,18 @@ template changed since. Adopt by hand, in one reviewed harness PR:
 
      | Set | Rules | `make` targets | Tools |
      |-----|-------|----------------|-------|
-     | web | `web-*` (7) | `lint-web`, `arch-web`, `typecheck-web`, `test-web`, `knip`, `gen-api-client` | eslint, dependency-cruiser, turbo, knip, typescript from `package.json` |
-     | db | `db-*` (5) | `lint-migrations`, `squawk`, `migrations-append-only`, `schema-doc-fresh`, `gen-schema-doc`, `gen-sqlc`, `gen-atlas-sum`, Postgres in `test-integration` | atlas, sqlc, squawk |
+     | web | `web-*` (7) | `WEB_TARGETS`: `lint-web`, `arch-web`, `typecheck-web`, `test-web`, `knip`, `clones-web`, `e2e`, `gen-api-client` | eslint, dependency-cruiser, turbo, knip, jscpd, typescript from `package.json` |
+     | db | `db-*` (5) | `DB_TARGETS`: `schema-doc-fresh`, `lint-migrations`, `squawk`, `migrations-append-only`, `test-integration`, `test-obs`, `e2e`, `gen-sqlc`, `gen-atlas-sum` | atlas, sqlc, squawk |
      | api | `api-*` (6) | `lint-api`, `contract-check`, `gen-oapi` | oasdiff, oapi-codegen, spectral |
 
-     The web and db sets are `STACK` groups ([ADR 0033](docs/adr/0033-stack-profiles.md)): leaving one out
+     The web and db sets are `STACK` groups ([ADR 0033](docs/adr/0033-stack-profiles.md)), and their targets are
+     the [Makefile](Makefile)'s `WEB_TARGETS` and `DB_TARGETS` as listed; `e2e` is in both: it needs both
+     groups, and leaving out db or web drops it. A group drops whole targets: without db, `test-integration` and `test-obs` go entirely, so
+     [go-tests-pass](docs/harness/rules.md#go-tests-pass) runs no integration test and
+     [obs-request-queryable](docs/harness/rules.md#obs-request-queryable) never runs; without web,
+     `clones-web` goes (the TS half of [repo-no-clones](docs/harness/rules.md#repo-no-clones)); without
+     db or web, `e2e` goes ([web-e2e-journeys](docs/harness/rules.md#web-e2e-journeys)) too. Drop those rules with their
+     group, or narrow the rules.md entries you keep to what still runs. Leaving a group out
      of `STACK` in `layout.env` already drops its targets from `check`, `check-all` and `gen`, its tools from
      `make tools` (pnpm and `make deps` with web, Postgres in `make setup` with db) and its fixtures from
      `make harness-selftest`, so the Makefile, `gen-check.sh`, `install-tools.sh` and the fixtures stay as
@@ -371,16 +378,25 @@ template changed since. Adopt by hand, in one reviewed harness PR:
    - Delete with `git rm`: the shell sensors list git-known files, so a deleted script still in the index fails
      `make check`'s shfmt and shellcheck.
    - The adoption probe is the template's own ([ADR 0038](docs/adr/0038-readme-brownfield-adoption-is-probed.md)):
-     drop it like a rule and decline its template-only files for [template sync](#keeping-up-with-the-template).
+     drop its own files, decline them for [template sync](#keeping-up-with-the-template), and hand-edit none of
+     the synced harness files that wire it up.
      - `git rm` the probe `scripts/harness/adoption-probe.sh`, its fixture
        `scripts/harness/fixtures/harness-adoption-stale-layout/` and its tests `scripts/test/adoption-probe.bats`
-       (step 3 never copied its brownfield repo, `scripts/templates/adoption-probe/`).
-     - Remove its entry in `docs/harness/rules.md`, its target in the `Makefile`, its job in
-       `.github/workflows/ci.yml`, its required check in `scripts/github-branch-protection.sh` and
-       `docs/harness/ci.md`, its budget in `scripts/harness/budgets.txt`, and the brownfield repo's lines in
-       `scripts/harness/protected-paths.txt` and `.github/CODEOWNERS`.
+       (step 3 never copied its brownfield repo, `scripts/templates/adoption-probe/`), and remove its entry in
+       `docs/harness/rules.md`, whose `**Fixture:**` line names the files you removed.
      - Add a `# declined <path>: template-only` line to `.harness-version` for each file of the probe, its
        fixture, its tests and its brownfield repo, so template sync stops offering them back.
+     - Leave the rest as it is: its job in `.github/workflows/ci.yml`, its target in the `Makefile`, its required
+       check in `scripts/github-branch-protection.sh` and `docs/harness/ci.md`,
+       its budget in `scripts/harness/budgets.txt`, and the brownfield repo's lines in
+       `scripts/harness/protected-paths.txt` and `.github/CODEOWNERS`. These are synced harness files
+       ([ADR 0026](docs/adr/0026-template-sync-is-a-drift-report.md)): a hand edit there is a merge by hand at
+       every template bump, and an upstream change merged later would bring the entry back. With the script
+       removed and declined, the CI job passes without running, so the required check stays green; entries
+       for missing paths are harmless, and `make adoption-probe`, which only that job calls, fails for want of
+       its script. So far only the adoption probe switches off this way: dropping `make new-domain` (step
+       5's table: its target, CI's `generator-probe` job and required check) still edits them by hand (tracker
+       TD-136).
 7. **Run `make setup && make check`.** Expect `make setup` to need steps 5–6 first, because of the
    `install-tools.sh`, `make deps` and `setup-worktree.sh` assumptions in step 2. Without Postgres, leave
    `db` out of `STACK` (or run `SKIP_DB=1 make setup` once). Then run `make check` and expect red. Don't loosen a sensor to get green
@@ -418,6 +434,10 @@ Template sync reports drift and never applies anything ([ADR 0026](docs/adr/0026
   not in upstream's history); make reports 1 and 2 alike as its exit 2. It reads the network, so it is not
   in `make check` or `check-all`; the weekly drift run includes it, where a private template exits 2 (run it
   locally with your credentials).
+
+A repo whose `API_DIR` is not `apps/api` sees the template's files under `apps/api/` listed as files it no
+longer has: port each change by hand to its copy under `API_DIR` after the bump, and do not decline them, or
+later changes there stop counting as behind (tracker TD-129).
 
 To catch up, port the listed files (or decline them) in a harness PR, then write the upstream commit the
 report names to `.harness-version`.

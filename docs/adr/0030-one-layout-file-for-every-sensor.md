@@ -78,3 +78,6 @@ the repo root.
     go-domain-isolation and go-layers.
   - `layout.env` is protected config: an adopter's first edit needs the `harness-change-approved` label once,
     and template sync reports the file whenever the template changes its copy.
+  - Template sync reads the template's literal paths: a harness file under the template's `apps/api/` lives
+    under `API_DIR` in a re-pointed repo, so each upstream change there is listed as a file this repo no
+    longer has, and is ported by hand to its `API_DIR` copy, not declined ([TD-129](../exec-plans/tech-debt-tracker.md)).

@@ -10,11 +10,23 @@ include scripts/tool-versions.env
 # with `:`. Read through the validating parser, never included as make syntax: layout.sh prints only its known
 # keys with plain values, one KEY=value word each, or nothing and its findings on stderr. HARNESS_STACK, from the
 # environment or the command line, overrides its STACK (ADR 0033); make 3.81's $(shell) sees only the former.
-LAYOUT := $(shell $(if $(filter command line,$(origin HARNESS_STACK)),HARNESS_STACK='$(HARNESS_STACK)') scripts/harness/layout.sh --print)
+# The keys are set with `override`, and so is STACK_OFF below, so neither a command-line variable nor one from
+# the environment under make -e (CI's setup action exports the keys) can beat layout.env and silently drop the
+# db and web sensors past layout-check's guard (it reads only HARNESS_STACK). A command-line STACK or STACK_OFF
+# is refused outright, since the one asking for it expects it to win; $(origin) of a command-line variable is
+# two words, which @ joins, so make -e's `environment override` passes here and override beats it below.
+from_command_line = $(filter command@line override,$(subst $() ,@,$(origin $(1))))
+ifneq ($(call from_command_line,STACK),)
+$(error STACK comes from scripts/harness/layout.env; for one run use HARNESS_STACK=… [harness-layout-valid])
+endif
+ifneq ($(call from_command_line,STACK_OFF),)
+$(error STACK_OFF follows STACK in scripts/harness/layout.env; for one run use HARNESS_STACK=… [harness-layout-valid])
+endif
+LAYOUT :=$(shell $(if $(filter command line,$(origin HARNESS_STACK)),HARNESS_STACK='$(HARNESS_STACK)') scripts/harness/layout.sh --print)
 ifeq ($(LAYOUT),)
 $(error scripts/harness/layout.env or HARNESS_STACK is missing or invalid (see above): fix it, then run make layout-check [harness-layout-valid])
 endif
-$(foreach kv,$(LAYOUT),$(eval $(kv)))
+$(foreach kv,$(LAYOUT),$(eval override $(kv)))
 # The sensor groups (ADR 0033): go is every target not listed here and always runs; a db or web target leaves
 # check, check-all, gen and make harness-selftest when STACK lacks its group. e2e needs both (make dev starts
 # Postgres and the web app). `$(call stack_has,<group>)` is non-empty when STACK names it; `$(call
@@ -22,7 +34,7 @@ $(foreach kv,$(LAYOUT),$(eval $(kv)))
 DB_TARGETS  := schema-doc-fresh lint-migrations squawk migrations-append-only test-integration test-obs e2e gen-sqlc gen-atlas-sum
 WEB_TARGETS := lint-web arch-web typecheck-web test-web knip clones-web e2e gen-api-client
 stack_has    = $(filter $(1),$(subst :, ,$(STACK)))
-STACK_OFF   := $(strip $(if $(call stack_has,db),,$(DB_TARGETS)) $(if $(call stack_has,web),,$(WEB_TARGETS)))
+override STACK_OFF := $(strip $(if $(call stack_has,db),,$(DB_TARGETS)) $(if $(call stack_has,web),,$(WEB_TARGETS)))
 stacked      = $(filter-out $(STACK_OFF),$(1))
 export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 export OBS_IMAGE # compose.yaml interpolates the obs service even when its profile is off

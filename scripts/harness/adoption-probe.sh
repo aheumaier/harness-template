@@ -17,8 +17,9 @@
 #   3  copy the harness; merge AGENTS.md/CLAUDE.md, .claude/, .specify/, .gitignore (none exist yet)
 #   4  git add, make rename (dry run, then WRITE=1)
 #   5  layout.env, make layout-check, re-point the files of step 5's table that exist in this layout
-#   6  drop what the layout lacks (web and db links, make new-domain, drop.txt) and this probe; port fixtures
-#   7  HARNESS_STACK=go make setup check harness-selftest
+#   6  drop what the layout lacks (web and db links, make new-domain, drop.txt) and this probe's own files and
+#      rule, declined in .harness-version (its CI job, target and required check stay); port fixtures
+#   7  make setup check harness-selftest, as README writes them (the skeleton's layout.env has STACK=go)
 # Each hand edit is one the README asks for and must change its file; one that matches nothing is README drift.
 # .bin is seeded with links to this checkout's pinned tools (their version stamps match, so install-tools.sh
 # skips them); harness and golangci-lint-custom are built in the copy. Prints nothing on success; on failure, the
@@ -178,11 +179,13 @@ step3_copy=(docs/harness/ docs/adr/ docs/exec-plans/ scripts/harness/ scripts/gi
 # (.github/, .github/workflows/).
 step3_skip=(layout.env Makefile '<API_DIR>/internal/' '<API_DIR>/' '<API_DIR>/tools/analyzers/' compose.yaml
   .squawk.toml setup-worktree.sh .github/ .github/workflows/)
-# Step 6's probe bullet: what the adopted repo drops of the probe (drop_probe), .harness-version last.
+# Step 6's probe bullet: what the adopted repo drops of the probe (drop_probe), .harness-version last...
 step6_probe=(scripts/templates/adoption-probe/ scripts/harness/adoption-probe.sh
   scripts/harness/fixtures/harness-adoption-stale-layout/ scripts/test/adoption-probe.bats docs/harness/rules.md
-  Makefile .github/workflows/ci.yml scripts/github-branch-protection.sh docs/harness/ci.md
-  scripts/harness/budgets.txt scripts/harness/protected-paths.txt .github/CODEOWNERS .harness-version)
+  .harness-version)
+# ...and the synced harness files it leaves as they are: the CI job reads the decline line instead (ADR 0038).
+step6_keep=(.github/workflows/ci.yml Makefile scripts/github-branch-protection.sh docs/harness/ci.md
+  scripts/harness/budgets.txt scripts/harness/protected-paths.txt .github/CODEOWNERS)
 
 # copy_step3 <path as README step 3 writes it>
 copy_step3() {
@@ -231,7 +234,7 @@ readme_spans '^   Merge these into' '^4\. ' bold >>"$tmp/step3"
 readme_spans "^   - The adoption probe is the template's own" '^   - |^[0-9]+\. ' >"$tmp/step6"
 bad=0
 check_list 3 "$tmp/step3" "${step3_copy[@]}" "${step3_skip[@]}" || bad=1
-check_list 6 "$tmp/step6" "${step6_probe[@]}" || bad=1
+check_list 6 "$tmp/step6" "${step6_probe[@]}" "${step6_keep[@]}" || bad=1
 # The harness's own workflows and action, as protected-paths.txt (which step 3 names) lists them.
 github=()
 while read -r glob kind _; do
@@ -386,7 +389,7 @@ port_fixtures() {
   merge_expect
 }
 step 6 "port the fixtures" port_fixtures
-# The adoption probe goes like any dropped rule, and the template-only files are declined for template sync.
+# The adoption probe's own files and rule go, and they are declined for template sync; step6_keep stays as is.
 drop_probe() {
   local p only=()
   for p in "${step6_probe[@]}"; do
@@ -397,13 +400,6 @@ drop_probe() {
         only+=("$p")
         ;;
       docs/harness/rules.md) hand_edit "$p" '/^### harness-adoption-probe$/,/^$/d' ;;
-      Makefile) hand_edit "$p" '/^adoption-probe:/,/^$/d' '/^\.PHONY:/s/ adoption-probe( |$)/\1/' ;;
-      .github/workflows/ci.yml) hand_edit "$p" '/^  adoption-probe:$/,/^$/d' ;;
-      scripts/github-branch-protection.sh) hand_edit "$p" 's/ adoption-probe([ )])/\1/' 's/\(adoption-probe /(/' ;;
-      docs/harness/ci.md) hand_edit "$p" '/`adoption-probe`/d' 's/the six required checks/the five required checks/' ;;
-      scripts/harness/budgets.txt) hand_edit "$p" '/^# make adoption-probe/,/^adoption-probe /d' ;;
-      scripts/harness/protected-paths.txt) hand_edit "$p" '/^scripts\/templates\/adoption-probe\//d' ;;
-      .github/CODEOWNERS) hand_edit "$p" '/^\/scripts\/templates\/adoption-probe\//d' ;;
       .harness-version)
         git -C "$ROOT" ls-files -co --exclude-standard -- "${only[@]}" |
           sed 's/$/: template-only/; s/^/# declined /' >>"$DST/$p"
@@ -429,6 +425,6 @@ seed_bin() {
   done
 }
 prep "linking this checkout's pinned tools" seed_bin
-step 7 "make setup" in_dst env HARNESS_STACK=go make setup
-step 7 "make check" in_dst env HARNESS_STACK=go make check
-step 7 "make harness-selftest" in_dst env HARNESS_STACK=go make harness-selftest
+step 7 "make setup" in_dst make setup
+step 7 "make check" in_dst make check
+step 7 "make harness-selftest" in_dst make harness-selftest

@@ -26,6 +26,8 @@ jobs:
         id: migrations
         # Both copies of layout.env (validated by layout.sh --print, fails closed): a PR that moves
         # MIGRATIONS_DIR or edits layout.env runs the gates, and append-only checks the base's dir too.
+        # shell: bash runs with -eo pipefail, so an invalid layout exits with layout.sh's 2 (harness-layout-valid).
+        shell: bash
         run: |
           base="$(git merge-base HEAD "origin/$GITHUB_BASE_REF")"
           head_dir="$(scripts/harness/layout.sh --print | sed -n 's/^MIGRATIONS_DIR=//p')"
