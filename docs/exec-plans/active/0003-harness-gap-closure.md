@@ -243,8 +243,8 @@ PR; **–** needs none.
 - [x] P4.12 — 8445e4d — done — `evasion-reviewer` agent for sensor slices; ADR 0019 amended, TD-107..110;
   the diff-only re-review and §5c wiring are hand-off proposals
 - [x] P5.1 — 9f6771d — done — `specs-scenarios-tested` (ADR 0036 proposed); TD-111..113
-- [ ] P5.2 — H — upstream specs and contract consumers in `layout.env`; weekly upstream drift via oasdiff;
-  consumers named in `api-no-breaking-change`'s remediation
+- [x] P5.2 — cfce60f — done — `UPSTREAM_SPECS`/`CONTRACT_CONSUMERS` in `layout.env`; weekly `upstream-drift`
+  report; consumers named on a break; `harness spec-refs`; ADR 0037 (proposed); TD-115..118
 - [x] P5.3 — 0117216 — done — PR template `## Assumptions`; code-reviewer check 6 (advisory); TD-119
 - [ ] P5.4 — H — trial: a spec-only `test-writer` subagent writes the failing tests before the implementer
   runs; kept only if mutation scores and reviews show it
@@ -1377,3 +1377,20 @@ gates for contract, migration and harness changes. Four are not.
   gets no PR body (two harness PRs: `pr-review.sh prompt` input, then the workflow with an `edited` trigger).
   Lane `check` green, `harness-selftest` 75/75, `check-all` red only on harness-integrity, int/obs/e2e green.
   Proposal (AGENTS.md, protected): Working agreements also name the Assumptions section.
+- 2026-10-30: P5.2 done (cfce60f). `layout.env` gains `UPSTREAM_SPECS` (vendored path, source, spec path,
+  revision) and `CONTRACT_CONSUMERS`; layout-check validates entries offline against shared vectors
+  (`testdata/upstream-spec-vectors.txt`, 5 ok / 24 reject, also read by upstream-drift.bats).
+  `upstream-drift.sh` (file/https only) compares each copy with its source's head through oasdiff; drift.yml
+  runs it weekly as a report with a fence longer than any backtick run in the output; fixture
+  `api-upstream-breaking` proves a break is reported. contract-check names the repos the approval must cover.
+  `harness spec-refs` (yaml.v3, already in the tools module) replaces the `$ref` grep in both scripts.
+  Review: code-reviewer CHANGES (2 blocking security: issue-fence break-out in drift.yml, `$ref` grep bypass),
+  architecture 8 findings, reuse 7; one retry fixed 13 items plus a selftest collision (the new fixture left
+  `.tmp/upstream` behind for `harness-behind-upstream`). Decided: the revision stays in `layout.env` as the
+  plan says; ADR 0037 answers ADR 0026, calls the revision informational and the vendored copy unprotected
+  (TD-117 offers a deeper fetch or a per-copy `COMMIT` file). Kept `GIT_ALLOW_PROTOCOL=file:https`: git applies
+  `insteadOf` before the allowlist, so ssh-only users get an https credential helper instead. Not done: a shared
+  fetch script (TD-116), a shared oasdiff wrapper (TD-118, contract-check treats exit 102 as a break), an
+  exit-124 timeout test, other fixed fences in drift.yml. Lane `check` green, `harness-selftest` 75/75,
+  `check-all` red only on harness-integrity, int/obs/e2e green. Proposal: code-reviewer checks that the PR body
+  addresses each named consumer.
