@@ -9,6 +9,7 @@ default 5000 NFR-H5
 protect-harness 50 NFR-H1
 guard-bash 50 NFR-H1
 only-make-check 50 NFR-H1
+only-test-files 50 NFR-H1
 fast-check 1000 NFR-H2
 # The pre-commit git hook on a typical commit, up to 20 staged files (exec plan 0003, NFR-H8). Local only.
 pre-commit 2000 NFR-H8

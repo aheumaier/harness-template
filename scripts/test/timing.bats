@@ -8,7 +8,7 @@ setup() {
   unset GITHUB_ACTIONS GITHUB_STEP_SUMMARY HARNESS_EDIT
   sandbox scripts/harness/timing.sh scripts/harness/protected-paths.txt scripts/tool-versions.env \
     .claude/hooks/protect-harness.sh .claude/hooks/guard-bash.sh .claude/hooks/only-make-check.sh \
-    .claude/hooks/fast-check.sh .bin/harness
+    .claude/hooks/only-test-files.sh .claude/hooks/fast-check.sh .bin/harness
   export HARNESS_BUDGETS="$SANDBOX/budgets.txt"
   printf '%s\n' 'default 600000 NFR-H5' >"$HARNESS_BUDGETS"
   TIMINGS="$SANDBOX/.cache/harness/timings.jsonl"
@@ -26,9 +26,10 @@ payload() {
   for h in protect-harness guard-bash only-make-check; do
     run -0 "$SANDBOX/.claude/hooks/$h.sh" <"$PAYLOAD"
   done
+  run -0 "$SANDBOX/.claude/hooks/only-test-files.sh" <<<"{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$SANDBOX/a_test.go\"}}"
   run -0 "$SANDBOX/.claude/hooks/fast-check.sh" budgets.txt
   run cat "$TIMINGS"
-  for h in protect-harness guard-bash only-make-check fast-check; do
+  for h in protect-harness guard-bash only-make-check only-test-files fast-check; do
     has "{\"sensor\":\"$h\",\"start_ms\":"
   done
   has '"exit":0,"scope":"hook","sha":"",'
@@ -40,7 +41,7 @@ payload() {
   run -2 --separate-stderr "$SANDBOX/.claude/hooks/only-make-check.sh" <"$PAYLOAD"
   [ -z "$output" ]
   output="$stderr"
-  has 'only-make-check: this reviewer may only run'
+  has 'only-make-check: this agent may only run'
   has "harness: hook 'only-make-check' took "
   has " s (budget 0.001 s, NFR-H1)"
   run cat "$TIMINGS"
@@ -75,7 +76,7 @@ payload() {
   rm "$SANDBOX/scripts/harness/timing.sh"
   payload 'make gen'
   run -2 "$SANDBOX/.claude/hooks/only-make-check.sh" <"$PAYLOAD"
-  has 'only-make-check: this reviewer may only run'
+  has 'only-make-check: this agent may only run'
   run ! has 'timing.sh'
   [ ! -e "$TIMINGS" ]
 }

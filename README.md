@@ -134,7 +134,7 @@ The harness has three kinds of parts:
   - the rules.md format (rule, why, sensor, remediation, fixture);
   - in `scripts/harness/`: `run.sh`, `unchanged.sh`, `determinism.sh`, `check-commits.sh`, `timing.sh`,
     `nfr-report.sh`, `merge-base.sh`, `trivy.sh`, `hook-bootstrap.sh`, `sync-check.sh`, and `selftest.sh`;
-  - in `.claude/hooks/`: `protect-harness.sh`, `guard-bash.sh` and `only-make-check.sh`;
+  - in `.claude/hooks/`: `protect-harness.sh`, `guard-bash.sh`, `only-make-check.sh` and `only-test-files.sh`;
   - the Go harness tool in `<API_DIR>/tools/harness/` (integrity-check's excludes come from `GENERATED_GLOBS`);
   - the shape of CI and CODEOWNERS, ADRs and exec plans.
 - **Layout-coupled parts** read where the code lives from one file,

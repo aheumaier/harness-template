@@ -8,7 +8,7 @@ setup() {
   unset HARNESS_EDIT
   sandbox scripts/harness/hook-bootstrap.sh scripts/harness/protected-paths.txt scripts/tool-versions.env \
     .claude/hooks/protect-harness.sh .claude/hooks/guard-bash.sh .claude/hooks/only-make-check.sh \
-    .claude/hooks/fast-check.sh
+    .claude/hooks/only-test-files.sh .claude/hooks/fast-check.sh
   [ ! -e "$SANDBOX/.bin/harness" ]
 }
 
@@ -47,6 +47,8 @@ bash_payload() { printf '{"cwd":"%s","tool_name":"Bash","tool_input":{"command":
   run -2 "$SANDBOX/.claude/hooks/protect-harness.sh" <<<'{"tool_name":"Edit","tool_input":{"file_path":"x"}}'
   has 'run `make setup`'
   run -2 "$SANDBOX/.claude/hooks/only-make-check.sh" < <(bash_payload 'make check; ls')
+  run -2 "$SANDBOX/.claude/hooks/only-test-files.sh" <<<'{"tool_name":"Write","tool_input":{"file_path":"a_test.go"}}'
+  has 'only-test-files: blocked: .bin/harness is missing'
   run -2 "$SANDBOX/.claude/hooks/fast-check.sh" <<<'{"tool_input":{"file_path":"x"}}'
   has 'fast-check: blocked: .bin/harness is missing'
 }

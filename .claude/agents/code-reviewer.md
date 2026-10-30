@@ -45,6 +45,22 @@ Check, in this order:
      <value>, <path> <value>, …`, which seeds the section.
    - A guess and a decision look the same in code, so this check is advisory: its findings alone never turn
      `APPROVE` into `CHANGES REQUESTED`.
+7. Tests written first ([ADR 0039](../../docs/adr/0039-tests-are-written-apart-from-the-implementation.md)):
+   a commit with a `Test-Writer: specs/<NNN-slug>` trailer holds tests `test-writer` wrote before the
+   implementation; a feature may have several (one per story), and the first one counts. You cannot run git,
+   so the caller finds it (`git log --reverse --grep='^Test-Writer: ' <base>..HEAD`) and passes
+   `git diff <first test-writer commit> HEAD -- '*_test.go' '*.test.ts*' '**/testdata/**'
+   specs/<NNN-slug>/spec.md` plus the test-runner config (`**/vitest.config.*`, `Makefile`). Report each
+   assertion removed or loosened in it as `path:line — test-writer assertion loosened after the test commit —
+   restore it, or change the spec first and say so in the PR (principle 7)`. Loosened means: a case or
+   subtest deleted; an expected value or tolerance widened; an error check dropped; an exact literal replaced
+   by a value computed with the code under test; a skip added (`t.Skip`, `.skip`, `.todo`); a `//go:build`
+   tag added or the test moved under `integration`; a test or scenario id renamed so it no longer traces to
+   the spec; or the same through another file (`TestMain`, `init`, a config exclude). Added tests are fine,
+   and so is a change the spec diff in the same range explains. If the caller says there is no such commit,
+   skip the check silently; otherwise, without the diff, print `test-commit diff not given` once and skip
+   it. In CI it is always skipped today (TD-125). Advisory: its findings alone never turn `APPROVE` into
+   `CHANGES REQUESTED`.
 
 Output: a verdict line (`APPROVE` or `CHANGES REQUESTED`), then one line per finding:
 `path:line — problem — fix (rule id or principle #)`. No praise, no restating the diff, no style nits a

@@ -4,6 +4,9 @@
 //
 //	harness hook-input <field>...  Claude Code hook JSON on stdin → the fields, one per line
 //	harness guard-bash <root>      PreToolUse guard for Bash commands (.claude/hooks/guard-bash.sh)
+//	harness test-file <root> <path>
+//	                               test-writer's write guard: path is a test file inside root
+//	                               (.claude/hooks/only-test-files.sh)
 //	harness check-links <root>     docs-links-resolve, docs-claude-imports-agents (make docs-links)
 //	harness fixture-claims <root>  rules-fixture-claims (make fixture-claims)
 //	harness rule-lists <root>      harness-rule-lists-match: skip lists in review agents (make rule-lists)
@@ -40,7 +43,7 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness check-links <root> | harness fixture-claims <root> | harness rule-lists <root> | harness orphans <root> | harness quality-rows [-no-clock] <root> | harness references-pinned <root> | harness approved-check <root> | harness specs-tested <root> | harness layout-check <root> | harness spec-refs <file>... | harness integrity-check <root> | harness rename [-write] <root> <name> <module|skip> <owner>"
+const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness test-file <root> <path> | harness check-links <root> | harness fixture-claims <root> | harness rule-lists <root> | harness orphans <root> | harness quality-rows [-no-clock] <root> | harness references-pinned <root> | harness approved-check <root> | harness specs-tested <root> | harness layout-check <root> | harness spec-refs <file>... | harness integrity-check <root> | harness rename [-write] <root> <name> <module|skip> <owner>"
 
 // rootSensors are the sensors run as `harness <name> <root>`: findings on stdout, whether there was any, and an
 // error when they cannot run.
@@ -94,6 +97,15 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stderr, "guard-bash: blocked: %v\n", err)
 		return 2
+	case "test-file":
+		if len(args) != 3 {
+			break
+		}
+		if err := testFile(args[1], args[2]); err != nil {
+			fmt.Fprintf(stderr, "harness test-file: %v\n", err)
+			return 1
+		}
+		return 0
 	case "check-links", "fixture-claims", "rule-lists", "orphans", "references-pinned", "approved-check", "specs-tested", "layout-check":
 		if len(args) != 2 {
 			break

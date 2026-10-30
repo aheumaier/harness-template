@@ -41,3 +41,4 @@ supersede with a new ADR. Architectural PRs link an ADR in the PR template.
 | [0035](0035-harness-files-under-github-are-named.md) | Harness files under `.github/` are named, not globbed (amends 0010) | proposed |
 | [0036](0036-acceptance-scenarios-are-traced-to-tests.md) | Acceptance scenarios are traced to tests by a positional id | proposed |
 | [0037](0037-upstream-spec-drift-is-a-drift-report.md) | Cross-repo contracts: vendored upstream specs are a weekly drift report, consumers are named on a break (amends 0030) | proposed |
+| [0039](0039-tests-are-written-apart-from-the-implementation.md) | Tests are written apart from the implementation, from the spec (amends 0019) | proposed |
