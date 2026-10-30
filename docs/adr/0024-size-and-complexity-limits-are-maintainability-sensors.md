@@ -1,6 +1,6 @@
 # ADR 0024: Size and complexity limits are maintainability sensors, not style (amends core belief 3)
 
-Status: proposed · 2026-10-29
+Status: accepted · 2026-10-29
 
 ## Context
 Gap G5 of exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`, slice P4.1). The plan records

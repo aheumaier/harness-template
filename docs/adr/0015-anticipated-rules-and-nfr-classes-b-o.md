@@ -1,6 +1,6 @@
 # ADR 0015: Phase 0 rules are adopted as team-convention; NFR classes B and O fail
 
-Status: proposed · 2026-10-28
+Status: accepted · 2026-10-28
 
 ## Context
 Exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`) closes gaps between this template and its

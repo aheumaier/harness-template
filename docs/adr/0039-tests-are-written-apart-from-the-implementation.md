@@ -1,6 +1,6 @@
 # ADR 0039: Tests are written apart from the implementation, from the spec (amends 0019)
 
-Status: proposed · 2026-10-30 · amends [ADR 0019](0019-inferential-sensors-are-advisory.md)
+Status: accepted · 2026-10-30 · amends [ADR 0019](0019-inferential-sensors-are-advisory.md)
 
 ## Context
 Gap G16 of exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`, slice P5.4), from Nandyala and
@@ -66,6 +66,10 @@ from the tests without a mutant.
 - **code-reviewer check 7** reports each assertion removed or loosened since the first `Test-Writer:` commit.
   It cannot run git, so the caller passes the diff of the test files, testdata, the spec and the test-runner
   config since that commit. Advisory, like check 6.
+- **Amendment (2026-10-30, exec plan 0003 merge): accepted ahead of the re-measure.** The harness owner
+  accepted this ADR before the first-adopter re-measure that "proposed until the re-measure" above waited for.
+  The re-measure still runs ([TD-126](../exec-plans/tech-debt-tracker.md)); a reject now takes a new ADR that
+  supersedes this one.
 
 **Relationship to ADR 0019 (amended).** 0019 makes the inferential sensors advisory. `test-writer` is not one:
 it is a builder, so it gets no rules.md entry, and check 7 is one more advisory check of the existing
@@ -110,4 +114,4 @@ state, so a git-ignored test file passes it although `specs-tested` never sees o
   signatures for each test task. Until both land, only the agent's description makes anyone use it.
 - Also open: CI's code-reviewer run does not get the test-commit diff, so check 7 is always skipped there
   (TD-125). The mutation report counts equivalent survivors as weak tests (TD-123). The re-measure on the
-  first adopter decides accepted or rejected (TD-126).
+  first adopter decides whether it stays or a new ADR supersedes it (TD-126).

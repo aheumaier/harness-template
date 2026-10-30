@@ -1,6 +1,6 @@
 # ADR 0027: Token clones are a maintainability sensor (extends 0024)
 
-Status: proposed · 2026-10-29
+Status: accepted · 2026-10-29
 
 ## Context
 Gap G11 of exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`, slice P3.7): agents replicate

@@ -1,6 +1,6 @@
 # ADR 0017: One pinned grafana/otel-lgtm container per worktree is the observability stack
 
-Status: proposed · 2026-10-28
+Status: accepted · 2026-10-28
 Amends [ADR 0008](0008-per-worktree-isolation.md) (port block +0..+7, `reserved_ports` reads every `*_PORT`,
 `.env.local` reuse)
 

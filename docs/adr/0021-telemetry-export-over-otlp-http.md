@@ -1,6 +1,6 @@
 # ADR 0021: Telemetry leaves the process over OTLP/HTTP, one exporter per signal
 
-Status: proposed · 2026-10-28
+Status: accepted · 2026-10-28
 
 Amends the dependency list of [ADR 0018](0018-http-and-db-instrumentation.md) and the "Standard library only
 for transport and logging" bullet of [ADR 0002](0002-go-service-layout.md), as far as logging goes.

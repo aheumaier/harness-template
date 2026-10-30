@@ -1,6 +1,6 @@
 # ADR 0016: Downloaded tools are sha256-pinned; scanners run only as pinned release binaries
 
-Status: proposed · 2026-10-28
+Status: accepted · 2026-10-28
 
 ## Context
 [ADR 0001](0001-tool-pinning-and-single-entry-point.md) pins every tool's version in

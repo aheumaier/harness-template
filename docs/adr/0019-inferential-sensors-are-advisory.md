@@ -1,6 +1,6 @@
 # ADR 0019: Inferential sensors are advisory; a finding class seen twice becomes a computational rule
 
-Status: proposed · 2026-10-28 · amended 2026-10-30 by [ADR 0040](0040-ci-agents-may-use-a-subscription-token.md) (subscription token, flags, cost cap)
+Status: accepted · 2026-10-28 · amended 2026-10-30 by [ADR 0040](0040-ci-agents-may-use-a-subscription-token.md) (subscription token, flags, cost cap)
 
 ## Context
 Gap G3 of exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`, slice P3.1). Today the only
@@ -114,6 +114,8 @@ those two lines into a decision the Phase 3 slices can build on.
   `.claude/hooks/only-test-files.sh` lets it write only the product test files `specs-tested` reads, and
   `only-make-check.sh` limits its shell. What it adds to the sensors is code-reviewer check 7, advisory like
   the rest: an assertion removed or loosened since its `Test-Writer:` commit.
+- **Amendment (2026-10-30, exec plan 0003 merge): accepted; `agent-gc` still stays off** until the first
+  scheduled review has run (TD-38) and a human sets `AGENT_GC_ENABLED` and `AGENT_GC_TOKEN` (TD-50).
 
 ## Consequences
 - P3.2, P3.3, P3.4 and P3.8 build on this ADR. `agent-gc` stays off until it is accepted (plan 0003, P3.4).

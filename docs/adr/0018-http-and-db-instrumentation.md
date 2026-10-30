@@ -1,6 +1,6 @@
 # ADR 0018: HTTP and database instrumentation through otelhttp and otelpgx
 
-Status: proposed · 2026-10-28
+Status: accepted · 2026-10-28
 
 Amends the "Standard library only for transport and logging" bullet of
 [ADR 0002](0002-go-service-layout.md).

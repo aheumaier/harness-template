@@ -1,6 +1,6 @@
 # ADR 0026: Template sync is a weekly drift report that never applies anything
 
-Status: proposed · 2026-10-29
+Status: accepted · 2026-10-29
 
 ## Context
 Exec plan 0003 (G7, P4.3): a product cut from this template keeps the harness of the day it was cut.

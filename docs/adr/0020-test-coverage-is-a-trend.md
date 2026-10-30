@@ -1,6 +1,6 @@
 # ADR 0020: Test coverage is a trend, never a gate
 
-Status: proposed · 2026-10-28
+Status: accepted · 2026-10-28
 
 ## Context
 Exec plan 0003 (P2.5) asks for test coverage per package. Nothing reports it today, so a package whose

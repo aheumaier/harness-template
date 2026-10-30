@@ -1,6 +1,6 @@
 # ADR 0023: Mutation testing is a weekly drift report, never a gate (extends 0020)
 
-Status: proposed · 2026-10-29
+Status: accepted · 2026-10-29
 
 ## Context
 Exec plan 0003 (P2.6) asks for mutation testing. [ADR 0020](0020-test-coverage-is-a-trend.md) reports

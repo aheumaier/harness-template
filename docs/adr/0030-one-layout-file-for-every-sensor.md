@@ -1,6 +1,6 @@
 # ADR 0030: The product layout is declared once in layout.env (amends 0002)
 
-Status: proposed · 2026-10-29
+Status: accepted · 2026-10-29
 
 ## Context
 Gap G12 of exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`, slice P4.6): the template layout

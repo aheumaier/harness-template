@@ -1,6 +1,6 @@
 # ADR 0025: Browser e2e is the NFR-B2 sensor
 
-Status: proposed · 2026-10-29
+Status: accepted · 2026-10-29
 
 ## Context
 NFR-B2 ([nfr.md](../harness/nfr.md)) asks for the app's critical path to be covered by an e2e test that runs

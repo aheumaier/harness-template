@@ -1,6 +1,6 @@
 # ADR 0036: Acceptance scenarios are traced to tests by a positional id
 
-Status: proposed · 2026-10-29
+Status: accepted · 2026-10-29
 
 ## Context
 Gap G13 of exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`, slice P5.1), from Nandyala and

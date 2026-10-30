@@ -1,6 +1,6 @@
 # ADR 0038: README (b) brownfield adoption is probed by a required check (amends 0009, 0026)
 
-Status: proposed · 2026-10-30
+Status: accepted · 2026-10-30
 
 ## Context
 README.md "(b) Brownfield project" is the procedure for adopting the harness into an existing repo. It is prose

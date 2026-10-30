@@ -1,6 +1,6 @@
 # ADR 0013: Harness NFRs are budgets; latency alerts, reliability fails
 
-Status: proposed · 2026-10-27
+Status: accepted · 2026-10-27
 
 ## Context
 Agents run the hooks on every tool call and `make check` after every change, so harness speed is agent

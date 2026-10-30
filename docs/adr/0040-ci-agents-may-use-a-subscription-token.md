@@ -1,6 +1,6 @@
 # ADR 0040: CI agents may authenticate with a Claude subscription token (amends 0019)
 
-Status: proposed · 2026-10-30 · amends [ADR 0019](0019-inferential-sensors-are-advisory.md)
+Status: accepted · 2026-10-30 · amends [ADR 0019](0019-inferential-sensors-are-advisory.md)
 
 ## Context
 The CI agents (`pr-review.yml`; the scheduled reviews and `agent-gc` in `drift.yml`) read the

@@ -1,6 +1,6 @@
 # ADR 0028: Quality grades are kept per domain and layer; check-all gates their shape, the weekly drift run their age
 
-Status: proposed · 2026-10-29
+Status: accepted · 2026-10-29
 
 ## Context
 Exec plan 0003 (P3.5) closes a gap to OpenAI's *Harness engineering*: a quality document that grades each

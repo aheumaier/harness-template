@@ -1,6 +1,6 @@
 # ADR 0029: Tool references are taken from upstream at the pinned version and follow the pin
 
-Status: proposed · 2026-10-29
+Status: accepted · 2026-10-29
 
 ## Context
 Exec plan 0003 (P4.5): agents write code against oapi-codegen, sqlc, orval and Atlas from training data or

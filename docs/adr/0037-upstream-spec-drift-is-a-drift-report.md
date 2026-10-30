@@ -1,6 +1,6 @@
 # ADR 0037: Cross-repo contracts: vendored upstream specs are a weekly drift report, consumers are named on a break
 
-Status: proposed · 2026-10-30 · amends [ADR 0030](0030-one-layout-file-for-every-sensor.md)
+Status: accepted · 2026-10-30 · amends [ADR 0030](0030-one-layout-file-for-every-sensor.md)
 
 ## Context
 Exec plan 0003 (G14, P5.2): a product often consumes another team's API through a vendored copy of its

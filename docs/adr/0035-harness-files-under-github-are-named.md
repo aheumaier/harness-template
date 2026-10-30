@@ -1,6 +1,6 @@
 # ADR 0035: Harness files under .github/ are named, not globbed (amends 0010)
 
-Status: proposed · 2026-10-29
+Status: accepted · 2026-10-29
 
 ## Context
 `scripts/harness/protected-paths.txt` marked `.github/workflows/*` and `.github/actions/*` as `config` and
