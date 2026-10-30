@@ -116,7 +116,7 @@ They comment, never fail (Phase 3, ADR).
 | 1 | Runtime legibility (G1) | NFR-O1 met: logs by request ID and a p95 latency, per worktree, via `make` | implemented |
 | 2 | Behaviour harness (G2) | NFR-B1 and NFR-B2 met; coverage reported per package; weekly mutation score in the drift issue | implemented |
 | 3 | Inferential sensors and garbage collection (G3, G4, G8, G11) | reviewer comments on every PR (advisory); scheduled reviews and `agent-gc` open issues/PRs; QUALITY.md has a staleness check; orphan scripts, dead Go code and clones fail `check-all`; `reuse-reviewer` exists | implemented (exit pending: ADR 0019 accepted, first PR comment and drift run observed) |
-| 4 | Taste lints and harness lifecycle (G5, G7, G9, G10, G12) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue; `adoption-probe` green on a root-module fixture; reviewer catches seen twice are earned rules; sensor slices get an evasion review | proposed |
+| 4 | Taste lints and harness lifecycle (G5, G7, G9, G10, G12) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue; `adoption-probe` green on a root-module fixture; reviewer catches seen twice are earned rules; sensor slices get an evasion review | partial: ADR 0024 (core belief 3) not yet accepted |
 | 5 | Spec-to-test and cross-repo feedback (G13, G14, G15, G16) | every acceptance scenario in `specs/` has a test or a reasoned exemption, checked in `check-all`; upstream spec drift reported weekly on the first adopter; PR template has an Assumptions section the reviewer checks; `test-writer` trial result recorded | partial: upstream drift not yet run on a first adopter (TD-115) |
 
 ## Progress
@@ -1455,3 +1455,19 @@ gates for contract, migration and harness changes. Four are not.
   `UPSTREAM_SPECS` line) and a test-writer.md link the probe drops; its timing artifact is not
   read by `ci-timings.sh` or `nfr-report.sh` yet (hand-off). Lane `check` green, `harness-selftest` 77/77,
   `check-all` red only on harness-integrity, int/obs/e2e green, `make adoption-probe` green.
+- 2026-10-30: Phase 4 gate (56e35b9). On ccebaff: `check` green, `harness-selftest` 77/77, lint, links and
+  orphans green, `check-all` red only on harness-integrity, int/obs/e2e green. Two independent reviews of the
+  twelve Phase 4 slices plus an architecture review; the G4 fix lane closed the blocking findings:
+  `migrations-append-only` let an applied migration be edited if it rode along with a moved
+  MIGRATIONS_DIR (now every base migration must reach the new dir with the same blob); `make STACK=…` or
+  `make -e` overrode `layout.env` without the decline the sync check reads (now a `harness-layout-valid`
+  error, layout keys applied with `override`); the adoption probe and README hand-edited files the template
+  sync owns (now ci.yml skips the probe job when the script is removed and declined in `.harness-version`;
+  ADR 0038 narrowed). Also fixed: migration-gate's MIGRATIONS_DIR step runs under bash (pipefail), README's
+  STACK table matches DB_TARGETS and WEB_TARGETS, the probe no longer needs `HARNESS_STACK=go`. Advisory
+  findings not fixed: TD-129..136. Rejected: replacing testfile_test.go's hand list of protected paths
+  with a read of `protected-paths.txt` (the test pins the template's list on purpose; drift risk is in the
+  hand-off). One review round and one retry (§5d); the retry was rechecked here, not re-reviewed. The
+  gate assessed the twelve committed Phase 4 slices; P4.13 (G17) was added outside this run and is not
+  part of it. State `partial`: the exit needs ADR 0024 accepted, which is a human step. After the gate:
+  `check` green, `harness-selftest` 77/77, `make adoption-probe` green.
