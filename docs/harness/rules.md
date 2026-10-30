@@ -393,7 +393,7 @@ any other Trivy exit is a failure to run (exit 2, `trivy failed to run (exit N) 
 ### harness-files-protected
 - **Rule:** Agents do not edit harness files (`scripts/harness/protected-paths.txt`); they propose the change in the PR description. A human allows edits by starting the agent session with `HARNESS_EDIT=1`.
 - **Why:** A sensor the agent can edit is a suggestion: the cheapest fix for a red check is to change the check.
-- **Sensor:** PreToolUse hook `.claude/hooks/protect-harness.sh` (file tools exactly; shell writes heuristically) for Claude Code (like every hook, it parses its JSON input with `.bin/harness hook-input`, [ADR 0012](../adr/0012-parsing-sensors-in-go.md), and without the binary blocks everything but `make setup`); `.github/CODEOWNERS` review and `harness-config-not-loosened` for every agent.
+- **Sensor:** PreToolUse hook `.claude/hooks/protect-harness.sh` (file tools exactly; shell writes heuristically; in every worktree of the repository, sibling lanes and `.claude/worktrees/<name>` included, against this checkout's list, blocking when `git worktree list` fails) for Claude Code (like every hook, it parses its JSON input with `.bin/harness hook-input`, [ADR 0012](../adr/0012-parsing-sensors-in-go.md), and without the binary blocks everything but `make setup`); `.github/CODEOWNERS` review and `harness-config-not-loosened` for every agent.
 - **Remediation:** Do not edit the file: fix the code the sensor points at, or describe the harness change (file, diff, why) in the PR description under "Harness change".
 - **Fixture:** none (a hook, not a make target); `scripts/test/protect-harness.bats` · Status: seed
 
