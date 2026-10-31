@@ -59,7 +59,11 @@ Claude Code hooks fail closed.
 1. **Create the repo** from this template, using GitHub's "Use this template" or a fresh clone with new
    history. Write the template commit you copied from to `.harness-version`, so
    [template sync](#keeping-up-with-the-template) can tell what you have not taken yet (step 3 points
-   `HARNESS_UPSTREAM` at the template).
+   `HARNESS_UPSTREAM` at the template). The copied file still holds the template's own older marker, not
+   the commit you copied, so replace it. Make the first commit before step 2: the web layer sensor
+   (dependency-cruiser) fails in a repo without `HEAD`. Until `make setup` has built `.bin/harness`, the
+   Claude Code hooks block every shell command except a bare `make setup` (`cd <repo> && make setup` is
+   blocked too).
 2. **Set up and prove green:**
    ```sh
    make setup
@@ -71,10 +75,12 @@ Claude Code hooks fail closed.
    - the Go module path (`github.com/aheumaier/harness-template`);
    - the CODEOWNERS owner (`@aheumaier`).
 
-   It is a dry run that lists each file and its changed lines; `WRITE=1` applies:
+   It is a dry run that lists each file with the number of lines that would change; `WRITE=1` applies.
+   `make deps` then relinks the renamed workspace packages, or lint-web cannot resolve the API client's types:
    ```sh
    make rename NAME=acme-shop MODULE=github.com/acme/shop OWNER=@acme
    make rename NAME=acme-shop MODULE=github.com/acme/shop OWNER=@acme WRITE=1
+   make deps
    make gen check-all harness-selftest
    ```
    - **What it covers:** every tracked text file; untracked files are left alone. That includes go.mod

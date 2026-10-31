@@ -15,6 +15,23 @@ fixture() {
   printf '%s\n' RULE=harness-layout-valid "TARGET=$2" "EXPECT='x'" ${3:+"STACK=$3"} >"$F/$1/fixture.conf"
 }
 
+@test "a fixture's scratch in the gitignored .tmp/ does not leak into the next fixture" {
+  fixture writes layout-check
+  fixture reads layout-check
+  # .tmp/ ignored, as in the repo: else git clean removes it and this test proves nothing.
+  printf '.tmp/\n' >"$SANDBOX/.gitignore"
+  for f in writes reads; do # a fixture must change a tracked file; .tmp/ alone is ignored
+    mkdir -p "$F/$f/files" && echo "$f" >"$F/$f/files/$f.txt"
+  done
+  printf '#!/usr/bin/env bash\nmkdir -p .tmp/upstream && touch .tmp/upstream/x\n' >"$F/writes/apply.sh"
+  printf '#!/usr/bin/env bash\n[[ ! -e .tmp/upstream ]] || { echo "leaked: .tmp/upstream" >&2; exit 1; }\n' \
+    >"$F/reads/apply.sh"
+  chmod +x "$F/writes/apply.sh" "$F/reads/apply.sh"
+  run -1 --separate-stderr "$SANDBOX/scripts/harness/selftest.sh" writes reads
+  [[ "$stderr" != *"could not apply fixture"* ]] || false
+  grep -qF "✗ reads → layout-check" <<<"$stderr" # reads applied and its sensor ran
+}
+
 @test "a fixture.conf STACK naming an unknown group is a bad fixture.conf" {
   fixture typo layout-check wbe
   run -1 --separate-stderr "$SANDBOX/scripts/harness/selftest.sh" typo

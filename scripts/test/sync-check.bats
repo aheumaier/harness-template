@@ -129,6 +129,8 @@ check() { HARNESS_UPSTREAM="${HARNESS_UPSTREAM-$UP}" run "$@" "$SANDBOX/scripts/
     mkdir -p "$SANDBOX/$(dirname "$f")"
     cp "$REPO/$f" "$SANDBOX/$f"
   done
+  # make rename sets HARNESS_UPSTREAM in a product repo; empty it so the first make below takes the template path.
+  edit scripts/tool-versions.env 's|^HARNESS_UPSTREAM=.*|HARNESS_UPSTREAM=|'
   sandbox scripts/harness/run.sh scripts/harness/timing.sh
   base_and_upstream
   printf '# upstream change\n' >>"$UP/Makefile"
