@@ -24,3 +24,10 @@ overrides:
   # @stryker-mutator/core 10.x → typed-rest-client ~2.3.0 → qs 6.15.1 exactly (CVE-2026-8723, -82417, -82562,
   # -110816). Drop it when Stryker depends on typed-rest-client ≥ 3 (qs ^6.16.0); tech-debt TD-34.
   "typed-rest-client>qs": 6.16.1
+  # minimatch 10.2.6 (CVE-2026-118764), fixed in 11.0.1, no 10.x fix; pinned to 11.0.3, the latest 11.x. Its
+  # four direct dependents still ask for ^10 or ~10.2.4, and use only minimatch(), Minimatch and its match(),
+  # all kept in 11. Drop these when all four depend on minimatch ≥ 11.0.1; tech-debt TD-146.
+  "eslint>minimatch": 11.0.3
+  "@eslint/config-array>minimatch": 11.0.3
+  "@typescript-eslint/typescript-estree>minimatch": 11.0.3
+  "@stryker-mutator/core>minimatch": 11.0.3
