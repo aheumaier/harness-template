@@ -48,6 +48,12 @@ stamp() { cat "$SANDBOX/.cache/harness/gen-check.stamp"; }
   run -1 "$G" --unchanged
 }
 
+@test "another effective STACK breaks the stamp: a narrower make gen ran fewer generators (ADR 0033)" {
+  run -0 "$G"
+  HARNESS_STACK=go run -1 "$G" --unchanged
+  run -0 "$G" --unchanged
+}
+
 @test "a hand edit of a generated file breaks the stamp, committed or not" {
   run -0 "$G"
   echo '// hand edit' >>"$SANDBOX/$GEN"

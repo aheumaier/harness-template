@@ -1,5 +1,5 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignore": ["scripts/harness/fixtures/**"],
-  "ignoreDependencies": ["@stoplight/spectral-cli", "bats", "squawk-cli"]
+  "ignoreDependencies": ["jscpd"]
 }

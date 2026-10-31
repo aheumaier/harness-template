@@ -12,12 +12,14 @@ import (
 // Suppression markers are assembled from parts so this file never contains one itself: it is hand-written
 // Go and the sensor reads it like any other.
 const (
-	nolint     = "//" + "nolint:noctxroot"
-	eslint     = "// eslint" + "-disable-next-line no-console"
-	shellcheck = "# shellcheck" + " disable=SC2086"
-	tsIgnore   = "@ts" + "-ignore"
-	tsNocheck  = "@ts" + "-nocheck"
-	noReason   = ": suppression without 'reason: … (rule: <id>)' on the same line [harness-suppression-reason]"
+	nolint      = "//" + "nolint:noctxroot"
+	eslint      = "// eslint" + "-disable-next-line no-console"
+	shellcheck  = "# shellcheck" + " disable=SC2086"
+	tsIgnore    = "@ts" + "-ignore"
+	tsNocheck   = "@ts" + "-nocheck"
+	jscpdIgnore = "jscpd" + ":ignore"
+	jscpdStart  = jscpdIgnore + "-start"
+	noReason    = ": suppression without 'reason: … (rule: <id>)' on the same line [harness-suppression-reason]"
 )
 
 // integrityRepo makes a git repo whose `main` holds a minimal harness (rules.md, protected-paths.txt), a
@@ -34,6 +36,7 @@ func integrityRepo(t *testing.T) string {
 		"scripts/harness/run.sh": {"#!/usr/bin/env bash", "set -eu", "echo ok"},
 		"Makefile":               {"check:", "\t@echo check"},
 		"x.go":                   {"package x"},
+		layoutFile:               templateLayout,
 	} {
 		writeLines(t, root, p, lines...)
 	}
@@ -125,14 +128,16 @@ func TestIntegrityCheck(t *testing.T) {
 			gitT(t, own, "add", "-A")
 			return ""
 		}, false, nil},
-		{"never accepts ts-ignore or ts-nocheck, even with a reason", func(t *testing.T, own string) string {
+		{"never accepts ts-ignore, ts-nocheck or jscpd ignore comments, even with a reason", func(t *testing.T, own string) string {
 			add(t, own, "a.ts", "// "+tsIgnore+" reason: x (rule: web-typecheck)")
 			add(t, own, "b.mts", "// "+tsNocheck+" reason: x (rule: web-typecheck)")
+			add(t, own, "c.tsx", "// "+jscpdStart+" reason: x (rule: web-typecheck)")
 			gitT(t, own, "add", "-A")
 			return ""
 		}, false, []string{
 			"a.ts:1: " + tsIgnore + " is never allowed [harness-suppression-reason]",
 			"b.mts:1: " + tsNocheck + " is never allowed [harness-suppression-reason]",
+			"c.tsx:1: " + jscpdIgnore + " is never allowed [harness-suppression-reason]",
 		}},
 		{"flags SQL, staticcheck, inline eslint and workflow suppressions without a reason", func(t *testing.T, own string) string {
 			add(t, own, "m.sql", "-- atlas"+":nolint DS103", "-- squawk"+"-ignore ban-drop-column")
@@ -146,6 +151,14 @@ func TestIntegrityCheck(t *testing.T) {
 			add(t, own, "x.go", "f() "+nolint+" // reason: trust me (rule: go-lint)")
 			return ""
 		}, false, []string{"x.go:2: suppression names 'go-lint', not a rule id in docs/harness/rules.md [harness-suppression-reason]"}},
+		{"skips the layout's generated code (GENERATED_GLOBS)", func(t *testing.T, own string) string {
+			writeLines(t, own, layoutFile, withLayout("GENERATED_GLOBS", "*.gen.go:apps/api/internal/*/store/*")...)
+			commitAll(t, own, "a layout without the client's generated code")
+			add(t, own, "a.gen.go", nolint)
+			add(t, own, "apps/api/internal/billing/store/q.go", nolint)
+			add(t, own, "packages/api-client/src/gen/x.ts", eslint)
+			return ""
+		}, false, []string{"packages/api-client/src/gen/x.ts:1" + noReason}},
 		{"reports paths with spaces", func(t *testing.T, own string) string {
 			writeLines(t, own, "a b.go", "package y")
 			commitAll(t, own, "space")
@@ -292,6 +305,42 @@ func TestIntegrityCheck(t *testing.T) {
 	}
 }
 
+// With the repo's real protected-paths.txt, the harness's own workflows and action are configs and a product's
+// workflow or action beside them is not (exec plan 0003 P4.9): a product CI change needs no label.
+func TestIntegrityCheckRealListSparesProductWorkflows(t *testing.T) {
+	repo := repoRoot(t)
+	list, err := os.ReadFile(filepath.Join(repo, "scripts/harness/protected-paths.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	own := integrityRepo(t)
+	writeLines(t, own, "scripts/harness/protected-paths.txt", strings.Split(strings.TrimSuffix(string(list), "\n"), "\n")...)
+	files := []string{".github/workflows/ci.yml", ".github/actions/setup/action.yml",
+		".github/workflows/deploy.yml", ".github/actions/release/action.yml"}
+	for _, f := range files {
+		writeLines(t, own, f, "# a workflow", "on: push")
+	}
+	commitAll(t, own, "the real list, harness and product workflows")
+	for _, f := range files {
+		add(t, own, f, "      - run: make release")
+	}
+	// Untracked files count as added: a new product workflow passes, a new file in the harness action does not.
+	add(t, own, ".github/workflows/new.yml", "on: push")
+	add(t, own, ".github/actions/setup/extra.sh", "make release")
+	var out bytes.Buffer
+	bad, err := integrityCheck(own, own, "main", false, &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Untracked files are reported first.
+	want := ".github/actions/setup/extra.sh:1: added harness config line: make release [harness-config-not-loosened]\n" +
+		".github/actions/setup/action.yml:3: added harness config line:       - run: make release [harness-config-not-loosened]\n" +
+		".github/workflows/ci.yml:3: added harness config line:       - run: make release [harness-config-not-loosened]\n"
+	if !bad || out.String() != want {
+		t.Errorf("bad=%v, output:\n%s\nwant:\n%s", bad, out.String(), want)
+	}
+}
+
 func TestIntegrityCheckFailsClosed(t *testing.T) {
 	t.Run("BASE_REF does not resolve", func(t *testing.T) {
 		own := integrityRepo(t)
@@ -315,6 +364,15 @@ func TestIntegrityCheckFailsClosed(t *testing.T) {
 		}
 		if _, err := integrityCheck(own, own, "main", true, &bytes.Buffer{}); err == nil {
 			t.Error("passed without rules.md")
+		}
+	})
+	t.Run("no layout.env", func(t *testing.T) {
+		own := integrityRepo(t)
+		if err := os.Remove(filepath.Join(own, layoutFile)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := integrityCheck(own, own, "main", false, &bytes.Buffer{}); err == nil {
+			t.Error("passed without layout.env")
 		}
 	})
 	t.Run("no merge base", func(t *testing.T) {

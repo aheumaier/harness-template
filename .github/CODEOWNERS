@@ -23,9 +23,11 @@ knip.json                   @aheumaier
 tsconfig*.json              @aheumaier
 /Makefile                   @aheumaier
 /scripts/harness/           @aheumaier
+/scripts/templates/adoption-probe/  @aheumaier
 /scripts/test/              @aheumaier
 /scripts/git-hooks/         @aheumaier
 /scripts/tool-versions.env  @aheumaier
+/.harness-version           @aheumaier
 /scripts/install-tools.sh   @aheumaier
 /scripts/gen-schema-doc.sh  @aheumaier
 /scripts/github-branch-protection.sh  @aheumaier
@@ -33,8 +35,24 @@ tsconfig*.json              @aheumaier
 /apps/api/tools/harness/  @aheumaier
 /apps/api/internal/platform/approvaltest/  @aheumaier
 /.claude/                   @aheumaier
-/.github/                   @aheumaier
+# Workflows and actions: the product's own are not harness files (agents edit them, no label), but a job
+# named after a required check could stand in for it, so they need the owner's eye (ADR 0035). The harness's
+# own follow by name, after these, so that the last match wins for them.
+/.github/workflows/         @aheumaier
+/.github/actions/           @aheumaier
+/.github/workflows/ci.yml                 @aheumaier
+/.github/workflows/contract-gate.yml      @aheumaier
+/.github/workflows/coverage.yml           @aheumaier
+/.github/workflows/drift.yml              @aheumaier
+/.github/workflows/harness-integrity.yml  @aheumaier
+/.github/workflows/harness-nfr.yml        @aheumaier
+/.github/workflows/migration-gate.yml     @aheumaier
+/.github/workflows/pr-review.yml          @aheumaier
+/.github/actions/setup/     @aheumaier
+/.github/CODEOWNERS         @aheumaier
+/.github/pull_request_template.md  @aheumaier
 /docs/harness/              @aheumaier
+/docs/references/           @aheumaier
 /.specify/                  @aheumaier
 /AGENTS.md                  @aheumaier
 /CLAUDE.md                  @aheumaier

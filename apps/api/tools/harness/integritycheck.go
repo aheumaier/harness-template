@@ -5,7 +5,7 @@ package main
 //
 //	[harness-suppression-reason]   an added suppression lacks `reason: … (rule: <id>)` on its line, names an
 //	                               id that is not a `### <id>` heading in docs/harness/rules.md, or is an
-//	                               @ts-ignore/@ts-nocheck (never allowed)
+//	                               @ts-ignore/@ts-nocheck/jscpd:ignore (never allowed)
 //	[harness-config-not-loosened]  a harness config (`config` in protected-paths.txt) gained or lost a
 //	                               non-comment line (a shebang is not a comment), or changed its file
 //	                               mode (a hook without its x bit no longer runs). Waived only by a human: HARNESS_CHANGE_APPROVED=1 (CI:
@@ -29,13 +29,14 @@ import (
 )
 
 var (
-	// Hand-written source only: fixture overlays are deliberate violations, generated and vendored code
-	// (.specify/, spec-kit: ADR 0011) is not ours, and this file names the markers it looks for.
+	// Hand-written source only: fixture overlays are deliberate violations and vendored code (.specify/,
+	// spec-kit: ADR 0011) is not ours; suppressionPathspecs also drops generated code (GENERATED_GLOBS) and this
+	// file, which names the markers it looks for.
 	suppressionSources = []string{"*.go", "*.ts", "*.tsx", "*.mts", "*.cts", "*.js", "*.jsx", "*.mjs", "*.cjs",
 		"*.sh", "*.bash", "*.bats", "*.sql", ".github/*.yml", ".github/*.yaml", "scripts/git-hooks/*",
-		":!:scripts/harness/fixtures/*/files/*", ":!:apps/api/tools/harness/integritycheck.go", ":!:.specify/*",
-		":!:*.gen.go", ":!:apps/api/internal/*/store/*", ":!:packages/api-client/src/gen/*"}
-	neverRE       = regexp.MustCompile(`(@ts-ignore|@ts-nocheck)`)
+		":!:scripts/harness/fixtures/*/files/*", ":!:.specify/*"}
+	// jscpd honours `jscpd:ignore-start`/`-end` comments; repo-no-clones has no sanctioned exception there.
+	neverRE       = regexp.MustCompile(`(@ts-ignore|@ts-nocheck|jscpd:ignore)`)
 	suppressionRE = regexp.MustCompile(`(//[[:space:]]*(nolint|lint:(file-)?ignore)|eslint-disable|/\*[[:space:]]*eslint[[:space:]]|@ts-expect-error|#[[:space:]]*shellcheck[[:space:]]+disable|atlas:nolint|squawk-ignore)`)
 	reasonRE      = regexp.MustCompile(`reason: .+\(rule: ([a-z0-9-]+)\)`)
 	// Only `#` lines and blank lines are comments: `//` and `/* */` can comment out a JSONC, JS or Go line
@@ -68,7 +69,11 @@ func integrityCheck(own, root, baseRef string, approved bool, stdout io.Writer) 
 	if err != nil {
 		return false, err
 	}
-	rows, err := changes(root, base, suppressionSources)
+	l, err := loadLayout(own)
+	if err != nil {
+		return false, err
+	}
+	rows, err := changes(root, base, suppressionPathspecs(l))
 	if err != nil {
 		return false, err
 	}
@@ -124,6 +129,15 @@ func integrityCheck(own, root, baseRef string, approved bool, stdout io.Writer) 
 	return bad, nil
 }
 
+// suppressionPathspecs is suppressionSources without the layout's generated code and this file.
+func suppressionPathspecs(l layout) []string {
+	specs := append([]string{":!:" + l.apiPath("tools/harness/integritycheck.go")}, suppressionSources...)
+	for _, g := range l.list("GENERATED_GLOBS") {
+		specs = append(specs, ":!:"+g)
+	}
+	return specs
+}
+
 // mergeBase is scripts/harness/merge-base.sh in root: the merge base of HEAD with ref (default: origin/main
 // if it exists, else main). A sensor that cannot find its base would compare nothing and pass.
 func mergeBase(root, ref string) (string, error) {
@@ -146,16 +160,34 @@ func mergeBase(root, ref string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// configPatterns returns the pathspecs marked `config` in protected-paths.txt.
-func configPatterns(file string) ([]string, error) {
+// protectedPath is one entry of protected-paths.txt: a pathspec and what follows it (`config`, or nothing).
+type protectedPath struct{ pattern, kind string }
+
+// protectedPaths returns the entries of protected-paths.txt.
+func protectedPaths(file string) ([]protectedPath, error) {
 	b, err := os.ReadFile(file)
 	if err != nil {
 		return nil, err
 	}
-	var patterns []string
+	var entries []protectedPath
 	for _, l := range strings.Split(string(b), "\n") {
-		if f := strings.Fields(l); !commentRE.MatchString(l) && len(f) == 2 && f[1] == "config" {
-			patterns = append(patterns, f[0])
+		if f := strings.Fields(l); !commentRE.MatchString(l) {
+			entries = append(entries, protectedPath{f[0], strings.Join(f[1:], " ")})
+		}
+	}
+	return entries, nil
+}
+
+// configPatterns returns the pathspecs marked `config` in protected-paths.txt.
+func configPatterns(file string) ([]string, error) {
+	entries, err := protectedPaths(file)
+	if err != nil {
+		return nil, err
+	}
+	var patterns []string
+	for _, e := range entries {
+		if e.kind == "config" {
+			patterns = append(patterns, e.pattern)
 		}
 	}
 	return patterns, nil

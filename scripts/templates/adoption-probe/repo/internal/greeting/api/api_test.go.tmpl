@@ -1,0 +1,38 @@
+package api_test
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"reflect"
+	"testing"
+
+	"example.com/hello/internal/greeting/api"
+)
+
+// TestGetGreeting compares the response with its approved copy, which make approved-check holds to the contract.
+func TestGetGreeting(t *testing.T) {
+	rec := httptest.NewRecorder()
+	api.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/greeting?name=ada", nil))
+	raw, err := os.ReadFile("testdata/approved/getGreeting.200.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var approved struct {
+		Headers map[string]string `json:"headers"`
+		Body    any               `json:"body"`
+	}
+	var body any
+	if err := json.Unmarshal(raw, &approved); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != approved.Headers["Content-Type"] ||
+		!reflect.DeepEqual(body, approved.Body) {
+		t.Fatalf("testdata/approved/getGreeting.200.json: the response differs from the approved one [api-responses-approved]\n"+
+			"got %d %q %v, want 200 %v", rec.Code, rec.Header().Get("Content-Type"), body, approved)
+	}
+}

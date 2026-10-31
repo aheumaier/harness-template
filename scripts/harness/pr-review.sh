@@ -20,7 +20,7 @@
 #       under system directories, each absolute <deny-dir> (the runner's temp, tool and home config dirs)
 #       and for every env file.
 #   pr-review.sh screen <file...>
-#       exit 1 when a file contains ANTHROPIC_API_KEY (from the environment) verbatim or, in any case, the
+#       exit 1 when a file contains ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN (from the environment) verbatim or, in any case, the
 #       `sk-ant-` key prefix; 0 when none does. A verbatim backstop, not the main control: the agent's tool
 #       confinement is (docs/harness/ci.md#pr-review).
 #   pr-review.sh result <exit> <out.json> <stderr> <review-out>
@@ -49,8 +49,8 @@ die() {
   exit 2
 }
 
-# The CI agent contract shared with scheduled-review.sh: frontmatter, preamble guard, settings, leak screen,
-# result, fence and cut.
+# The CI agent contract shared with scheduled-review.sh and agent-gc.sh: frontmatter, preamble guard,
+# settings, leak screen, result, nonce, cap, fence and cut.
 # shellcheck source=scripts/harness/ci-agent.sh
 . "$ROOT/scripts/harness/ci-agent.sh"
 
@@ -58,8 +58,8 @@ count() { tr -cd '\0' | wc -c | tr -d ' '; } # NUL-terminated records on stdin
 
 gate() {
   [[ $# -eq 3 ]] || die "$usage"
-  local base=$1 head=$2 out=$3 rev pattern bytes all protected
-  [[ ${MAX_DIFF_BYTES:-} =~ ^[1-9][0-9]*$ ]] || die "MAX_DIFF_BYTES must be a positive integer, got '${MAX_DIFF_BYTES:-}'"
+  local base=$1 head=$2 out=$3 max rev bytes all protected
+  max=$(agent_cap MAX_DIFF_BYTES)
   for rev in "$base" "$head"; do
     [[ $rev =~ $SHA_RE ]] || die "'$rev' is not a commit sha"
     git -C "$ROOT" rev-parse -q --verify --end-of-options "$rev^{commit}" >/dev/null ||
@@ -68,12 +68,7 @@ gate() {
 
   # Every non-comment line counts, `config` or not: a guide in docs/harness/ is as much the human gate's as a
   # linter config. Patterns are git pathspecs, matched by git as integrity-check matches them.
-  local patterns=()
-  while read -r pattern _; do
-    [[ -z $pattern || $pattern == \#* ]] && continue
-    patterns+=("$pattern")
-  done <"$ROOT/scripts/harness/protected-paths.txt"
-  [[ ${#patterns[@]} -gt 0 ]] || die "no patterns in scripts/harness/protected-paths.txt"
+  agent_protected
 
   # --no-renames: a move out of apps/ into a protected path lists both sides, so it is not harness-only.
   all=$(git -C "$ROOT" diff --name-only -z --no-renames --end-of-options "$base...$head" -- | count) ||
@@ -82,7 +77,7 @@ gate() {
     echo "skip: the PR changes no file"
     return
   }
-  protected=$(git -C "$ROOT" diff --name-only -z --no-renames --end-of-options "$base...$head" -- "${patterns[@]}" | count) ||
+  protected=$(git -C "$ROOT" diff --name-only -z --no-renames --end-of-options "$base...$head" -- "${AGENT_PROTECTED[@]}" | count) ||
     die "git diff $base...$head -- <protected paths> failed"
   [[ $protected -lt $all ]] || {
     echo "skip: harness-only PR (every changed path is in scripts/harness/protected-paths.txt); the code-owner review applies"
@@ -94,9 +89,9 @@ gate() {
     die "git diff $base...$head failed"
   }
   bytes=$(wc -c <"$out.tmp" | tr -d ' ')
-  if [[ $bytes -gt $MAX_DIFF_BYTES ]]; then
+  if [[ $bytes -gt $max ]]; then
     rm -f "$out.tmp"
-    echo "skip: the diff is $bytes bytes, over the cost cap of $MAX_DIFF_BYTES (REVIEW_MAX_DIFF_BYTES in .github/workflows/pr-review.yml)"
+    echo "skip: the diff is $bytes bytes, over the cost cap of $max (REVIEW_MAX_DIFF_BYTES in .github/workflows/pr-review.yml)"
     return
   fi
   mv "$out.tmp" "$out"
@@ -109,8 +104,7 @@ prompt() {
   [[ -r $diff ]] || die "no diff at '$diff'"
   [[ -f $agent ]] || die "no reviewer prompt at $agent"
   body=$(agent_body "$agent")
-  nonce=$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')
-  [[ $nonce =~ ^[0-9a-f]{24}$ ]] || die "could not read a nonce from /dev/urandom"
+  nonce=$(agent_nonce)
 
   cat <<EOF
 You are the \`code-reviewer\` agent whose instructions follow, run headless in CI on a pull request (exec plan
@@ -154,10 +148,10 @@ result() {
 
 comment() {
   [[ $# -eq 2 ]] || die "$usage"
-  local review=$1 sha=$2 max=${MAX_COMMENT_BYTES:-60000} fence
+  local review=$1 sha=$2 max fence
   [[ -s $review ]] || die "no review at '$review', or it is empty"
   [[ $sha =~ $SHA_RE ]] || die "'$sha' is not a commit sha"
-  [[ $max =~ ^[1-9][0-9]*$ ]] || die "MAX_COMMENT_BYTES must be a positive integer, got '$max'"
+  max=$(agent_cap MAX_COMMENT_BYTES 60000)
   fence=$(agent_fence "$review")
 
   printf '%s\n' "$MARKER"

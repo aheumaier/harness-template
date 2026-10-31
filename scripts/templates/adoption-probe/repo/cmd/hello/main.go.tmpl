@@ -1,0 +1,19 @@
+// Command hello serves the greeting API on :8080.
+package main
+
+import (
+	"log/slog"
+	"net/http"
+	"os"
+	"time"
+
+	"example.com/hello/internal/greeting/api"
+)
+
+func main() {
+	srv := &http.Server{Addr: ":8080", Handler: api.Handler(), ReadHeaderTimeout: 5 * time.Second}
+	if err := srv.ListenAndServe(); err != nil {
+		slog.Error("server stopped", "err", err)
+		os.Exit(1)
+	}
+}

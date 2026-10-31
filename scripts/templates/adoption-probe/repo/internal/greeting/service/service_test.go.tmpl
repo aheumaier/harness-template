@@ -1,0 +1,15 @@
+package service_test
+
+import (
+	"testing"
+
+	"example.com/hello/internal/greeting/service"
+)
+
+func TestGreet(t *testing.T) {
+	for name, want := range map[string]string{"": "hello, world", "ada": "hello, ada"} {
+		if got := service.Greet(name).Message; got != want {
+			t.Errorf("Greet(%q) = %q, want %q", name, got, want)
+		}
+	}
+}

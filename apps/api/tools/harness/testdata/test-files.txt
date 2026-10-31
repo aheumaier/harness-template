@@ -1,0 +1,45 @@
+# Paths shared by TestProductTestFileVectors (tools/harness/testfile_test.go: `harness test-file`, the
+# test-writer's write guard, against the files specs-tested reads) and scripts/test/only-test-files.bats (the
+# hook itself), so the agent may write exactly the test files specs-tested counts (ADR 0036, ADR 0039). Rows are
+# template paths: the Go test runs them with the template's layout and protected paths, the bats test maps each
+# onto the repo's layout.env (its `at`) and runs it with the repo's protected-paths.txt.
+# A third field names the template entry a reject hinges on, generated:<GENERATED_GLOBS entry> or
+# protected:<protected-paths.txt pattern>: in a layout without that entry (mapped), the row is product code and
+# the bats test wants allow (README "(b) Brownfield project": a root module has no sqlc store glob, and step 5
+# drops the approvaltest line).
+# <path> allow|reject [generated:<glob>|protected:<pattern>]
+apps/api/internal/cart/model/cart_test.go allow
+apps/api/internal/cart/service/pay_test.go allow
+apps/api/internal/cart/api/handler_test.go allow
+packages/domain/src/money.test.ts allow
+apps/web/src/cart.test.tsx allow
+apps/web/src/cart.test.mjs allow
+apps/web/src/cart.spec.ts allow
+apps/web/e2e/checkout.e2e.ts allow
+apps/api/internal/cart/model/cart.go reject
+apps/api/internal/cart/model/cart_test.go.orig reject
+packages/domain/src/money.ts reject
+packages/domain/src/test.ts reject
+apps/api/internal/cart/store/query_test.go reject generated:apps/api/internal/*/store/*
+packages/api-client/src/gen/hooks.test.ts reject
+packages/api-client/src/client.test.ts reject
+docs/generated/schema.test.ts reject
+apps/api/tools/harness/a_test.go reject
+apps/api/tools/analyzers/domainiso/a_test.go reject
+apps/api/internal/platform/approvaltest/a_test.go reject protected:apps/api/internal/platform/approvaltest/*
+apps/web/playwright.config.test.ts reject
+apps/web/node_modules/x/y.test.ts reject
+scripts/harness/fixtures/f/files/apps/api/x_test.go reject
+apps/api/internal/cart/fixtures/a_test.go reject
+scripts/test/a.test.ts reject
+specs/001-demo/a_test.go reject
+tools/z_test.go reject
+a_test.go reject
+# Case variants of excluded paths: on a case-insensitive disk (macOS) each is the excluded file itself.
+apps/api/tools/Harness/zz_test.go reject
+apps/api/tools/HARNESS/yy_test.go reject
+apps/api/internal/cart/Store/query2_test.go reject generated:apps/api/internal/*/store/*
+packages/API-client/src/gen/hooks2.test.ts reject
+packages/Api-Client/src/client2.test.ts reject
+apps/web/Node_modules/x/z.test.ts reject
+apps/api/internal/cart/Fixtures/b_test.go reject

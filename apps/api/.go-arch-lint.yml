@@ -12,6 +12,7 @@ excludeFiles:
 
 exclude:
   - tools
+  - scripts/harness/fixtures # a root module (API_DIR=.) would walk the fixtures' Go overlays
 
 components:
   cmd:      { in: cmd/** }

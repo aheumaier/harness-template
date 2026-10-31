@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Runs in the repo copy: an exported function in the greeting service that nothing, not even a test, calls.
+set -euo pipefail
+cat >internal/greeting/service/fxdead.go <<'GO'
+package service
+
+// FixtureUnused is a selftest fixture: nothing calls it.
+func FixtureUnused() string { return "unused" }
+GO

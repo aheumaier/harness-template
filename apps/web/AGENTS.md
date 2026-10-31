@@ -1,7 +1,8 @@
 # apps/web
 
 - Vite + React 19 + TanStack Query. Data comes only from hooks in `@harness-template/api-client`
-  (generated from `api/openapi.yaml`); no `fetch`, `axios` or `XMLHttpRequest` here (ESLint).
+  (generated from `api/openapi.yaml`); no `fetch`, `axios` or `XMLHttpRequest` here (ESLint). The
+  generator's options at the pinned version: [orval-llms.txt](../../docs/references/orval-llms.txt).
 - Show API errors with `problemOf(error)`; it returns the parsed RFC 9457 problem.
 - Domain logic without React (calculations, validation, formatting rules) goes in `packages/domain`, which
   may not import React, browser APIs or apps (dependency-cruiser).

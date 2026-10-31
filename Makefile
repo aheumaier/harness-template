@@ -6,10 +6,40 @@ SHELL := bash
 MAKEFLAGS += --no-print-directory
 
 include scripts/tool-versions.env
+# Where the code lives (API_DIR, SPEC, ...), one file for every sensor (ADR 0030); its lists separate entries
+# with `:`. Read through the validating parser, never included as make syntax: layout.sh prints only its known
+# keys with plain values, one KEY=value word each, or nothing and its findings on stderr. HARNESS_STACK, from the
+# environment or the command line, overrides its STACK (ADR 0033); make 3.81's $(shell) sees only the former.
+# The keys are set with `override`, and so is STACK_OFF below, so neither a command-line variable nor one from
+# the environment under make -e (CI's setup action exports the keys) can beat layout.env and silently drop the
+# db and web sensors past layout-check's guard (it reads only HARNESS_STACK). A command-line STACK or STACK_OFF
+# is refused outright, since the one asking for it expects it to win; $(origin) of a command-line variable is
+# two words, which @ joins, so make -e's `environment override` passes here and override beats it below.
+from_command_line = $(filter command@line override,$(subst $() ,@,$(origin $(1))))
+ifneq ($(call from_command_line,STACK),)
+$(error STACK comes from scripts/harness/layout.env; for one run use HARNESS_STACK=… [harness-layout-valid])
+endif
+ifneq ($(call from_command_line,STACK_OFF),)
+$(error STACK_OFF follows STACK in scripts/harness/layout.env; for one run use HARNESS_STACK=… [harness-layout-valid])
+endif
+LAYOUT :=$(shell $(if $(filter command line,$(origin HARNESS_STACK)),HARNESS_STACK='$(HARNESS_STACK)') scripts/harness/layout.sh --print)
+ifeq ($(LAYOUT),)
+$(error scripts/harness/layout.env or HARNESS_STACK is missing or invalid (see above): fix it, then run make layout-check [harness-layout-valid])
+endif
+$(foreach kv,$(LAYOUT),$(eval override $(kv)))
+# The sensor groups (ADR 0033): go is every target not listed here and always runs; a db or web target leaves
+# check, check-all, gen and make harness-selftest when STACK lacks its group. e2e needs both (make dev starts
+# Postgres and the web app). `$(call stack_has,<group>)` is non-empty when STACK names it; `$(call
+# stacked,<targets>)` drops the targets STACK leaves out; check says once on stderr which ones.
+DB_TARGETS  := schema-doc-fresh lint-migrations squawk migrations-append-only test-integration test-obs e2e gen-sqlc gen-atlas-sum
+WEB_TARGETS := lint-web arch-web typecheck-web test-web knip clones-web e2e gen-api-client
+stack_has    = $(filter $(1),$(subst :, ,$(STACK)))
+override STACK_OFF := $(strip $(if $(call stack_has,db),,$(DB_TARGETS)) $(if $(call stack_has,web),,$(WEB_TARGETS)))
+stacked      = $(filter-out $(STACK_OFF),$(1))
 export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 export OBS_IMAGE # compose.yaml interpolates the obs service even when its profile is off
 export PATH := $(CURDIR)/.bin:$(CURDIR)/node_modules/.bin:$(PATH)
-# Playwright's browsers (make e2e) live in .bin like every tool, installed by make deps (scripts/install-tools.sh).
+# Playwright's browser (make e2e) lives in .bin like every tool, installed on demand by make e2e only (ADR 0025).
 export PLAYWRIGHT_BROWSERS_PATH := $(CURDIR)/.bin/playwright
 
 RUN  := scripts/harness/run.sh
@@ -21,16 +51,24 @@ DEPCRUISE_CACHE = $(if $(CACHED),--cache node_modules/.cache/depcruise)
 TURBO_FORCE = $(if $(CACHED),,--force)
 # Load this worktree's ports/DB URL (written by `make setup`) into a recipe's shell.
 WITH_ENV := [[ -f .env.local ]] || { echo "no .env.local: run make setup" >&2; exit 1; }; set -a; source .env.local; set +a;
-API  := apps/api
+# The JS workspaces' parent directories: each WEB_GLOBS entry without its /*.
+WEB_DIRS := $(patsubst %/*,%,$(subst :, ,$(WEB_GLOBS)))
+# The domains' parent directory (each domain is <DOMAINS_DIR>/<name>): LAYER_GLOB without its /*/*, in API_DIR.
+DOMAINS_DIR := $(patsubst ./%,%,$(API_DIR)/$(patsubst %/*/*,%,$(LAYER_GLOB)))
 # `$(call scoped,<go|web>,<everything>) <command on $$scope>`: in make check, runs the command on the packages or
 # workspaces a change affects plus their dependents (scripts/harness/affected.sh), or skips it when there are
 # none; on <everything> in make check-all, CI and whenever affected.sh cannot narrow it (rules.md#harness-scope).
 scoped = scope="$$(scripts/harness/affected.sh $(1))" || scope="$(2)"; [[ -n "$$scope" ]] || \
 	{ echo "$@: skipped, nothing it checks is affected (make check-all runs it)"; exit 0; };
 GCL  := .bin/golangci-lint-custom
-ANALYZERS_SRC := $(shell find $(API)/tools/analyzers -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
+# ADR 0024's size and complexity limits, one rule id per measure, checked by lint-go and lint-web. The linters'
+# messages cannot carry the id: run.sh maps each finding to its id, so only that measure's split recipe prints.
+SIZE_RULES := code-function-length,code-complexity,code-parameters,code-file-length
+ANALYZERS_SRC := $(shell find $(API_DIR)/tools/analyzers -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
 HARNESS     := .bin/harness
-HARNESS_SRC := $(shell find $(API)/tools/harness -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
+HARNESS_SRC := $(shell find $(API_DIR)/tools/harness -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
+# install-tools.sh's stamp (TD-9): a target that needs a pinned tool from .bin depends on this, never on $(GCL).
+TOOLS_STAMP := .bin/.tools-stamp
 
 ##@ Workflow
 .PHONY: help setup check check-all harness-selftest harness-determinism new-domain rename dev db-up db-migrate db-reset
@@ -44,7 +82,7 @@ setup: ## Tools, deps, this worktree's Postgres (own ports) + migrations, .env.l
 new-domain: ## Scaffold a domain through every layer: make new-domain NAME=billing
 	@scripts/new-domain.sh $(NAME)
 
-rename: $(HARNESS) ## Rename the template once (dry run): make rename NAME=acme-shop MODULE=github.com/acme/shop OWNER=@acme [WRITE=1]
+rename: $(HARNESS) ## Rename the template once (dry run): make rename NAME=acme-shop MODULE=github.com/acme/shop|shop|skip OWNER=@acme [WRITE=1]
 	@$(HARNESS) rename $(if $(filter 1,$(WRITE)),-write) . $(NAME) $(MODULE) $(OWNER)
 
 # Each process's output (the API's JSON log lines, Vite's text) also goes to .tmp/dev/<name>.log, emptied on start,
@@ -63,31 +101,33 @@ dev: db-up ## Run API + web for this worktree (Ctrl-C stops both), output also i
 	  done; \
 	  trap 'kill 0' EXIT; mkdir -p .tmp/dev; \
 	  echo "api http://$$HTTP_ADDR  web http://localhost:$$WEB_PORT  logs .tmp/dev/api.log .tmp/dev/web.log"; \
-	  (cd $(API) && go run ./cmd/api) 2>&1 | tee .tmp/dev/api.log & \
+	  (cd $(API_DIR) && go run ./cmd/api) 2>&1 | tee .tmp/dev/api.log & \
 	  (cd apps/web && node_modules/.bin/vite) 2>&1 | tee .tmp/dev/web.log & wait
 
 db-up: ## Start this worktree's Postgres
 	@$(WITH_ENV) docker compose --progress quiet up -d --wait db
 
 db-migrate: db-up ## Apply pending migrations to this worktree's Postgres
-	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
+	@$(WITH_ENV) cd $(API_DIR) && atlas migrate apply --env local >/dev/null
 
+# Two sub-makes, not prerequisites: down must finish before db-migrate starts, also under -j.
 db-reset: ## Drop this worktree's database volume (and the obs stack), recreate, migrate
-	@$(MAKE) --no-print-directory down
-	@$(WITH_ENV) docker compose --progress quiet up -d --wait db
-	@$(WITH_ENV) cd $(API) && atlas migrate apply --env local >/dev/null
+	@$(MAKE) down
+	@$(MAKE) db-migrate
 
 check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=60s any: NFR-H3/H4): format, lint, arch, unit tests, secrets, gen-check
-	@$(MAKE) -k -j4 lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links fixture-claims approved-check lint-web arch-web typecheck-web test-web
+	@$(if $(STACK_OFF),echo "STACK=$(STACK) leaves out: $(sort $(STACK_OFF)) (ADR 0033)" >&2,true)
+	@$(MAKE) -k -j4 $(call stacked,layout-check lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned fixture-claims rule-lists approved-check specs-tested lint-web arch-web typecheck-web test-web)
 	@$(MAKE) gen-check
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
 CHECK_ALL_SKIP ?=
 check-all: export HARNESS_SCOPE := full
-check-all: check ##Everything: check + integration, contract, migration, security, dead code, e2e
-	@$(MAKE) -k -j4 $(filter-out $(CHECK_ALL_SKIP),vuln-go vuln-deps lint-migrations squawk migrations-append-only lint-api contract-check knip harness-integrity commits specs)
-	@$(MAKE) -k test-integration test-obs e2e
+check-all: check ## Everything: check + integration, contract, migration, security, dead code, orphan scripts, clones, e2e
+	@$(MAKE) -k -j4 $(call stacked,$(filter-out $(CHECK_ALL_SKIP),vuln-go vuln-deps lint-migrations squawk migrations-append-only lint-api contract-check knip deadcode-go clones-web docs-quality-shape harness-integrity orphans commits specs))
+	@$(if $(call stacked,test-integration test-obs e2e),$(MAKE) -k $(call stacked,test-integration test-obs e2e),true)
 
+# A fixture whose target or STACK= tag STACK leaves out is skipped (selftest.sh asks make for STACK_OFF).
 harness-selftest: $(HARNESS) ## Every fixture in scripts/harness/fixtures must be rejected by its sensor (FIXTURE=name for one)
 	@scripts/harness/selftest.sh $(FIXTURE)
 
@@ -132,18 +172,26 @@ test-obs: ## One request's access line, trace and p95 latency through make logs,
 	@$(WITH_ENV) $(RUN) obs-e2e obs-request-queryable -- env MAKE="$(MAKE)" scripts/harness/obs-e2e.sh
 
 ##@ Behaviour: browser journeys against this worktree's make dev (exec plan 0003 P2.3, NFR-B2)
-.PHONY: e2e
+.PHONY: e2e e2e-deps
 # Playwright (apps/web/playwright.config.ts) attaches to a running make dev, else starts one and stops it after;
 # in make check-all (HARNESS_SCOPE=full) it always starts its own and fails while another make dev runs.
 # E2E_GREP (a title regex; not GREP, which a shell may already export): make exports it, and the recipe's shell
 # reads it as "$E2E_GREP", so make never splices it in.
 # Failure artifacts (screenshot, trace) go to .tmp/e2e; make dev's own output to .tmp/dev/{api,web}.log.
+# The browser is installed here, on demand and outside the e2e latency budget, so only a job or worktree that
+# runs e2e downloads it (ADR 0025).
 e2e: ## Browser journeys (Playwright) against make dev, started if not running: make e2e [E2E_GREP=<title regex>] (`$$` for `$`; Docker)
+	@scripts/install-tools.sh browsers
 	@$(WITH_ENV) $(RUN) e2e web-e2e-journeys --dir apps/web -- env MAKE="$(MAKE)" \
 	  node_modules/.bin/playwright test $${E2E_GREP:+--grep "$$E2E_GREP"}
 
+# Linux only: apt through sudo, unpinned (ADR 0025, TD-42). CI's check-all job runs it before make check-all.
+e2e-deps: ## System libraries of make e2e's Chromium headless shell (Linux, sudo)
+	@[[ -x apps/web/node_modules/.bin/playwright ]] || { echo "no apps/web/node_modules/.bin/playwright: run make deps" >&2; exit 1; }
+	@apps/web/node_modules/.bin/playwright install-deps chromium-headless-shell
+
 ##@ Reports
-.PHONY: coverage coverage-fell mutation
+.PHONY: coverage coverage-fell mutation mutation-scores
 # A trend, never a gate (ADR 0020): not in check or check-all; coverage.yml puts it in its job summary,
 # drift.yml compares it with the last scheduled run's. COVERAGE_PREVIOUS=<coverage.tsv> adds the change column.
 COVERAGE_DIR := .cache/coverage
@@ -161,6 +209,8 @@ MUTATION_SINCE ?= 7 days ago
 mutation: ## Mutation score and surviving mutants (gremlins, Stryker) of the files changed since MUTATION_SINCE (7 days ago)
 	@scripts/harness/mutation.sh collect $(MUTATION_DIR) "$(MUTATION_SINCE)"
 	@scripts/harness/mutation.sh report $(MUTATION_DIR)/mutants.tsv "$(MUTATION_SINCE)"
+mutation-scores: ## After make mutation: only the score per package, without the surviving mutants (drift.yml's issue)
+	@scripts/harness/mutation.sh report --scores $(MUTATION_DIR)/mutants.tsv "$(MUTATION_SINCE)"
 # Advisory (ADR 0019): drift.yml feeds this prompt to a read-only agent weekly; locally it is the dry run.
 .PHONY: review-prompt
 review-prompt: ## Prompt of a scheduled review, as drift.yml sends it: make review-prompt REVIEW=security|data-handling|modularity
@@ -168,57 +218,65 @@ review-prompt: ## Prompt of a scheduled review, as drift.yml sends it: make revi
 
 ##@ Tools
 .PHONY: tools deps
-tools: $(GCL) $(HARNESS) ## Install pinned CLI tools into .bin
+# Always runs install-tools.sh (once), so it also repairs a deleted .bin tool the stamp cannot see.
+tools: ## Install pinned CLI tools into .bin
 	@scripts/install-tools.sh
+	@touch $(TOOLS_STAMP)
+	@$(MAKE) -s $(GCL) $(HARNESS)
 
-deps: ## Install JS dependencies from the lockfile, and the browser of its Playwright into .bin
-	@pnpm install --frozen-lockfile --silent
-	@scripts/install-tools.sh browsers
+deps: ## Install JS dependencies from the lockfile (make e2e installs its browser itself); none without web in STACK
+	@$(if $(call stack_has,web),pnpm install --frozen-lockfile --silent,true)
 
-$(GCL): $(API)/.custom-gcl.yml $(ANALYZERS_SRC) scripts/tool-versions.env
+$(TOOLS_STAMP): scripts/tool-versions.env scripts/install-tools.sh
 	@scripts/install-tools.sh
-	@grep -q "^version: $(GOLANGCI_LINT_VERSION)$$" $(API)/.custom-gcl.yml || { echo ".custom-gcl.yml version != GOLANGCI_LINT_VERSION ($(GOLANGCI_LINT_VERSION))" >&2; exit 1; }
-	@cd $(API) && golangci-lint custom
+	@touch $@
+
+# Order-only on the stamp: CI restores .bin from cache and touches $(GCL) (.github/actions/setup), and a
+# checkout's newer tool-versions.env remakes the stamp; a normal prerequisite would then rebuild $(GCL) too.
+$(GCL): $(API_DIR)/.custom-gcl.yml $(ANALYZERS_SRC) scripts/tool-versions.env | $(TOOLS_STAMP)
+	@grep -q "^version: $(GOLANGCI_LINT_VERSION)$$" $(API_DIR)/.custom-gcl.yml || { echo ".custom-gcl.yml version != GOLANGCI_LINT_VERSION ($(GOLANGCI_LINT_VERSION))" >&2; exit 1; }
+	@cd $(API_DIR) && golangci-lint custom
 	@touch $@
 
 # The hooks' parser (ADR 0012); every hook fails closed without it.
 $(HARNESS): $(HARNESS_SRC) scripts/tool-versions.env
-	@cd $(API)/tools/harness && go build -o $(CURDIR)/$@ .
+	@cd $(API_DIR)/tools/harness && go build -o $(CURDIR)/$@ .
 
 ##@ Go sensors
 .PHONY: fmt lint-go arch-go test-go test-analyzers test-harness vuln-go deadcode-go
 fmt: $(GCL) ## Auto-format Go and shell code
-	@cd $(API) && ../../$(GCL) fmt ./...
+	@cd $(API_DIR) && $(CURDIR)/$(GCL) fmt ./...
 	@shfmt -w $(SH_FILES)
 
 lint-go: $(GCL)
-	@$(call scoped,go,./...) $(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-test-helpers-only-in-tests,go-domain-isolation,go-structured-logging,go-sec,go-format --dir $(API) -- ../../$(GCL) run $$scope
+	@$(call scoped,go,./...) $(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-test-helpers-only-in-tests,go-domain-isolation,go-structured-logging,go-sec,go-format,$(SIZE_RULES),repo-no-clones --dir $(API_DIR) -- $(CURDIR)/$(GCL) run $$scope
 
 arch-go:
-	@$(RUN) go-arch-lint go-layers --dir $(API) -- go-arch-lint check --output-color=false
+	@$(RUN) go-arch-lint go-layers --dir $(API_DIR) -- go-arch-lint check --output-color=false
 
 test-go:
-	@$(call scoped,go,./...) $(RUN) go-test go-tests-pass,api-responses-approved --dir $(API) -- go test -race $(GO_TEST_COUNT) -short $$scope
+	@$(call scoped,go,./...) $(RUN) go-test go-tests-pass,api-responses-approved --dir $(API_DIR) -- go test -race $(GO_TEST_COUNT) -short $$scope
 
 test-analyzers:
-	@$(RUN) analyzer-tests go-tests-pass --dir $(API)/tools/analyzers -- go test $(GO_TEST_COUNT) ./...
+	@$(RUN) analyzer-tests go-tests-pass --dir $(API_DIR)/tools/analyzers -- go test $(GO_TEST_COUNT) ./...
 
 test-harness:
-	@$(RUN) harness-tests go-tests-pass --dir $(API)/tools/harness -- go test $(GO_TEST_COUNT) ./...
+	@$(RUN) harness-tests go-tests-pass,harness-reads-layout --dir $(API_DIR)/tools/harness -- go test $(GO_TEST_COUNT) ./...
 
 vuln-go:
-	@$(RUN) govulncheck go-no-known-vulns --dir $(API) -- govulncheck ./...
+	@$(RUN) govulncheck go-no-known-vulns --dir $(API_DIR) -- govulncheck ./...
 
-deadcode-go: ## Unreachable Go functions (drift.yml; deadcode exits 0, so fail on any output)
-	@$(RUN) deadcode go-no-dead-code --dir $(API) -- bash -c 'out="$$(deadcode -test ./...)"; [[ -z "$$out" ]] || { echo "$$out"; exit 1; }'
+# tools/analyzers is left out: deadcode cannot see golangci-lint's module-plugin entry points (TD-70).
+deadcode-go: ## Unreachable Go functions in apps/api and tools/harness (check-all, drift.yml; deadcode exits 0, so fail on any output)
+	@$(RUN) deadcode go-no-dead-code --dir $(API_DIR) -- bash -c 'set -o pipefail; out="$$(deadcode -test ./... && cd tools/harness && deadcode -test ./... | sed "s|^|tools/harness/|")" || exit 2; [[ -z "$$out" ]] || { echo "$$out"; exit 1; }'
 
-##@ Web sensors (apps/web, packages/*)
-.PHONY: lint-web arch-web typecheck-web test-web knip
+##@ Web sensors (the workspaces of WEB_GLOBS)
+.PHONY: lint-web arch-web typecheck-web test-web knip clones-web
 lint-web:
-	@$(call scoped,web,.) $(RUN) eslint web-no-direct-http,web-domain-pure,web-lint -- eslint --max-warnings=0 $$scope
+	@$(call scoped,web,.) $(RUN) eslint web-no-direct-http,web-domain-pure,web-lint,$(SIZE_RULES) -- eslint --max-warnings=0 $$scope
 
 arch-web:
-	@$(call scoped,web,apps packages) $(RUN) dependency-cruiser web-domain-pure,web-no-cross-app -- depcruise $$scope --config .dependency-cruiser.cjs --output-type err $(DEPCRUISE_CACHE)
+	@$(call scoped,web,$(WEB_DIRS)) $(RUN) dependency-cruiser web-domain-pure,web-no-cross-app -- depcruise $$scope --config .dependency-cruiser.cjs --output-type err $(DEPCRUISE_CACHE)
 
 typecheck-web:
 	@$(RUN) tsc web-typecheck -- turbo run typecheck --output-logs=errors-only $(TURBO_FORCE)
@@ -229,33 +287,47 @@ test-web:
 knip: ## Unused files, exports and dependencies in the JS workspace
 	@$(RUN) knip web-no-dead-code -- knip
 
-##@ Contract (api/openapi.yaml)
-.PHONY: lint-api contract-check approve approved-check
+# rules.md#repo-no-clones: jscpd reads every file .gitignore does not exclude, in every app and package (as arch-web).
+# Its settings are in the protected scripts/harness/jscpd.json; naming it with --config also stops jscpd from loading
+# a .jscpd.json, .config/jscpd.json or package.json "jscpd" key it would otherwise find. Generated code is listed
+# there by path, as in eslint.config.mjs (ignores); golangci finds it by its header (exclusions.generated): keep the
+# copies in step. jscpd names each file relative to the root it was given, so it gets absolute paths and the root is
+# cut back off. jscpd's exit 1 is findings only when it printed a clone line; any other failure (a bad config, no
+# files: --fail-on-empty) is exit 2, so a broken sensor never reads as a clone (scripts/test/clones-web.bats).
+clones-web: ## Copy-pasted code in the JS workspaces (jscpd)
+	@$(RUN) jscpd repo-no-clones -- bash -c 'root="$$(pwd -P)"; out="$$(jscpd --config "$$root/scripts/harness/jscpd.json" --reporters xcode --absolute --exit-code 1 --fail-on-empty --no-colors --no-tips $(foreach d,$(WEB_DIRS),"$$root/$(d)"))" && s=0 || s=$$?; echo "$${out//"$$root"\//}"; ((s == 0)) || { ((s == 1)) && grep -Eq ": warning: Found [0-9]+ lines " <<<"$$out" && s=1 || s=2; }; exit $$s'
+
+##@ Contract (SPEC)
+.PHONY: lint-api contract-check upstream-drift approve approved-check
 API_RULES := api-kebab-case-paths,api-camel-case-properties,api-operation-metadata,api-documented-errors,api-errors-problem-json
 
 lint-api: ## Spectral style + error-contract rules on the OpenAPI spec
-	@$(RUN) spectral $(API_RULES) -- spectral lint api/openapi.yaml --ruleset .spectral.yaml --fail-severity=warn --quiet
+	@$(RUN) spectral $(API_RULES) -- spectral lint $(SPEC) --ruleset .spectral.yaml --fail-severity=warn --quiet
 
 approve: $(HARNESS) ## Rewrite the approved responses from the handler tests, then check them; review the diff
-	@$(RUN) approve go-tests-pass --dir $(API) -- env APPROVE_RESPONSES=1 go test -count=1 -short ./...
+	@$(RUN) approve go-tests-pass --dir $(API_DIR) -- env APPROVE_RESPONSES=1 go test -count=1 -short ./...
 	@HARNESS_SCOPE=full $(MAKE) approved-check
 
 # In make check, runs only when the spec, an approved response or a harness file changed (rules.md#harness-scope).
-approved-check: $(HARNESS) ## Every approved response (testdata/approved/*.json) is one api/openapi.yaml allows
-	@if scripts/harness/unchanged.sh api/openapi.yaml '*/testdata/approved/*'; then \
+approved-check: $(HARNESS) ## Every approved response (testdata/approved/*.json) is one the OpenAPI spec allows
+	@if scripts/harness/unchanged.sh $(SPEC) '*/testdata/approved/*'; then \
 	  echo "$@: skipped, neither the spec nor an approved response changed (make check-all runs it)"; \
 	else $(RUN) approved-check api-approved-match-contract -- $(HARNESS) approved-check .; fi
 
-contract-check: ## oasdiff breaking-change check vs merge base with BASE_REF (contract-gate)
+contract-check: $(HARNESS) ## oasdiff breaking-change check vs merge base with BASE_REF (contract-gate)
 	@$(RUN) oasdiff api-no-breaking-change -- env BASE_REF="$(BASE_REF)" scripts/harness/contract-check.sh
 
+# Network (fetches each source's head): drift.yml runs it weekly; never in make check or check-all.
+upstream-drift: $(HARNESS) ## oasdiff breaking changes from each vendored upstream spec (UPSTREAM_SPECS in layout.env) to its source's head; changes nothing
+	@$(RUN) upstream-drift api-upstream-no-breaking-change -- scripts/harness/upstream-drift.sh
+
 ##@ Database
-.PHONY: lint-migrations squawk migrations-append-only gen-schema-doc schema-doc-fresh test-integration
+.PHONY: lint-migrations squawk migrations-append-only gen-schema-doc schema-doc-fresh test-integration test-scaffold
 BASE_REF ?= $(shell scripts/harness/merge-base.sh --ref)
 ATLAS_LINT_SCOPE ?= --git-base "$(BASE_REF)"
 
 lint-migrations: ## Atlas migrate lint (destructive + incompatible), needs Docker
-	@$(RUN) atlas-lint db-no-destructive-migration,db-backward-compatible-migration --dir $(API) -- atlas migrate lint --env local $(ATLAS_LINT_SCOPE)
+	@$(RUN) atlas-lint db-no-destructive-migration,db-backward-compatible-migration --dir $(API_DIR) -- atlas migrate lint --env local $(ATLAS_LINT_SCOPE)
 
 squawk: ## Postgres locking checks on migrations
 	@$(RUN) squawk db-safe-locking -- scripts/harness/squawk.sh
@@ -270,7 +342,11 @@ schema-doc-fresh:
 	@$(RUN) schema-doc db-schema-doc-fresh -- scripts/gen-schema-doc.sh --check
 
 test-integration: ## Integration tests against the worktree's Postgres (.env.local)
-	@$(WITH_ENV) unset "$${!OTEL_@}"; $(RUN) go-integration go-tests-pass --dir $(API) -- go test -race -count=1 -tags=integration ./...
+	@$(WITH_ENV) unset "$${!OTEL_@}"; $(RUN) go-integration go-tests-pass --dir $(API_DIR) -- go test -race -count=1 -tags=integration ./...
+
+# CI's generator probe (ci.yml): a scaffold whose tests compile but skip or vanish would pass test-integration.
+test-scaffold: ## After make new-domain NAME=<name>: each of its scaffolded tests ran and passed, none skipped (NFR-B1)
+	@$(WITH_ENV) unset "$${!OTEL_@}"; scripts/harness/scaffold-tests.sh $(NAME)
 
 ##@ Shell sensors (scripts/, .claude/hooks/)
 .PHONY: lint-sh fmt-check-sh test-sh
@@ -293,34 +369,66 @@ test-sh: $(HARNESS) ## bats tests for scripts/ and .claude/hooks/ (scripts/test)
 
 ##@ Secrets and dependency vulnerabilities (Trivy: trivy.yaml, scripts/harness/trivy.sh)
 .PHONY: secrets vuln-deps
-# The sensor id is the rule id: budgets.txt row repo-no-secrets (NFR-H9). $(GCL) runs install-tools.sh
+# The sensor id is the rule id: budgets.txt row repo-no-secrets (NFR-H9). $(TOOLS_STAMP) runs install-tools.sh
 # (Trivy too) once tool-versions.env changes, before the scan, not racing it under -j4.
-secrets: $(GCL) ## Offline secret scan of the git-known files (in make check, only the changed ones)
+secrets: $(TOOLS_STAMP) ## Offline secret scan of the git-known files (in make check, only the changed ones)
 	@$(RUN) repo-no-secrets repo-no-secrets -- scripts/harness/trivy.sh secret
 
-vuln-deps: $(GCL) ## Known vulns in pnpm-lock.yaml and every go.mod (fetches the Trivy DB into .cache/trivy)
+vuln-deps: $(TOOLS_STAMP) ## Known vulns in pnpm-lock.yaml and every go.mod (fetches the Trivy DB into .cache/trivy)
 	@$(RUN) trivy-vuln deps-no-known-vulns -- scripts/harness/trivy.sh vuln
 
 ##@ CI and harness integrity (.github/, protected harness files)
-.PHONY: lint-ci harness-integrity commits specs
+.PHONY: lint-ci layout-check harness-integrity orphans harness-sync-check adoption-probe commits specs specs-tested
 lint-ci: ## actionlint (+ shellcheck on run: blocks) on .github/workflows
 	@$(RUN) actionlint ci-workflows-valid -- actionlint -no-color
 
+layout-check: $(HARNESS) ## scripts/harness/layout.env parses, its paths exist and LAYER_GLOB matches a Go package
+	@$(RUN) layout-check harness-layout-valid -- $(HARNESS) layout-check .
+
 harness-integrity: $(HARNESS) ## Added suppressions carry a reason; harness configs are not loosened (vs BASE_REF)
 	@$(RUN) integrity harness-suppression-reason,harness-config-not-loosened -- env BASE_REF="$(BASE_REF)" $(HARNESS) integrity-check .
+
+orphans: $(HARNESS) ## Every file under scripts/ is named by a target, workflow, hook, skill, agent or guide; every make target is in make help or called
+	@$(RUN) orphans repo-no-orphan-scripts -- $(HARNESS) orphans .
+
+# Reads the network (fetches HARNESS_UPSTREAM), so not in check or check-all: drift.yml runs it weekly. The URL
+# comes from scripts/tool-versions.env; a command-line HARNESS_UPSTREAM=<url> reaches the script by make's export.
+harness-sync-check: ## Harness files changed upstream since .harness-version and not taken here (HARNESS_UPSTREAM in tool-versions.env or on the command line; empty: the template); applies nothing
+	@$(RUN) harness-sync harness-upstream-in-sync -- scripts/harness/sync-check.sh
+
+adoption-probe: ## README (b) followed on a root-go.mod repo ends green: setup, check, harness-selftest (minutes; CI's adoption-probe job)
+	@$(RUN) adoption-probe harness-adoption-probe -- scripts/harness/adoption-probe.sh
 
 # PR_TITLE reaches these from the pull_request_target job as an env var (ADR 0011): never write $(PR_TITLE)
 # in a recipe, make would expand a title like `$(shell …)` in a job that holds the base branch's checkout.
 commits: ## Commit subjects (and PR_TITLE) since BASE_REF follow Conventional Commits
 	@$(RUN) commits git-conventional-commits -- env BASE_REF="$(BASE_REF)" scripts/harness/check-commits.sh
 
-specs: ## spec-kit specs/ are well formed; feat changes to apps/ or api/ come with a spec (vs BASE_REF)
+specs: ## spec-kit specs/ are well formed; feat changes to PRODUCT_GLOBS (layout.env) come with a spec (vs BASE_REF)
 	@$(RUN) specs specs-structure,specs-required-for-features -- env BASE_REF="$(BASE_REF)" scripts/harness/check-specs.sh
 
+# In make check, runs only when specs/, a test file or another harness file changed (rules.md#harness-scope).
+specs-tested: $(HARNESS) ## Every acceptance scenario in specs/ is named by a Go or TS test, or marked (untested: <reason>)
+	@if scripts/harness/unchanged.sh 'specs/*' '*_test.go' '*.test.*' '*.spec.*' '*.e2e.*'; then \
+	  echo "$@: skipped, neither specs/ nor a test file changed (make check-all runs it)"; \
+	else $(RUN) specs-tested specs-scenarios-tested -- $(HARNESS) specs-tested .; fi
+
 ##@ Docs
-.PHONY: docs-links fixture-claims
+.PHONY: docs-links references-pinned docs-quality-shape docs-quality fixture-claims rule-lists
 docs-links: $(HARNESS) ## Relative links and anchors in Markdown resolve; every AGENTS.md has a CLAUDE.md importing it
 	@$(RUN) check-links docs-links-resolve,docs-claude-imports-agents -- $(HARNESS) check-links .
+
+references-pinned: $(HARNESS) ## Every docs/references/*-llms.txt names the tool version the repo pins
+	@$(RUN) references-pinned docs-references-pinned -- $(HARNESS) references-pinned .
+
+# Deterministic (reads no clock): in check-all and the CI generator probe (ADR 0028).
+docs-quality-shape: $(HARNESS) ## docs/QUALITY.md has one well-formed row per domain, graded per layer
+	@$(RUN) quality-shape docs-quality-rows-well-formed,docs-quality-rows-match-domains -- $(HARNESS) quality-rows -no-clock .
+
+# Reads the clock, and only the domain's reviewer can re-grade a row, so a PR's author could not fix it: the
+# weekly drift sweep runs it, never check or check-all (ADR 0028).
+docs-quality: $(HARNESS) ## docs/QUALITY.md rows were graded in the last 30 days (drift only)
+	@$(RUN) quality-fresh docs-quality-row-fresh -- $(HARNESS) quality-rows .
 
 # In make check, runs only when rules.md, a fixture or another harness file changed (rules.md#harness-scope).
 fixture-claims: $(HARNESS) ## Every rules.md Fixture line names fixtures that exist and test that rule, or none (<reason>)
@@ -328,23 +436,29 @@ fixture-claims: $(HARNESS) ## Every rules.md Fixture line names fixtures that ex
 	  echo "$@: skipped, neither rules.md nor a fixture changed (make check-all runs it)"; \
 	else $(RUN) fixture-claims rules-fixture-claims -- $(HARNESS) fixture-claims .; fi
 
+# In make check, runs only when rules.md or a harness file changed: the review agents it reads are harness files.
+rule-lists: $(HARNESS) ## The review agents' Skip lists name only rules.md ids, and every rule of a section they skip
+	@if scripts/harness/unchanged.sh docs/harness/rules.md; then \
+	  echo "$@: skipped, neither rules.md nor a harness file changed (make check-all runs it)"; \
+	else $(RUN) rule-lists harness-rule-lists-match -- $(HARNESS) rule-lists .; fi
+
 ##@ Generation
 .PHONY: gen gen-check gen-sqlc gen-atlas-sum gen-oapi gen-api-client
-gen: gen-oapi gen-api-client gen-sqlc gen-atlas-sum ## Regenerate all generated code (then commit it)
+gen: $(call stacked,gen-oapi gen-api-client gen-sqlc gen-atlas-sum) ## Regenerate all generated code (then commit it)
 
-gen-oapi: # one strict server per OpenAPI tag: every apps/api/internal/**/oapi-codegen.yaml
-	@for cfg in $$(find $(API)/internal -name oapi-codegen.yaml | sort); do \
-	  (cd $$(dirname $$cfg) && oapi-codegen -config oapi-codegen.yaml $(CURDIR)/api/openapi.yaml) || exit 1; \
+gen-oapi: # one strict server per OpenAPI tag: every $(DOMAINS_DIR)/**/oapi-codegen.yaml
+	@for cfg in $$(find $(DOMAINS_DIR) -name oapi-codegen.yaml | sort); do \
+	  (cd $$(dirname $$cfg) && oapi-codegen -config oapi-codegen.yaml $(CURDIR)/$(SPEC)) || exit 1; \
 	done
 
-gen-api-client: # orval: TanStack Query hooks + zod schemas into packages/api-client/src/gen
-	@cd packages/api-client && node_modules/.bin/orval --config orval.config.ts >/dev/null
+gen-api-client: # orval: TanStack Query hooks + zod schemas into $(API_CLIENT_DIR)/src/gen
+	@cd $(API_CLIENT_DIR) && node_modules/.bin/orval --config orval.config.ts >/dev/null
 
 gen-sqlc:
-	@cd $(API) && if grep -q -- '- engine:' sqlc.yaml; then sqlc generate; fi
+	@cd $(API_DIR) && if grep -q -- '- engine:' sqlc.yaml; then sqlc generate; fi
 
 gen-atlas-sum:
-	@cd $(API) && atlas migrate hash --env local
+	@cd $(API_DIR) && atlas migrate hash --env local
 
 gen-check: ## gen + fail if anything changed (generated code must be committed and untouched)
 	@if scripts/harness/gen-check.sh --unchanged; then \

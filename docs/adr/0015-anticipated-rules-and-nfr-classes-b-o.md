@@ -1,6 +1,6 @@
 # ADR 0015: Phase 0 rules are adopted as team-convention; NFR classes B and O fail
 
-Status: proposed · 2026-10-28
+Status: accepted · 2026-10-28
 
 ## Context
 Exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`) closes gaps between this template and its
@@ -37,7 +37,7 @@ ID). [ADR 0013](0013-harness-nfr-budgets.md) defines only two NFR classes: laten
 - B and O sensors that need Docker, a browser or the running app go in `check-all` and CI, not in
   `make check`.
 - **Inferential sensors get no blocking NFR.** An LLM verdict is not reproducible, so it cannot meet NFR-R1.
-  Such sensors comment and never fail (plan 0003, Phase 3).
+  Such sensors comment and never fail ([ADR 0019](0019-inferential-sensors-are-advisory.md)).
 
 ## Consequences
 - The five Phase 0 rules land as `Status: team-convention` with a link to this ADR in place of an incident,

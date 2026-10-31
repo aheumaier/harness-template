@@ -13,7 +13,8 @@ computational rule. Every path below is relative to the repository root.
 
 - What a sensor already catches on every PR (`docs/harness/rules.md`): `go-layers`, `go-domain-isolation`,
   `go-db-only-in-store`, `go-http-only-in-api`, `go-test-helpers-only-in-tests`, `web-no-direct-http`,
-  `web-domain-pure`, `web-no-cross-app`, `go-no-dead-code`, `web-no-dead-code`.
+  `web-domain-pure`, `web-no-cross-app`, `go-no-dead-code`, `web-no-dead-code`, `repo-no-orphan-scripts`, and
+  every rule under `## Duplication`: `repo-no-clones`.
 - Generated code and fixtures: `scripts/harness/fixtures/` (deliberately broken examples), `.specify/`,
   `*.gen.go`, `apps/api/internal/*/store/` and `packages/api-client/src/gen/`.
 

@@ -4,8 +4,10 @@
 # with --no-assume-in-transaction and all others with .squawk.toml's assume_in_transaction = true.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
+# shellcheck source=layout.sh
+source scripts/harness/layout.sh || exit 2
 tx=() notx=()
-for f in apps/api/db/migrations/*.sql; do
+for f in "$MIGRATIONS_DIR"/*.sql; do
   if grep -qx -- '-- atlas:txmode none' "$f"; then notx+=("$f"); else tx+=("$f"); fi
 done
 status=0

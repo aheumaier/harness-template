@@ -1,6 +1,6 @@
 # ADR 0024: Size and complexity limits are maintainability sensors, not style (amends core belief 3)
 
-Status: proposed · 2026-10-29
+Status: accepted · 2026-10-29
 
 ## Context
 Gap G5 of exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`, slice P4.1). The plan records
@@ -70,8 +70,9 @@ Go paths are relative to `apps/api`. Two facts shape the decision:
 - **Scope is what the sensors already lint.** Go: the `apps/api` module that `make lint-go` runs golangci on
   (`./...` in `apps/api`), so not the separate `tools/analyzers` and `tools/harness` modules. TS: what
   `make lint-web` runs ESLint on. Generated code is excluded.
-- **Tests are exempt from the three per-function limits** (`*_test.go`; `*.test.ts`, `*.test.tsx`), and
-  stay under the file-length limit.
+- **Tests are exempt from the three per-function limits** (`*_test.go`; `*.test.ts`, `*.test.tsx`, and the
+  Playwright journeys `*.e2e.ts`, which are tests too), and stay under the file-length limit. Test setup that
+  is not a test (`playwright.config.ts`, `e2e/global-setup.ts`) stays under all four limits.
   - Go: golangci cannot give one linter a second threshold by path, and a shared one would be set by the
     tests. `funlen` and `gocognit` are excluded for `_test\.go` by path. `revive` carries both a per-function
     and a per-file rule, so its test exemption is a text-matched `exclusions.rules` entry, in the form of the

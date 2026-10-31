@@ -34,9 +34,13 @@ Steps that need a human are marked **(human)**.
 
 - Any Go install. `GOTOOLCHAIN` pins the real toolchain from
   [scripts/tool-versions.env](scripts/tool-versions.env).
-- Node ≥ 24 with npm. pnpm is installed into `.bin/`.
-- Docker running. Use `SKIP_DB=1` to skip Postgres.
+- Node ≥ 24 with npm. pnpm is installed into `.bin/`. Only the `web` group of `STACK` needs them.
+- Docker running, for Postgres. Use `SKIP_DB=1` to skip it once, or leave `db` out of `STACK`.
 - `git`, `make` (macOS make 3.81 is fine), `curl`, `tar`, `shasum` or `sha256sum`, `lsof`.
+
+`STACK` in [scripts/harness/layout.env](scripts/harness/layout.env) lists the sensor groups the product has,
+`go:db:web` here; `HARNESS_STACK=go,db` overrides it for one run
+([ADR 0033](docs/adr/0033-stack-profiles.md)).
 
 Never install a tool globally. `make setup` puts every pinned, checksum-verified tool into `.bin/`.
 
@@ -53,7 +57,9 @@ Claude Code hooks fail closed.
 ## (a) New project
 
 1. **Create the repo** from this template, using GitHub's "Use this template" or a fresh clone with new
-   history.
+   history. Write the template commit you copied from to `.harness-version`, so
+   [template sync](#keeping-up-with-the-template) can tell what you have not taken yet (step 3 points
+   `HARNESS_UPSTREAM` at the template).
 2. **Set up and prove green:**
    ```sh
    make setup
@@ -78,7 +84,15 @@ Claude Code hooks fail closed.
      product, and by hand the template's own description in `AGENTS.md` (line 3) and
      [ARCHITECTURE.md](ARCHITECTURE.md); both are protected, so a human does it.
    - **MODULE is the repository path.** It also becomes the OpenAPI `url: https://<MODULE>` and every
-     `https://github.com/aheumaier/harness-template/...` link, so use `host.tld/owner/repo`.
+     `https://github.com/aheumaier/harness-template/...` link, so use `host.tld/owner/repo`. A bare module
+     (no dot in its first element, such as `shop`) is accepted too; the rename then keeps those URLs and lists
+     them as leftovers, since `https://shop` is no URL.
+   - **Template sync:** it also writes `HARNESS_UPSTREAM=https://github.com/aheumaier/harness-template` to
+     `scripts/tool-versions.env`, the one line it neither renames nor reports: from here on the repo is a
+     product that [template sync](#keeping-up-with-the-template) compares with the template. The same line
+     switches off the template-only adoption probe, which replays this README's section (b) that you rewrite:
+     `make adoption-probe` and CI's `adoption-probe` job pass without running, and `make harness-selftest` skips
+     its fixture ([ADR 0038](docs/adr/0038-readme-brownfield-adoption-is-probed.md)).
    - **Leftovers:** the tool lists every path and line that still holds `harness-template` or `aheumaier`
      in a form it doesn't rename (an SSH remote, a file name). Fix those by hand.
    - **Running it again:** a second run changes nothing. A value that contains a template token
@@ -90,7 +104,8 @@ Claude Code hooks fail closed.
    - Create the labels `harness-change-approved`, `breaking-change-approved` and `no-spec-needed`
      ([ci.md](docs/harness/ci.md)).
    - Dry-run [scripts/github-branch-protection.sh](scripts/github-branch-protection.sh), then apply it with
-     `CONFIRM=1` to require the six status checks.
+     `CONFIRM=1` to require the seven status checks. One of them, `adoption-probe`, passes without running once
+     step 3's `make rename WRITE=1` has set `HARNESS_UPSTREAM`.
 5. **Constitution.** Run `/speckit-constitution` to adapt `.specify/memory/constitution.md` to the product.
    This file is protected, so it needs a human or `HARNESS_EDIT=1`.
 6. **First domain.** Follow the [new-domain skill](.claude/skills/new-domain/SKILL.md):
@@ -110,7 +125,8 @@ Claude Code hooks fail closed.
      lands in `specs/NNN-slug/`. A `feat` commit touching `apps/` or `api/` without a spec fails
      `make specs`.
    - Run `make check-all` before the PR.
-   - Fill in [the PR template](.github/pull_request_template.md): contract, migration and harness change (Y/N).
+   - Fill in [the PR template](.github/pull_request_template.md): contract, migration and harness change
+     (Y/N), and under Assumptions each default you picked without asking (a timeout, limit, name or fallback).
    - Use Conventional Commit titles.
 
 ## (b) Brownfield project
@@ -121,25 +137,28 @@ The harness has three kinds of parts:
   - the guide layout and `AGENTS.md`/`CLAUDE.md` pairs;
   - the rules.md format (rule, why, sensor, remediation, fixture);
   - in `scripts/harness/`: `run.sh`, `unchanged.sh`, `determinism.sh`, `check-commits.sh`, `timing.sh`,
-    `nfr-report.sh`, `merge-base.sh`, `trivy.sh`, `hook-bootstrap.sh`, and `selftest.sh` except its
-    `node_modules` copy and its `atlas migrate hash` call;
-  - in `.claude/hooks/`: `protect-harness.sh`, `guard-bash.sh` and `only-make-check.sh`;
-  - the Go harness tool in `apps/api/tools/harness/`, except the two path excludes in `integritycheck.go`;
+    `nfr-report.sh`, `merge-base.sh`, `trivy.sh`, `hook-bootstrap.sh`, `sync-check.sh`, and `selftest.sh`;
+  - in `.claude/hooks/`: `protect-harness.sh`, `guard-bash.sh`, `only-make-check.sh` and `only-test-files.sh`;
+  - the Go harness tool in `<API_DIR>/tools/harness/` (integrity-check's excludes come from `GENERATED_GLOBS`);
   - the shape of CI and CODEOWNERS, ADRs and exec plans.
-- **Layout-coupled parts** hard-code the template layout: `apps/api`, `api/openapi.yaml`, `packages/` and
-  pnpm. That is every other script in `scripts/harness/`, `.claude/hooks/fast-check.sh`,
-  `scripts/install-tools.sh`, `scripts/setup-worktree.sh`, the `Makefile`, `.github/` and CODEOWNERS. Copy
-  them anyway; step 5 re-points them.
+- **Layout-coupled parts** read where the code lives from one file,
+  [scripts/harness/layout.env](scripts/harness/layout.env) ([ADR 0030](docs/adr/0030-one-layout-file-for-every-sensor.md)):
+  every other script in `scripts/harness/`, the `Makefile`, `.bin/harness`, the domainiso analyzer and the
+  CI workflows. Step 5 writes your layout into it. The files that cannot read it (linter configs, CODEOWNERS,
+  codegen configs, `fast-check.sh`, ...) are listed in step 5, each to be re-pointed by hand.
 - **Stack-specific parts** carry over only if the stack matches (Go, React/TS, OpenAPI, Postgres):
   - the `go-*`, `web-*`, `api-*` and `db-*` rules;
   - their linter configs;
   - the generators (oapi-codegen, sqlc, orval, atlas).
 
-There is no adoption script and no template sync yet (see "Keeping up with the template" below). Adopt by
-hand, in one reviewed harness PR:
+There is no adoption script; once adopted, [template sync](#keeping-up-with-the-template) reports what the
+template changed since. Adopt by hand, in one reviewed harness PR:
 
 1. **Branch** in the existing repo, for example `harness/adopt`. Note the template commit you copy from, in the
-   PR description and in an ADR.
+   PR description, in an ADR and in `.harness-version`. `make rename` (step 4) sets `HARNESS_UPSTREAM` in
+   `scripts/tool-versions.env` to the template's git URL; until then the value is empty, which means "this
+   repository is the template", so template sync stays silent; once it is set, the template-only adoption probe
+   (step 6) passes without running.
 2. **Build the hooks' parser first.** The template's Claude Code hooks fail closed while `.bin/harness` is
    missing. Every Bash call is then blocked, and without `HARNESS_EDIT=1` every edit too, except `make setup`
    and `make .bin/harness` ([hook-bootstrap.sh](scripts/harness/hook-bootstrap.sh)). The block message says to
@@ -152,79 +171,100 @@ hand, in one reviewed harness PR:
    - [setup-worktree.sh](scripts/setup-worktree.sh) starts a compose `db` service and runs
      `cd apps/api && atlas migrate apply`.
 
-   So build the parser alone; it needs only Go. Copy `apps/api/tools/harness/` and
-   `scripts/tool-versions.env`. If the repo has no Makefile, copy the template's and run `make .bin/harness`
-   (the `$(HARNESS)` recipe, [Makefile](Makefile) lines 98–99). If the repo has its own Makefile, run that
-   recipe by hand, from the repo root:
-   ```sh
-   out="$PWD/.bin/harness" && (source scripts/tool-versions.env && cd apps/api/tools/harness && GOWORK=off GOTOOLCHAIN=$GO_TOOLCHAIN go build -o "$out" .)
-   ```
+   A `STACK` without `web` (step 5) drops the first two, one without `db` the third.
+
+   So build the parser alone; it needs only Go:
+   1. Copy `scripts/tool-versions.env`, [scripts/harness/layout.env](scripts/harness/layout.env) and
+      [scripts/harness/layout.sh](scripts/harness/layout.sh).
+   2. Set `API_DIR` in `layout.env` to the directory of your Go module (`.` for the repo root). Step 5 fills
+      in the other keys; until then they keep the template's values, which parse.
+   3. Copy the template's `apps/api/tools/harness/` to `<API_DIR>/tools/harness/`.
+   4. If the repo has no Makefile, copy the template's and run `make .bin/harness` (its `$(HARNESS)` target,
+      which builds `$(API_DIR)/tools/harness`). If the repo has its own Makefile, run that recipe by hand,
+      from the repo root; it reads `API_DIR` through the validating parser:
+      ```sh
+      out="$PWD/.bin/harness" && api="$(scripts/harness/layout.sh --print | sed -n 's/^API_DIR=//p')" && [ -n "$api" ] && (source scripts/tool-versions.env && cd "$api/tools/harness" && GOWORK=off GOTOOLCHAIN=$GO_TOOLCHAIN go build -o "$out" .)
+      ```
    The hooks look for `<root>/.bin/harness`, so the output path must be absolute, as in the recipe. `GOWORK=off`
    keeps a root `go.work` that does not list the tool module from breaking the build; the `make` recipe lacks
    it, so with such a `go.work` add the module to it first. Check with `.bin/harness`, which prints its usage.
    Do this before step 3 merges `.claude/settings.json`, because that file is what turns the hooks on.
 3. **Copy and merge the harness.** Copy these:
    - `docs/harness/`, `docs/adr/` (format and the ADRs you keep), `docs/exec-plans/`;
-   - `scripts/harness/`, `scripts/git-hooks/`, `scripts/test/`, `scripts/install-tools.sh`,
-     `scripts/setup-worktree.sh`, `scripts/github-branch-protection.sh`;
-   - `.github/`, `trivy.yaml`, `.shellcheckrc` and `.editorconfig`;
+   - `scripts/harness/` (but `layout.env`, which step 2 copied and edited), `scripts/git-hooks/`,
+     `scripts/test/`, `scripts/install-tools.sh`, `scripts/setup-worktree.sh`,
+     `scripts/github-branch-protection.sh`;
+   - the workflows and action listed in [protected-paths.txt](scripts/harness/protected-paths.txt),
+     `.github/CODEOWNERS` and `.github/pull_request_template.md` (not `.github/` whole: the repo's own
+     workflows there stay its own), `trivy.yaml`, `.shellcheckrc` and `.editorconfig`;
    - every guide the template's `AGENTS.md` "Where to look" table links to: `ARCHITECTURE.md`,
-     `docs/design-docs/`, `docs/QUALITY.md`, `docs/SECURITY.md`, `docs/RELIABILITY.md`, `docs/generated/` and
-     the area `AGENTS.md`/`CLAUDE.md` pairs. Step 5 rewrites or prunes them; a link to a missing file turns
+     `docs/design-docs/`, `docs/QUALITY.md`, `docs/SECURITY.md`, `docs/RELIABILITY.md`, `docs/generated/`,
+     `docs/references/` and the area `AGENTS.md`/`CLAUDE.md` pairs (`apps/api/internal/`'s pair goes to
+     `<API_DIR>/internal/`). Step 5 rewrites or prunes them; a link to a missing file turns
      [docs-links-resolve](docs/harness/rules.md#docs-links-resolve) red in `make check`;
    - `compose.yaml`, if you keep db (`setup-worktree.sh` starts its `db` service);
    - the linter configs of each stack you keep, for example `.spectral.yaml` for api and `.squawk.toml` for db.
-     For Go: `apps/api/.golangci.yml`, `apps/api/.custom-gcl.yml`, `apps/api/.go-arch-lint.yml` and
-     `apps/api/tools/analyzers/`.
+     For Go: the template's `apps/api/.golangci.yml`, `apps/api/.custom-gcl.yml` and `apps/api/.go-arch-lint.yml`
+     go to `<API_DIR>/`, and `apps/api/tools/analyzers/` to `<API_DIR>/tools/analyzers/`.
 
    Merge these into what the repo already has; never overwrite them:
    - **`AGENTS.md` and `CLAUDE.md`.** Move the body of your `CLAUDE.md` into `AGENTS.md`, next to the
      template's sections. `CLAUDE.md` keeps an `@AGENTS.md` line plus Claude-only notes, nothing else. The
      [docs-claude-imports-agents](docs/harness/rules.md#docs-claude-imports-agents) rule requires exactly
      this: every `AGENTS.md` has a sibling `CLAUDE.md` with an `@AGENTS.md` line.
-   - **`.claude/`.** Copy the template's hook scripts and agents. In your own `.claude/settings.json`, add the
+   - **`.claude/`.** Copy the template's hook scripts, agents and skills. In your own `.claude/settings.json`, add the
      template's three hooks (`protect-harness.sh`, `guard-bash.sh`, `fast-check.sh`) and its
      `permissions.deny` list next to what is there. Decide per existing hook whether it stays, and say so in
      the PR. Never drop a Stop or dev-gate hook silently: it may be the repo's definition of done. Keep one
-     copy of each `speckit-*` skill. Copy `new-domain`, `add-endpoint` and `add-migration` only if the stack
-     matches.
+     copy of each `speckit-*` skill. Leave out the stack skills you have no use for: `add-endpoint` without
+     the api set, `add-migration` without db, and `new-domain` when you drop `make new-domain` (step 5's table).
    - **`.specify/`.** Keep one copy. A repo that already runs spec-kit keeps its own constitution and
      `feature.json`. Once the harness is in, `.specify/memory/` is protected, so a later constitution change
      needs a human or `HARNESS_EDIT=1`.
    - **`Makefile`, `.github/workflows/` and `.gitignore`.** Keep the `make` target names, because hooks, CI and
      guides call them.
-     - With no Makefile of your own, the template's is adopted whole. Its `API :=` line, `WITH_ENV` (which
-       needs `.env.local`) and its web and db targets are then handled in steps 5–6.
+     - With no Makefile of your own, the template's is adopted whole. It reads its paths from `layout.env`
+       (step 5); `WITH_ENV` (which needs `.env.local`) and its web and db targets are handled in steps 5–6.
      - When target names collide (`check`, `fmt`, `gen`, `lint`), the template's recipe gets the name. Rename
        the old recipe. If it was a test or CI entry point, add it to `check-all`, and point any CI job that
        called the old name at the new one.
-   - **Harness and product overlap.** The product may itself live in `.github/` (reusable workflows,
-     composite actions), the `Makefile` or `scripts/`. Then narrow
-     [protected-paths.txt](scripts/harness/protected-paths.txt) and [CODEOWNERS](.github/CODEOWNERS) to the
-     harness's own files before the first `make harness-integrity`: `ci.yml`, `harness-*.yml`,
-     `contract-gate.yml`, `migration-gate.yml`, `drift.yml` and `.github/actions/setup`. Otherwise
-     protect-harness blocks every product edit, and
-     [harness-config-not-loosened](docs/harness/rules.md#harness-config-not-loosened) demands the
-     `harness-change-approved` label on every product PR.
+   - **Harness and product overlap.** The harness's own workflows and action are the files whose first line
+     is `# Harness file (protected)`, each named in [protected-paths.txt](scripts/harness/protected-paths.txt)
+     and [CODEOWNERS](.github/CODEOWNERS)
+     ([ADR 0035](docs/adr/0035-harness-files-under-github-are-named.md)). The product's own workflows and
+     composite actions in `.github/` stay the product's: agents may edit them, and
+     [harness-config-not-loosened](docs/harness/rules.md#harness-config-not-loosened) does not ask for the
+     `harness-change-approved` label. They still need a code owner's review, and a product job must not reuse
+     a required check's name (`check-all`, `harness-integrity`, …): branch protection matches checks by name.
+     A product workflow whose file name collides with a harness one (its own `ci.yml`) gets a new name instead
+     of a merge, or it becomes a harness file. The `Makefile` stays protected whole: a product target added to
+     it needs the label.
 4. **Rename the copied identity (human).** The copied files still carry `harness-template`,
    `github.com/aheumaier/harness-template` and `@aheumaier`. Rename them to your product's:
    ```sh
-   make rename NAME=<your-product> MODULE=<your-module-root> OWNER=<@you-or-@org/team>
-   make rename NAME=<your-product> MODULE=<your-module-root> OWNER=<@you-or-@org/team> WRITE=1
+   make rename NAME=<your-product> MODULE=<your-module-root|skip> OWNER=<@you-or-@org/team>
+   make rename NAME=<your-product> MODULE=<your-module-root|skip> OWNER=<@you-or-@org/team> WRITE=1
    ```
-   - `MODULE` must be a Go module path of the form `host.tld/path`
-     ([rename.go](apps/api/tools/harness/rename.go), line 25). A bare module such as `emergencies` is refused.
-     Either change your Go module path first, or skip `make rename` and replace the three tokens by hand, in
-     every tracked file except `docs/adr/`, `docs/exec-plans/`, `README.md`, `rename.go` and `rename_test.go`:
-     `github.com/aheumaier/harness-template`, then `harness-template`, then `@aheumaier`. Replace the module
-     path before the name, since the name is part of it. A blanket replace that reaches `rename.go` rewrites
-     the template constants and breaks its test. Then run `git grep -n -e harness-template -e aheumaier`; only
-     the five excluded paths may still hold them.
-   - `MODULE` replaces the template's module root. Copied code then imports `<MODULE>/apps/api/...`. With a
-     `host.tld/path` module, pick the value that makes this match your Go module. If your layout has no
+   - `MODULE` is a Go module path: `host.tld[/path]`, or a bare module such as `emergencies` or
+     `example/hello` (no dot in the first element; `renameModule` in
+     [rename.go](apps/api/tools/harness/rename.go)). With a bare module only text starting with
+     `https://github.com/aheumaier/harness-template` stays, and is listed as a leftover, since
+     `https://emergencies` is no URL. Every other mention of the template's module path becomes the bare
+     module and is not reported, a URL with another scheme (`http://`, `pkg.go.dev/`) or a
+     `go install github.com/aheumaier/harness-template/...@latest` included: search the dry-run's files for
+     those by hand.
+   - `MODULE=skip` keeps every Go module path and renames only the name and the owner. Use it when your
+     module path should not take the template's place in the copied Go code; it shadows a bare module
+     literally named `skip`. Text holding the template's module path, its `https://` URLs included, is then
+     kept and not reported as a leftover; the owner's other forms (`git@github.com:aheumaier/...`) are.
+   - Unless `MODULE=skip`, `MODULE` replaces the template's module root. Copied code then imports
+     `<MODULE>/apps/api/...`. Pick the value that makes this match your Go module. If your layout has no
      `apps/api`, fix the remaining import paths in step 6, when you port the fixtures.
-   - The copied harness tool's `go.mod` becomes `<MODULE>/apps/api/tools/harness`, a nested module of its own.
-     That path is fine to keep even when the repo has no `apps/api`. The same holds for `tools/analyzers`.
+   - The copied harness tool's `go.mod` (`<API_DIR>/tools/harness/go.mod`, `API_DIR` read from `layout.env`,
+     which step 2 set) becomes `<MODULE>/<API_DIR>/tools/harness` (`<MODULE>/tools/harness` for `API_DIR=.`), a
+     nested module of its own; with `MODULE=skip` it keeps the template's path. The rename prints that path.
+     `tools/analyzers` keeps
+     `<MODULE>/apps/api/tools/analyzers`, which is fine even when the repo has no `apps/api`.
    - The rename scans your existing tracked files too. Read the dry-run list, and its leftovers, before you
      add `WRITE=1`. `git add` the copied files first, since untracked files are not renamed.
    - It skips `docs/adr/`, `docs/exec-plans/` and `README.md`, so copied ADRs keep their history and your own
@@ -234,44 +274,63 @@ hand, in one reviewed harness PR:
    - Rewrite [ARCHITECTURE.md](ARCHITECTURE.md) for the real codemap and layers.
    - Rewrite the "Layer rule" and "Commands" sections of `AGENTS.md`.
    - Add an `AGENTS.md` (plus a `CLAUDE.md` containing `@AGENTS.md`) per area that has its own rules.
-   - Re-point each file below at the real layout, or drop it with its rule in step 6. Left alone, most of them
-     do not turn red. They skip, so the sensor looks green while it checks nothing. After each change, make
-     the sensor fire once on a deliberate violation.
+   - Write the real layout into [scripts/harness/layout.env](scripts/harness/layout.env) first: where the Go
+     module (`API_DIR`, `.` for the repo root), the contract, migrations, queries, generated client, JS
+     workspaces, generated code and product code live, the domain layers' path (`LAYER_GLOB`), and which sensor groups
+     the product has (`STACK`: `go`, plus `db` for Postgres migrations and queries, `web` for the JS
+     workspaces; [ADR 0033](docs/adr/0033-stack-profiles.md)). If the product vendors another repo's spec, list
+     it in `UPSTREAM_SPECS` with its source and revision; if other repos vendor this contract, name them in
+     `CONTRACT_CONSUMERS` ([ADR 0037](docs/adr/0037-upstream-spec-drift-is-a-drift-report.md)). The scripts
+     in `scripts/harness/`, the Makefile, `.bin/harness`, the domainiso analyzer and the CI workflows read it
+     ([ADR 0030](docs/adr/0030-one-layout-file-for-every-sensor.md)), so this one file re-points them.
+     `make layout-check` (in `make check`, [harness-layout-valid](docs/harness/rules.md#harness-layout-valid))
+     fails while a path it names does not exist, `LAYER_GLOB` matches no Go package, or a flat `<dir>/<pkg>`
+     package sits beside the layers (`<dir>/platform` excepted). `LAYER_GLOB` must end
+     in two levels, `<dir>/*/*` (domain, then layer; `<dir>` may be nested, such as `pkg/domains`): a flat `internal/<pkg>` layout has no layer, so either
+     restructure or drop [go-domain-isolation](docs/harness/rules.md#go-domain-isolation) and `go-layers` in
+     step 6. `layout.env` is itself protected harness config: your first edit needs the
+     `harness-change-approved` label once, and [template sync](#keeping-up-with-the-template) reports it
+     whenever the template changes its copy (decline that with a `# declined scripts/harness/layout.env: <why>`
+     line in `.harness-version`).
+   - Then re-point each file below by hand, or drop it with its rule in step 6. This is the single list of
+     files that cannot read `layout.env`; each names template paths itself. Left alone, most of them do not
+     turn red. They skip, so the sensor looks green while it checks nothing. After each change, make the
+     sensor fire once on a deliberate violation.
 
      | File | Hard-codes | Left alone |
      |------|------------|------------|
-     | [file-sensors.sh](scripts/harness/file-sensors.sh) | file kinds `apps/api/*.go`, `api/openapi.yaml`, `apps/*.ts` (lines 24–31) | your files get no kind, so the pre-commit hook checks nothing |
-     | [affected.sh](scripts/harness/affected.sh) | `apps/api/` prefix, `cd apps/api` (lines 33–36, 67) | no changed file starts with `apps/api/`, so the affected set is empty and `make check` skips `lint-go` and `test-go`; [harness-scope](docs/harness/rules.md#harness-scope) turns into no check at all |
-     | [check-specs.sh](scripts/harness/check-specs.sh) | `product=('apps/*' 'api/*')` (line 59) | [specs-required-for-features](docs/harness/rules.md#specs-required-for-features) never fires on your code, and fires on a `feat` commit that touches an unrelated `api/` directory |
-     | [gen-check.sh](scripts/harness/gen-check.sh) | generated files and generator inputs (lines 14–18) | drift in your generated code is never seen |
-     | [pre-commit.sh](scripts/harness/pre-commit.sh) | `--config apps/api/.golangci.yml` (line 77) | once the Go configs move next to your `go.mod`, go-format at commit reads a config that is not there |
-     | [selftest.sh](scripts/harness/selftest.sh) | `apps/*/node_modules` copy, `cd $work/apps/api` (lines 40, 54–55) | migration fixtures fail for the wrong reason |
-     | [migrations-append-only.sh](scripts/harness/migrations-append-only.sh), [squawk.sh](scripts/harness/squawk.sh) | `apps/api/db/migrations/*.sql` (lines 12 and 8) | append-only sees no files and passes; squawk checks a path that does not exist |
-     | [contract-check.sh](scripts/harness/contract-check.sh) | `SPEC=api/openapi.yaml` (line 10) | with no contract at that path on the base branch it exits 0 |
-     | [fast-check.sh](.claude/hooks/fast-check.sh) | every branch keyed on `apps/api`, `api/openapi.yaml`, `packages/` (lines 44–82) | edits to your code get no per-file check |
-     | [integritycheck.go](apps/api/tools/harness/integritycheck.go) | excludes `apps/api/internal/*/store/*`, `packages/api-client/src/gen/*` (lines 36–37) | your generated code is judged as hand-written |
-     | [action.yml](.github/actions/setup/action.yml) | `go-version-file: apps/api/go.mod` (line 18), `.bin/pnpm store path` (line 44) and `make deps` (lines 54–57) | every CI job fails in setup |
-     | [contract-gate.yml](.github/workflows/contract-gate.yml), [harness-integrity.yml](.github/workflows/harness-integrity.yml) | `go-version-file: apps/api/go.mod` (lines 44, 49), `api/openapi.yaml` | the gates fail in setup, or never see a contract change |
-     | [ci.yml](.github/workflows/ci.yml) | the `make new-domain` probe job (lines 67–83) | it fails, since the generator writes the template layout |
-     | [Makefile](Makefile) | `API := apps/api` (line 21), `../../$(GCL)` (lines 104, 108), `$(API)/tools/harness` and `$(API)/tools/analyzers` (lines 28, 30, 99, 117, 120) | every Go sensor runs in `apps/api`, which holds only the copied tools, not your code. Set `API` to your `go.mod` directory and move the three Go configs there with it (the `$(GCL)` recipe, lines 91–94, follows them). Fix the two `../../` paths, and `destination: ../../.bin` and `path: ./tools/analyzers` in `.custom-gcl.yml`. In the five `$(API)/tools/` lines, write the literal path where you copied the tools, or `test-analyzers` and `test-harness` look under `<API>/tools/` and go red |
-     | [install-tools.sh](scripts/install-tools.sh) | installs pnpm and exits 1 unless the root `package.json` pins `packageManager` (lines 97–108) | `make setup` aborts before the other tools land; see step 6 on why a root `package.json` stays |
-     | [setup-worktree.sh](scripts/setup-worktree.sh) | `make tools deps` (line 71), compose `db` and `cd apps/api && atlas migrate apply` (lines 93, 99) | `make setup` fails in `pnpm install` without a lockfile; `SKIP_DB=1` skips only the db part |
-     | [domainiso.go](apps/api/tools/analyzers/domainiso/domainiso.go) | the layer is the second path element under `internal/` (lines 28–38) | a flat `internal/<pkg>` has no layer, so go-domain-isolation reports nothing |
-     | [.golangci.yml](apps/api/.golangci.yml) | depguard paths `**/internal/*/store/**`, `**/internal/*/api/**`; forbidigo exclusion `internal/platform/` | go-db-only-in-store and go-http-only-in-api judge the wrong files |
-     | [.go-arch-lint.yml](apps/api/.go-arch-lint.yml) | components `internal/*/model/**` to `internal/*/api/**` (lines 16–22) | `ignoreNotFoundComponents: true`, so go-layers passes with zero matches |
+     | [protected-paths.txt](scripts/harness/protected-paths.txt) | `apps/api/tools/analyzers/*`, `apps/api/tools/harness/*`, `apps/api/internal/platform/approvaltest/*`, `apps/web/e2e/global-setup.ts` | with the tools at `<API_DIR>/tools/`, the harness's own Go code is unprotected: protect-harness lets edits through and [harness-config-not-loosened](docs/harness/rules.md#harness-config-not-loosened) never asks for the label. Fix this one first |
      | [CODEOWNERS](.github/CODEOWNERS) | `/api/openapi.yaml`, `/apps/api/db/migrations/`, `/apps/api/tools/*` | contract and migration reviews never trigger |
-     | `scripts/test/*.bats`, for example [affected.bats](scripts/test/affected.bats) | template paths in the test cases of the scripts above | they keep testing the old paths; update each with its script |
-
-   - Point the web layer sensor too if you keep web: [.dependency-cruiser.cjs](.dependency-cruiser.cjs) or your
-     stack's equivalent. Record the layering decision in an ADR.
+     | [fast-check.sh](.claude/hooks/fast-check.sh) | its per-file branches keyed on `apps/api`, `api/openapi.yaml`, `packages/` | edits to your code get no per-file check (tracker TD-66) |
+     | [.custom-gcl.yml](apps/api/.custom-gcl.yml) | `destination: ../../.bin`, `path: ./tools/analyzers` | move it, `.golangci.yml` and `.go-arch-lint.yml` next to your `go.mod` (`API_DIR`) and fix both paths, or the custom golangci-lint build lands outside `.bin/` |
+     | [.golangci.yml](apps/api/.golangci.yml) | depguard paths `**/internal/*/store/**`, `**/internal/*/api/**`; forbidigo exclusion `internal/platform/` | go-db-only-in-store and go-http-only-in-api judge the wrong files |
+     | [.go-arch-lint.yml](apps/api/.go-arch-lint.yml) | its components, `internal/*/model/**` to `internal/*/api/**` | `ignoreNotFoundComponents: true`, so go-layers passes with zero matches |
+     | [atlas.hcl](apps/api/atlas.hcl) | `dir = "file://db/migrations"`, relative to `API_DIR` | `atlas migrate` reads an empty or wrong directory; set it to `MIGRATIONS_DIR` as seen from `API_DIR` |
+     | [sqlc.yaml](apps/api/sqlc.yaml) | one entry per domain, schema from `db/migrations`, output `internal/<domain>/store` | `make gen-sqlc` generates nothing or into the template layout |
+     | `orval.config.ts` in `API_CLIENT_DIR` | `input: { target: '../../api/openapi.yaml' }`, relative to `API_CLIENT_DIR` | the client generates from a missing contract |
+     | [eslint.config.mjs](eslint.config.mjs) | ignores `packages/api-client/src/gen/**` and `apps/api/**`; React rules on `apps/web/**` | your generated client and Go module get linted; your web app misses the hooks rules |
+     | [.dependency-cruiser.cjs](.dependency-cruiser.cjs) | the web layers (`packages/domain`, `packages/api-client`, apps) | web-layers judges the wrong files; record your layering decision in an ADR |
+     | [jscpd.json](scripts/harness/jscpd.json) | ignores `**/packages/api-client/src/gen/**` | your generated client counts as duplicated code |
+     | [pnpm-workspace.yaml](pnpm-workspace.yaml), [knip.json](knip.json) | the workspaces `apps/web`, `packages/*`; knip's ignores | `pnpm install` and knip miss your workspaces; keep them in step with `WEB_GLOBS` |
+     | The web app `apps/web` (tracker TD-46) | the `dev`, `e2e` and `e2e-deps` Makefile targets; Playwright in [install-tools.sh](scripts/install-tools.sh) (`browsers`) and the setup action's `Locked Playwright version` step; the hints in `coverage.sh` and `mutation.sh` | `make dev` and `make e2e` fail; with input `browser`, CI's `check-all` job fails in setup |
+     | [action.yml](.github/actions/setup/action.yml) | the `Install JS dependencies` step (`make deps`, a no-op without `web` in `STACK`); node is set up in every job | with `web`, every CI job fails in setup without a root `package.json` and lockfile |
+     | [install-tools.sh](scripts/install-tools.sh) | with `web` in `STACK`: installs pnpm and exits 1 unless the root `package.json` pins `packageManager` | `make setup` aborts after the other tools land; leave `web` out of `STACK` if you have no JS workspaces |
+     | [setup-worktree.sh](scripts/setup-worktree.sh) | `make tools deps`, with `db` in `STACK` compose `db` and `atlas migrate apply` in `API_DIR` | `make setup` fails in `pnpm install` without a lockfile (with `web`) or without Docker (with `db`) |
+     | `make new-domain`: [new-domain.sh](scripts/new-domain.sh) and `scripts/templates/new-domain/*` | `apps/api/internal/<name>`, `apps/api/db/queries`, `apps/api/db/migrations`, `apps/api/cmd/api/routes.go`, `apps/api/sqlc.yaml` | it writes the template layout, and CI's `make new-domain` probe job fails; rewrite it for your layout, or in step 6 drop its `Makefile` target, CI's `generator-probe` job and required check, that job's `ci.md` row and the skill (tracker TD-67) |
+     | `scripts/test/*.bats`, for example [affected.bats](scripts/test/affected.bats) | template paths and the template's identity in the test cases; tests of scripts step 3 does not copy (`new-domain.bats`, `obs-query.bats`, `scaffold-tests.bats`) | `make check`'s bats fails; update each with the script it tests, or drop it as in step 6 ([drop.txt](scripts/templates/adoption-probe/drop.txt) lists them for a root module, tracker TD-99) |
+     | [rules.md](docs/harness/rules.md) | test paths on `**Fixture:**` lines, `apps/api/tools/...` | [rules-fixture-claims](docs/harness/rules.md#rules-fixture-claims) fails; replace `apps/api/` by `<API_DIR>/` |
+     | `<API_DIR>/internal/AGENTS.md` | links `../../../docs/`, relative to `apps/api/internal/` | [docs-links-resolve](docs/harness/rules.md#docs-links-resolve) fails |
+     | [QUALITY.md](docs/QUALITY.md) | no rows: the template has no domain | `make check-all`'s [docs-quality-rows-match-domains](docs/harness/rules.md#docs-quality-rows-match-domains) fails; add one row per domain under `LAYER_GLOB`, linking its `AGENTS.md` |
 6. **Keep, adapt or drop each rule in [rules.md](docs/harness/rules.md).**
    - A dropped rule takes out more than its id. Remove all of this, plus one ADR line saying why:
-     - its whole `make` target from `check` ([Makefile](Makefile) line 63) and `check-all` (line 70);
-     - its generator from `gen` (line 236) and its paths from `GEN_RE` and `INPUTS` in
-       [gen-check.sh](scripts/harness/gen-check.sh) (lines 14–18). `gen-check`, the last step of `make check`,
-       runs `make gen` ([gen-up-to-date](docs/harness/rules.md#gen-up-to-date)); a deleted target that `gen`
-       still names fails with `No rule to make target`;
-     - its fixture directory under `scripts/harness/fixtures/`;
+     - its whole `make` target from the `check` and `check-all` targets' lists in the [Makefile](Makefile);
+     - its generator from the `gen` target and its inputs from `INPUTS` in
+       [gen-check.sh](scripts/harness/gen-check.sh) (generated paths come from `GENERATED_GLOBS` in
+       `layout.env`). `gen-check`, the last step of `make check`, runs `make gen`
+       ([gen-up-to-date](docs/harness/rules.md#gen-up-to-date)); a deleted target that `gen` still names fails
+       with `No rule to make target`;
+     - its fixture directory under `scripts/harness/fixtures/`, and its tests in `scripts/test/` with their
+       mentions on its `**Fixture:**` line;
      - its branch in `fast-check.sh` and its kind in `file-sensors.sh`;
      - its tool from `install-tools.sh` and `tool-versions.env`, or from the root `package.json`;
      - its gate workflow and its CODEOWNERS lines.
@@ -279,26 +338,74 @@ hand, in one reviewed harness PR:
 
      | Set | Rules | `make` targets | Tools |
      |-----|-------|----------------|-------|
-     | web | `web-*` (7) | `lint-web`, `arch-web`, `typecheck-web`, `test-web`, `knip`, `gen-api-client` | eslint, dependency-cruiser, turbo, knip, typescript from `package.json` |
-     | db | `db-*` (5) | `lint-migrations`, `squawk`, `migrations-append-only`, `schema-doc-fresh`, `gen-schema-doc`, `gen-sqlc`, `gen-atlas-sum`, Postgres in `test-integration` | atlas, sqlc; squawk from `package.json` |
-     | api | `api-*` (6) | `lint-api`, `contract-check`, `gen-oapi` | oasdiff, oapi-codegen; spectral from `package.json` |
+     | web | `web-*` (7) | `WEB_TARGETS`: `lint-web`, `arch-web`, `typecheck-web`, `test-web`, `knip`, `clones-web`, `e2e`, `gen-api-client` | eslint, dependency-cruiser, turbo, knip, jscpd, typescript from `package.json` |
+     | db | `db-*` (5) | `DB_TARGETS`: `schema-doc-fresh`, `lint-migrations`, `squawk`, `migrations-append-only`, `test-integration`, `test-obs`, `e2e`, `gen-sqlc`, `gen-atlas-sum` | atlas, sqlc, squawk |
+     | api | `api-*` (6) | `lint-api`, `contract-check`, `gen-oapi` | oasdiff, oapi-codegen, spectral |
 
-     `schema-doc-fresh` sits in the fast `check` list, not only in `check-all`. Dropping the web set does not
-     drop pnpm: the root `package.json` also provides bats, squawk and spectral, and `test-sh`
-     ([sh-tests-pass](docs/harness/rules.md#sh-tests-pass), in `make check`) runs the harness's own bats tests.
-     Keep a root `package.json` with `packageManager` and the dev dependencies the remaining sets need (at
-     least `bats`), or install those tools another way and take `deps` out of `setup-worktree.sh` line 71 and
-     `action.yml` lines 44 and 54–57 as well.
+     The web and db sets are `STACK` groups ([ADR 0033](docs/adr/0033-stack-profiles.md)), and their targets are
+     the [Makefile](Makefile)'s `WEB_TARGETS` and `DB_TARGETS` as listed; `e2e` is in both: it needs both
+     groups, and leaving out db or web drops it. A group drops whole targets: without db, `test-integration` and `test-obs` go entirely, so
+     [go-tests-pass](docs/harness/rules.md#go-tests-pass) runs no integration test and
+     [obs-request-queryable](docs/harness/rules.md#obs-request-queryable) never runs; without web,
+     `clones-web` goes (the TS half of [repo-no-clones](docs/harness/rules.md#repo-no-clones)); without
+     db or web, `e2e` goes ([web-e2e-journeys](docs/harness/rules.md#web-e2e-journeys)) too. Drop those rules with their
+     group, or narrow the rules.md entries you keep to what still runs. Leaving a group out
+     of `STACK` in `layout.env` already drops its targets from `check`, `check-all` and `gen`, its tools from
+     `make tools` (pnpm and `make deps` with web, Postgres in `make setup` with db) and its fixtures from
+     `make harness-selftest`, so the Makefile, `gen-check.sh`, `install-tools.sh` and the fixtures stay as
+     they are. Still remove the dropped rules' rules.md entries, and the links to the directories you deleted:
+     `make docs-links` and `make references-pinned` name them (in the template: the `apps/web/` and
+     `apps/api/db/` area links in `AGENTS.md`, the `apps/web/AGENTS.md` link in
+     `.claude/agents/test-writer.md`, the orval link in `AGENTS.md` and
+     `docs/references/orval-llms.txt`, whose pin file is `packages/api-client/package.json`; the links to the
+     skills step 3 left out, in `AGENTS.md` and `.specify/memory/constitution.md`). The api set is
+     part of `go` and drops by hand as above. bats, squawk and spectral are pinned in `tool-versions.env`, so
+     no set needs a root `package.json` but web.
    - A rule you keep must still reject its fixture. Port fixtures to your layout until these are green:
      ```sh
      make harness-selftest
      make fixture-claims
+     make rule-lists
      ```
      `make harness-selftest` cannot be green until the dropped fixtures are gone. It asserts each fixture's
      `EXPECT` pattern, and a fixture for a missing `apps/web` fails for the wrong reason.
+     When only `API_DIR` moves, the port is mechanical: `git mv` each fixture's `files/apps/api/*` and
+     `base/apps/api/*` to `files/<API_DIR>/` and `base/<API_DIR>/`, and replace `apps/api/` by `<API_DIR>/`
+     (nothing for `.`) in each `apply.sh` and `fixture.conf` and in the depguard path of
+     `<API_DIR>/.golangci.yml`. Five fixtures edit the template's own product code and have no mechanical port:
+     `api-approved-violates-contract` and `api-response-not-approved` (`platform/health`), `go-dead-function`
+     (`platform/problem`), `go-test-helper-in-prod` (`platform/approvaltest`) and `specs-feat-without-spec` (a
+     file under `apps/`, which must stay under `PRODUCT_GLOBS`). Rewrite them against your code, as
+     [scripts/templates/adoption-probe/fixtures/](scripts/templates/adoption-probe/fixtures/) does for a root
+     module, or drop them with their rules. Your approved-response tests then name
+     `[api-responses-approved]` when they fail ([ADR 0022](docs/adr/0022-approved-api-responses.md)). Fixture
+     directory names stay, so the `**Fixture:**` lines do not change.
+   - Delete with `git rm`: the shell sensors list git-known files, so a deleted script still in the index fails
+     `make check`'s shfmt and shellcheck.
+   - The adoption probe is the template's own ([ADR 0038](docs/adr/0038-readme-brownfield-adoption-is-probed.md)):
+     drop its own files, decline them for [template sync](#keeping-up-with-the-template), and hand-edit none of
+     the synced harness files that wire it up.
+     - `git rm` the probe `scripts/harness/adoption-probe.sh`, its fixture
+       `scripts/harness/fixtures/harness-adoption-stale-layout/` and its tests `scripts/test/adoption-probe.bats`
+       (step 3 never copied its brownfield repo, `scripts/templates/adoption-probe/`), and remove its entry in
+       `docs/harness/rules.md`, whose `**Fixture:**` line names the files you removed.
+     - Add a `# declined <path>: template-only` line to `.harness-version` for each file of the probe, its
+       fixture, its tests and its brownfield repo, so template sync stops offering them back.
+     - Leave the rest as it is: its job in `.github/workflows/ci.yml`, its target in the `Makefile`, its required
+       check in `scripts/github-branch-protection.sh` and `docs/harness/ci.md`,
+       its budget in `scripts/harness/budgets.txt`, and the brownfield repo's lines in
+       `scripts/harness/protected-paths.txt` and `.github/CODEOWNERS`. These are synced harness files
+       ([ADR 0026](docs/adr/0026-template-sync-is-a-drift-report.md)): a hand edit there is a merge by hand at
+       every template bump, and an upstream change merged later would bring the entry back. Since step 4's
+       `make rename WRITE=1` set `HARNESS_UPSTREAM`, the CI job passes without running, as it also does with the
+       script removed and declined, so the required check stays green; entries
+       for missing paths are harmless, and `make adoption-probe`, which only that job calls, fails for want of
+       its script. So far only the adoption probe switches off this way: dropping `make new-domain` (step
+       5's table: its target, CI's `generator-probe` job and required check) still edits them by hand (tracker
+       TD-136).
 7. **Run `make setup && make check`.** Expect `make setup` to need steps 5–6 first, because of the
-   `install-tools.sh`, `make deps` and `setup-worktree.sh` assumptions in step 2. Without Postgres, run
-   `SKIP_DB=1 make setup`. Then run `make check` and expect red. Don't loosen a sensor to get green
+   `install-tools.sh`, `make deps` and `setup-worktree.sh` assumptions in step 2. Without Postgres, leave
+   `db` out of `STACK` (or run `SKIP_DB=1 make setup` once). Then run `make check` and expect red. Don't loosen a sensor to get green
    ([golden principle 4](AGENTS.md#golden-principles)):
    - Fix what is cheap.
    - Give an unavoidable exception an inline suppression with `reason: … (rule: <id>)`.
@@ -317,15 +424,29 @@ hand, in one reviewed harness PR:
 
 ## Keeping up with the template
 
-Template drift is not automated yet. [Exec plan 0003](docs/exec-plans/active/0003-harness-gap-closure.md) (P4.3)
-plans two pieces:
+Template sync reports drift and never applies anything ([ADR 0026](docs/adr/0026-template-sync-is-a-drift-report.md),
+[rule](docs/harness/rules.md#harness-upstream-in-sync)):
 
-- a `.harness-version` marker;
-- `make harness-sync-check`, which diffs the protected paths against an upstream tag and never applies
-  anything.
+- `.harness-version` holds the template commit this repo was copied from, or last synced to. Use the commit
+  you actually copied: a newer one hides the changes in between. `# declined <path>: <why>` lines in it skip
+  harness files you chose not to take.
+- `HARNESS_UPSTREAM` in `scripts/tool-versions.env` is the template's git URL, written by `make rename`.
+  Empty means this repository is the template: the check prints a notice and
+  exits 0. `make harness-sync-check HARNESS_UPSTREAM=<url>` overrides it for one run.
+- `make harness-sync-check` fetches the upstream's default branch anonymously into a temp repo and lists each
+  protected path (except `.harness-version`) that changed there since the marker and differs here, marking
+  files you changed too or no longer have. The script exits 0 when in sync, 1 when behind, and 2 when it
+  cannot check (a malformed marker, a refused URL such as one with credentials in it, a failed fetch, a marker
+  not in upstream's history); make reports 1 and 2 alike as its exit 2. It reads the network, so it is not
+  in `make check` or `check-all`; the weekly drift run includes it, where a private template exits 2 (run it
+  locally with your credentials).
 
-Until then, compare the protected paths against the template commit you recorded, and port changes in a harness
-PR.
+A repo whose `API_DIR` is not `apps/api` sees the template's files under `apps/api/` listed as files it no
+longer has: port each change by hand to its copy under `API_DIR` after the bump, and do not decline them, or
+later changes there stop counting as behind (tracker TD-129).
+
+To catch up, port the listed files (or decline them) in a harness PR, then write the upstream commit the
+report names to `.harness-version`.
 
 ## Where next
 

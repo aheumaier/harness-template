@@ -1,0 +1,19 @@
+# STACK vectors shared by applyStack (tools/harness/layout_test.go) and layout.sh's harness_stack_apply
+# (scripts/test/layout.bats), so the two parsers accept and reject the same layout.env values (ADR 0033).
+# <STACK> accept|reject
+go accept
+go:db accept
+go:web accept
+go:db:web accept
+web:db:go accept
+db reject
+web reject
+db:web reject
+go:go reject
+go:db:db reject
+go:ui reject
+Go reject
+go,db reject
+go: reject
+:go reject
+go::db reject

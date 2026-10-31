@@ -50,3 +50,10 @@ rows() {
   has '| slow | 1 | 9 | 0.1 | NFR-H5 |'
   run ! has 'img'
 }
+
+@test "reads the time of run.sh rows carrying findings, never a number inside them" {
+  printf '{"sensor":"lint","start_ms":1,"ms":%s,"exit":1,"scope":"full","sha":"abc","os":"linux","findings":{"ms":9000,"rule-a":1}}\n' \
+    50 150 >"$BATS_TEST_TMPDIR/a.jsonl"
+  run -0 "$R" "$BATS_TEST_TMPDIR/a.jsonl"
+  has '| lint | 2 | 0.15 | 0.1 | NFR-H5 |'
+}

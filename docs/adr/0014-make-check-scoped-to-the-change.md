@@ -1,6 +1,6 @@
 # ADR 0014: make check runs what the change can affect; check-all and CI run everything uncached
 
-Status: proposed · 2026-10-28
+Status: accepted · 2026-10-28
 
 ## Context
 Agents run `make check` after every change, so its wall time is agent throughput (NFR-H3, ADR 0013). Most of

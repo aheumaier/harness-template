@@ -1,6 +1,6 @@
 # ADR 0022: Handler tests pin API responses to approved files, checked against the contract
 
-Status: proposed · 2026-10-29
+Status: accepted · 2026-10-29
 
 ## Context
 Exec plan 0003 (P2.4) asks for approved-fixture snapshots of API responses: golden JSON per operation and

@@ -8,6 +8,8 @@ export PATH="$REPO/.bin:$REPO/node_modules/.bin:$PATH"
 export HARNESS_BUDGETS=/dev/null
 # Timing rows default to scope "changed"; make check-all and the nightly double run export HARNESS_SCOPE=full.
 unset HARNESS_SCOPE
+# A run's stack override (ADR 0033) would re-point the scripts under test: they read their sandbox's layout.env.
+unset HARNESS_STACK
 
 # has <text>: $output (from bats `run`) contains text. A function, not a bare [[ ]]: bash 3.2 (macOS) does
 # not fail a test on a false [[ ]] that is not the last command.
@@ -28,17 +30,23 @@ hook() {
 # from their own location, so they operate on the sandbox). Executables are hardlinked: macOS assesses every
 # newly written executable on its first exec (~0.35 s each; exec plan 0002). Data files are copied, and so is
 # an executable when the link fails (another volume). A link writes through to the real file: call `own` before
-# a test writes to a sandboxed executable; teardown_file fails the file if one did not.
+# a test writes to a sandboxed executable; teardown_file fails the file if one did not. Every sandbox also gets
+# scripts/harness/layout.sh and layout.env: the scripts read the repo layout from them.
 sandbox() {
   SANDBOX="$BATS_TEST_TMPDIR/repo"
   local f
-  for f in "$@"; do
+  for f in scripts/harness/layout.sh scripts/harness/layout.env "$@"; do
+    [[ ! -e "$SANDBOX/$f" ]] || continue # a second sandbox call, or a caller naming the layout files too
     mkdir -p "$SANDBOX/$(dirname "$f")"
     if [[ -x "$REPO/$f" ]] && ln "$REPO/$f" "$SANDBOX/$f" 2>/dev/null; then continue; fi
     cp "$REPO/$f" "$SANDBOX/$f"
   done
   git -C "$SANDBOX" init -q
 }
+
+# edit <file> <sed-expr>: edits a sandbox file in place (portable sed -i). A sandboxed executable is a hardlink:
+# call `own` on it first.
+edit() { sed -i.bak "$2" "$SANDBOX/$1" && rm -f "$SANDBOX/$1.bak"; }
 
 # own <path...>: replaces sandboxed files with private copies (same content and mode), breaking the hardlink
 # to the real file before a test writes to them.
@@ -65,9 +73,26 @@ teardown_file() {
   return 1
 }
 
+# commit_all <repo> <msg>: commits everything in <repo> with a test identity, unsigned and without hooks.
+commit_all() {
+  git -C "$1" add -A
+  git -C "$1" -c core.hooksPath=/dev/null -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false \
+    commit -qm "$2"
+}
+
 # sandbox_base: commit everything in $SANDBOX as branch main (the BASE_REF for diff-based checks).
 sandbox_base() {
-  git -C "$SANDBOX" add -A
-  git -C "$SANDBOX" -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false commit -qm base
+  commit_all "$SANDBOX" base
   git -C "$SANDBOX" branch -M main
+}
+
+# spec <file> <path...>: writes a minimal OpenAPI document with one GET per path to <file>.
+spec() {
+  local f="$1"
+  shift
+  mkdir -p "$(dirname "$f")"
+  {
+    printf 'openapi: 3.0.3\ninfo: { title: t, version: "1" }\npaths:\n'
+    printf '  %s:\n    get:\n      responses:\n        "200":\n          description: ok\n' "$@"
+  } >"$f"
 }

@@ -1,6 +1,6 @@
 # ADR 0020: Test coverage is a trend, never a gate
 
-Status: proposed · 2026-10-28
+Status: accepted · 2026-10-28
 
 ## Context
 Exec plan 0003 (P2.5) asks for test coverage per package. Nothing reports it today, so a package whose
@@ -13,7 +13,8 @@ and the gate hides exactly the gap it was meant to show.
 - Unit-test statement coverage is **reported per package**: per Go package of `apps/api` and per JS
   workspace, by `make coverage` (`scripts/harness/coverage.sh`, [ci.md](../harness/ci.md#coverage)).
   - Every PR and push to `main`: the table in the job summary of the `coverage` workflow, which is not a
-    required status check and does not block on failure (`continue-on-error`).
+    required status check: a failure to measure turns it red but never blocks a merge (amended 2026-10-29,
+    exec plan 0003 Phase 2 gate: `continue-on-error` hid that failure behind a green check).
   - Weekly: `drift.yml` compares it with the last scheduled run's and adds the packages whose coverage fell
     to the `drift` issue.
 - **No threshold anywhere**: not in `make check` or `check-all`, not in a required check, not in a

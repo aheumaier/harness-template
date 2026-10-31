@@ -9,8 +9,11 @@
 # Each domain starts with three passing tests (NFR-B1): service (fake store), handler (strict server +
 # httptest) and integration (-tags=integration, real Postgres). Every generated file and insertion is a
 # template in scripts/templates/new-domain/. Insertions go before `harness:domain-*` / `harness:quality-rows`
-# markers. Undo before committing:
-#   git checkout -- . && git clean -fd -- apps/api api docs packages/api-client
+# markers. Undo before committing (restores only what it wrote; printed with the real paths at the end):
+#   git checkout -- apps/api/cmd/api/routes.go api/openapi.yaml apps/api/sqlc.yaml docs/QUALITY.md \
+#     apps/api/db/migrations/atlas.sum docs/generated packages/api-client/src/gen
+#   git clean -fd -- apps/api/internal/<name> apps/api/db/queries/<name>.sql \
+#     'apps/api/db/migrations/*_<name>.sql' packages/api-client/src/gen
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -34,6 +37,7 @@ MOD="$(cd apps/api && go list -m)"
 kebab="${name//_/-}"
 pascal="$(awk -F_ '{ for (i = 1; i <= NF; i++) printf "%s%s", toupper(substr($i, 1, 1)), substr($i, 2) }' <<<"$name")"
 camel="$(tr '[:upper:]' '[:lower:]' <<<"${pascal:0:1}")${pascal:1}"
+today="$(date -u +%Y-%m-%d)" # the QUALITY.md row's Updated date (rules.md#docs-quality-row-fresh)
 
 ROUTES=apps/api/cmd/api/routes.go SPEC=api/openapi.yaml SQLC=apps/api/sqlc.yaml QUALITY=docs/QUALITY.md
 dirty="$(git status --porcelain -- "$ROUTES" "$SPEC" "$SQLC" "$QUALITY")"
@@ -44,13 +48,13 @@ for f in "$ROUTES" "$SPEC" "$QUALITY"; do grep -q 'harness:' "$f" || die "genera
 TEMPLATES=scripts/templates/new-domain PLACEHOLDER='__[A-Z][A-Z0-9_]*__'
 [[ -d "$TEMPLATES" ]] || die "$TEMPLATES missing"
 
-# render <template>: the template on stdout with __NAME__, __KEBAB__, __PASCAL__, __CAMEL__ and __MOD__ filled
-# in. Fails on a missing template or a placeholder it does not know (fail closed).
+# render <template>: the template on stdout with __NAME__, __KEBAB__, __PASCAL__, __CAMEL__, __MOD__ and
+# __TODAY__ filled in. Fails on a missing template or a placeholder it does not know (fail closed).
 render() {
   local t="$TEMPLATES/$1" out
   [[ -f "$t" ]] || die "template $t missing"
   out="$(sed -e "s|__NAME__|$name|g" -e "s|__KEBAB__|$kebab|g" -e "s|__PASCAL__|$pascal|g" \
-    -e "s|__CAMEL__|$camel|g" -e "s|__MOD__|$MOD|g" "$t")" || die "cannot render $t"
+    -e "s|__CAMEL__|$camel|g" -e "s|__MOD__|$MOD|g" -e "s|__TODAY__|$today|g" "$t")" || die "cannot render $t"
   ! grep -qE "$PLACEHOLDER" <<<"$out" || die "unknown placeholder in $t: $(grep -oE "$PLACEHOLDER" <<<"$out" | head -1)"
   printf '%s\n' "$out"
 }
@@ -118,4 +122,5 @@ fi
 cat <<EOF
 new-domain: created domain '$name' (tag $name, GET /$kebab/status, hook useGet${pascal}Status).
 Next: model the domain in api/openapi.yaml and $migration, then \`make gen\`, implement, \`make check\`.
+Undo (before committing): git checkout -- $ROUTES $SPEC $SQLC $QUALITY apps/api/db/migrations/atlas.sum docs/generated packages/api-client/src/gen && git clean -fd -- $D apps/api/db/queries/$name.sql $migration packages/api-client/src/gen
 EOF

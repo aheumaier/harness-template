@@ -57,6 +57,7 @@ The frontend mirrors this: `packages/domain` is pure TS (no React, no browser AP
 | Every rule, why, its sensor, how to fix | [docs/harness/rules.md](docs/harness/rules.md) |
 | Why the repo is built this way | [docs/design-docs/core-beliefs.md](docs/design-docs/core-beliefs.md), [docs/adr/](docs/adr/README.md) |
 | Current database schema (generated) | [docs/generated/db-schema.md](docs/generated/db-schema.md) |
+| Generator and migration tools at the pinned versions | [oapi-codegen](docs/references/oapi-codegen-llms.txt), [sqlc](docs/references/sqlc-llms.txt), [orval](docs/references/orval-llms.txt), [Atlas](docs/references/atlas-llms.txt) |
 | Domain health | [docs/QUALITY.md](docs/QUALITY.md) |
 | CI checks, required status checks, label bypass | [docs/harness/ci.md](docs/harness/ci.md) |
 | Security and reliability defaults | [docs/SECURITY.md](docs/SECURITY.md), [docs/RELIABILITY.md](docs/RELIABILITY.md) |

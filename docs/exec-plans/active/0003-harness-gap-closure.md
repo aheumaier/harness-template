@@ -1,6 +1,6 @@
 # 0003 — Close the harness-engineering gaps
 
-Status: proposed · Owner: @aheumaier · Started: 2026-10-28
+Status: implemented, awaiting review · Owner: @aheumaier · Started: 2026-10-28
 
 ## Goal
 
@@ -40,6 +40,11 @@ From a comparison on 2026-10-28 (`perf/harness-nfr` @ 53ec497). ✅ present · �
 | G10 | Rippable harness: know which rules still fire, retire dead ones | O'Reilly, Osmani | `timings.jsonl` records latency only, not findings | ❌ |
 | G11 | Orphans and duplication: unused scripts and make targets, copy-paste clones, one concept implemented twice | OpenAI (agents replicate existing patterns, garbage collection); core belief "the best code is the code nobody writes" | `go-no-dead-code` weekly only (drift.yml), knip in check-all; nothing for scripts, make targets or clones; reuse left to `code-reviewer` | 🟡 |
 | G12 | Adoption fails on a real brownfield repo | README §(b), walked against two repos (see below) | layout hard-coded in ~15 protected files; `make rename` refuses a bare module; `make setup` needs a root `package.json`; `check` always composes go+db+web; `.github/` is always harness | ❌ |
+| G13 | Spec acceptance scenarios traced to tests; an untested scenario sends the work back to the test step without a human | Thoughtworks ([Engineering the harness](https://www.thoughtworks.com/insights/blog/architecture/engineering-the-harness-a-practical-pattern-for-reliable-coding-agents), Sep 2026: REVIEW checks tests against acceptance criteria) | `specs-structure` and `specs-required-for-features` check spec files only; nothing ties a `Given/When/Then` scenario to a test | ❌ |
+| G14 | Contract changes judged across repos: the upstream specs a product consumes, and the consumers of its own contract | Thoughtworks (multi-repo impact analysis and confirmation gate) | `api-no-breaking-change` compares the contract with its own merge base only; vendored upstream specs (first adopter: 7ed-emergencies `api/upstream`) and consumers are unknown to the harness | ❌ |
+| G15 | Defaults an agent picked without asking are recorded and reviewable | Thoughtworks (explicit defaults instead of guesses) | loop slices record Decisions; other PRs have no place for them; `speckit-clarify` covers specs only | 🟡 |
+| G16 | Tests written apart from the implementation, so the implementer cannot fit the test to its code | Thoughtworks (RED test agent, GREEN implementer agent) | the same agent writes test and code; weekly mutation testing (P2.6) finds weak tests only afterwards | 🟡 |
+| G17 | Leftover runtime: per-worktree compose stacks outlive their worktree or session | CLAUDE.md "leave no loose ends"; OpenAI (garbage collection) | `make down` exists but nothing calls it; lane close (loop prompt §5g) tears down by prose only; on 2026-10-29 five `harness-*` Postgres stacks ran, one from a scratchpad copy that was no git worktree | ❌ |
 | — | Enforced merge gates | Fowler (human input where it matters) | out of scope: [TD-2](../tech-debt-tracker.md), blocked on the GitHub plan | — |
 
 **Doc drift found** (Phase 0 fixes it and adds the sensor that would have caught the first item):
@@ -110,9 +115,10 @@ They comment, never fail (Phase 3, ADR).
 |---|-------|----------------|-------|
 | 0 | Quick wins: Trivy, pre-commit, structured-logging lints, doc truth | secrets and JS/nested-Go vulns are detected; `rules-fixture-claims` is green; every drift item above is fixed | implemented |
 | 1 | Runtime legibility (G1) | NFR-O1 met: logs by request ID and a p95 latency, per worktree, via `make` | implemented |
-| 2 | Behaviour harness (G2) | NFR-B1 and NFR-B2 met; coverage reported per package; weekly mutation score in the drift issue | proposed |
-| 3 | Inferential sensors and garbage collection (G3, G4, G8, G11) | reviewer comments on every PR (advisory); scheduled reviews and `agent-gc` open issues/PRs; QUALITY.md has a staleness check; orphan scripts, dead Go code and clones fail `check-all`; `reuse-reviewer` exists | proposed |
-| 4 | Taste lints and harness lifecycle (G5, G7, G9, G10, G12) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue; `adoption-probe` green on a root-module fixture | proposed |
+| 2 | Behaviour harness (G2) | NFR-B1 and NFR-B2 met; coverage reported per package; weekly mutation score in the drift issue | implemented |
+| 3 | Inferential sensors and garbage collection (G3, G4, G8, G11) | reviewer comments on every PR (advisory); scheduled reviews and `agent-gc` open issues/PRs; QUALITY.md has a staleness check; orphan scripts, dead Go code and clones fail `check-all`; `reuse-reviewer` exists | implemented (exit pending: first PR comment and drift run observed) |
+| 4 | Taste lints and harness lifecycle (G5, G7, G9, G10, G12, G17) | ADR amending core belief 3 accepted; size/complexity lints green; template version marker + sync check; per-rule fire counts in the drift issue; `adoption-probe` green on a root-module fixture; reviewer catches seen twice are earned rules; sensor slices get an evasion review; stacks without a live worktree are listed and prunable | partial: P4.13 (make stacks) open |
+| 5 | Spec-to-test and cross-repo feedback (G13, G14, G15, G16) | every acceptance scenario in `specs/` has a test or a reasoned exemption, checked in `make check`; upstream spec drift reported weekly on the first adopter; PR template has an Assumptions section the reviewer checks; `test-writer` trial result recorded | partial: upstream drift not yet run on a first adopter (TD-115) |
 
 ## Progress
 
@@ -162,7 +168,10 @@ PR; **–** needs none.
 - [x] P2.2 — no-op — web: jsdom + Testing Library, or keep `renderToString` → kept: the one web test
   (`App.test.tsx`) renders to a string, and no test needs interaction or effects yet (P2.3 drives the browser
   through Playwright, P2.1 scaffolds Go tests); the guide from Q5 stands
-- [ ] P2.3 — H — Playwright: `make e2e` against `make dev`, one journey (NFR-B2); skill `drive-app`
+- [x] P2.3 — afdfeee — done — no test drove the running app → `make e2e` runs one Playwright journey
+  (pinned `@playwright/test`, headless Chromium in `.bin/playwright`) against this worktree's `make dev`, in
+  `check-all` and CI (NFR-B2); skill `drive-app`; rule `web-e2e-journeys`; budget row `e2e`; TD-42 added,
+  TD-36 closed
 - [x] P2.4 — 6a30e4d — partial — a response change passed unseen unless a test asserted it → handler tests
   pin responses with `approvaltest.Verify` (`testdata/approved/<operationId>.<status>[.<case>].json`,
   `make approve`); `api-responses-approved`, `api-approved-match-contract` (`.bin/harness approved-check`)
@@ -184,23 +193,65 @@ PR; **–** needs none.
   `pull_request` and posts one advisory comment (never a required check); sha256-pinned Claude Code via
   `install-tools.sh claude`, read-only tools, pinned model, turn and budget caps; inert with a notice until
   the `ANTHROPIC_API_KEY` secret exists (TD-38); ADR 0016 and 0019 amended; TD-39 added
-- [x] P3.3 — H — scheduled security, data-handling and modularity reviews → drift issue
-- [ ] P3.4 — H — enable `agent-gc`: doc-gardening PRs for drift the computational checks found
-- [ ] P3.5 — H — QUALITY.md grades per domain and layer, `Updated:` date, staleness check in drift
-- [ ] P3.6 — H — `repo-no-orphan-scripts` (unreferenced scripts and make targets); `deadcode-go` into
-  `check-all`
-- [ ] P3.7 — H — clone detection: golangci `dupl` (Go) and `jscpd` (TS) with thresholds, in `check-all`
-- [ ] P3.8 — H — `reuse-reviewer` agent: does the diff re-implement something that exists?
-- [x] P4.1 — – — ADR amending core belief 3: size and complexity limits as sensors, not style
-- [ ] P4.2 — H — Go: `funlen`, `cyclop`/`gocognit`, file length; TS: `max-lines`, `complexity`, `max-params`
-- [ ] P4.3 — H — template version marker (`.harness-version`) + `make harness-sync-check` against upstream
-- [ ] P4.4 — H — per-rule fire counts in `timings.jsonl`; drift issue lists rules that never fired in 90 days
-- [ ] P4.5 — – — `docs/references/*-llms.txt` for oapi-codegen, sqlc, orval, Atlas (pinned versions)
-- [ ] P4.6 — H — `scripts/harness/layout.env` read by every script, the Makefile, the hooks and `.bin/harness`
-- [ ] P4.7 — H — stack profiles: `HARNESS_STACK=go,db,web` selects sensors, tool installs and fixtures
-- [ ] P4.8 — H — `make rename` accepts a bare Go module or `MODULE=skip`
-- [ ] P4.9 — H — protected paths and CODEOWNERS name the harness's own workflows, not `.github/*`
-- [ ] P4.10 — H — CI `adoption-probe`: README §(b) on a root-`go.mod` fixture
+- [x] P3.3 — f5b5d27 — done — no scheduled review of the whole repository → drift.yml runs three
+  read-only review agents (skills `review-security`, `review-data-handling`, `review-modularity`) and appends
+  their findings to the drift issue, advisory; `scripts/harness/ci-agent.sh` shared with `pr-review.sh`;
+  ADR 0016 and 0019 amended; TD-40 added, TD-38 extended
+- [x] P3.4 — 14d7317 — done — `agent-gc` was a stub → drift.yml's agent-gc fixes the broken doc links
+  `check-links` found and opens one small PR (advisory, ADR 0019 amended), confined to its target files, no
+  protected path, AGENTS.md or CLAUDE.md; off until `AGENT_GC_ENABLED` and the `agent-gc` environment's
+  `AGENT_GC_TOKEN` are set (TD-50)
+- [x] P3.5 — 5be0ad6 — done — QUALITY rows unchecked → `make docs-quality-shape` (deterministic, in `check-all`
+  and the generator-probe) and age-only `make docs-quality` in drift; rows per backend domain and layer with
+  `Updated` (ADR 0028; frontend not graded TD-56, domain list twice TD-55)
+- [x] P3.6 — 3edf728 — done — no orphan detection → `repo-no-orphan-scripts` (`harness orphans`, `make
+  orphans` in `check-all`) for scripts and make targets; `deadcode-go` also scans tools/harness and runs in
+  `check-all` (ADR 0031; tools/analyzers left out TD-70)
+- [x] P3.7 — 8e4f77b — done — no clone detection → `repo-no-clones`: golangci `dupl` threshold 26 per package
+  in `make check` (lint-go), `jscpd` 5.4.1 `minTokens` 16 over `apps/` and `packages/` in `check-all`; thresholds
+  measured after cheap fixes with a scaffolded domain, no baseline (ADR 0027; per-package blind spot TD-52)
+- [x] P3.8 — ddd125f — done — no reviewer asked whether a diff re-implements existing code →
+  `.claude/agents/reuse-reviewer.md` (Read, Grep, Glob), called from CLAUDE.md when a change adds code or
+  files; findings name the existing location and a `<kind>:<capability>` class for ADR 0019's ratchet
+- [x] P4.1 — 20c1021 — done — core belief 3 called size and complexity style →
+  [ADR 0024](../../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md) proposed: limits as maintainability
+  sensors; core belief 3 amended
+- [x] P4.2 — f49fc8d — done — no lint bounded function length, complexity, parameters or file length →
+  golangci (`funlen`, `gocognit`, revive limits) and ESLint (`max-lines-per-function`, `complexity`, `max-params`,
+  `max-lines`) enforce them; rules `code-*` with 8 fixtures; `harness-selftest` 47 → 55
+- [x] P4.3 — a91b86d — done — no record of the template a product was cut from → `.harness-version` holds
+  the template commit, `make rename` sets `HARNESS_UPSTREAM`, `make harness-sync-check` lists protected files
+  changed upstream since, reported by the weekly drift run (ADR 0026; private template: TD-51)
+- [x] P4.4 — bb790ee — done — per-rule fire counts in `timings.jsonl`; the drift Sweep merges them into a
+  90-day rule-fires ledger and lists rules that never fired, for a human to keep or retire; ADR 0032, TD-79..81
+- [x] P4.5 — d518888 — done — no pinned tool references → `docs/references/*-llms.txt` for oapi-codegen, sqlc,
+  orval, Atlas with `docs-references-pinned` in `make check` (ADR 0029); a harness change (H), not "–"
+- [x] P4.6 — 449d561 — done — the product layout was hard-coded in every sensor → `scripts/harness/layout.env`
+  (with `API_CLIENT_DIR`) parsed by `layout.sh` for the scripts, the Makefile and CI and by `.bin/harness`;
+  `make layout-check` (`harness-layout-valid`) in `make check`; `.claude/hooks/fast-check.sh` keeps the template
+  layout until a human `.claude` PR (TD-66), as does `make new-domain` (TD-67) (ADR 0030)
+- [x] P4.7 — bfec770 — done — stack profiles: `STACK` in layout.env (or `HARNESS_STACK`) selects sensor
+  groups, tool installs and fixtures; spectral, squawk and bats move to .bin; ADR 0033, TD-83..86
+- [x] P4.8 — 70e8066 — done — `make rename` demanded a dotted module → it takes a bare module, a one-element
+  host or `MODULE=skip` (keeps the template's module root), strips the module as a whole word when looking
+  for leftovers, and needs a usable layout.env; TD-23 closed
+- [x] P4.9 — dbaaa39 — done — protected paths and CODEOWNERS name the harness's 8 workflows,
+  `actions/setup`, CODEOWNERS and the PR template; product workflows stay owner-reviewed; ADR 0035, TD-24
+  paid, TD-95..97
+- [x] P4.10 — 84399b7 — done — required CI job `adoption-probe` replays README (b) on a protected root-`go.mod`
+  skeleton; rule `harness-adoption-probe`; ADR 0038 (proposed); TD-99..101
+- [x] P4.11 — 0e03d34 — done — two earned rules with fixtures: `harness-rule-lists-match`,
+  `harness-reads-layout`; TD-103
+- [x] P4.12 — 8445e4d — done — `evasion-reviewer` agent for sensor slices; ADR 0019 amended, TD-107..110;
+  the diff-only re-review and §5c wiring are hand-off proposals
+- [ ] P4.13 — H — `make stacks` lists `harness-*` compose projects whose working dir is no live git worktree;
+  `make stacks-prune` removes them; `make setup` prints the count
+- [x] P5.1 — 9f6771d — done — `specs-scenarios-tested` (ADR 0036 proposed); TD-111..113
+- [x] P5.2 — cfce60f — done — `UPSTREAM_SPECS`/`CONTRACT_CONSUMERS` in `layout.env`; weekly `upstream-drift`
+  report; consumers named on a break; `harness spec-refs`; ADR 0037 (proposed); TD-115..118
+- [x] P5.3 — 0117216 — done — PR template `## Assumptions`; code-reviewer check 6 (advisory); TD-119
+- [x] P5.4 — 5b7ee88 — done — trial kept the `test-writer` agent (spec-only, unit tests, cost cap);
+  `only-test-files` hook and `harness test-file`; code-reviewer check 7; ADR 0039 (proposed); TD-123..126
 
 ### Phase 0 — quick wins
 
@@ -414,8 +465,8 @@ the feedback.
 - **P3.3 — scheduled reviews.** Weekly security, data-handling and modularity reviews (Böckeler's three).
   Each is a skill in `.claude/skills/` and appends a section to the drift issue.
 - **P3.4 — `agent-gc`.** Turn on the stub in `drift.yml` once P3.1 is accepted. It opens small fix-up PRs for
-  findings of the computational doc checks (Q3, broken links, stale QUALITY rows) and never touches protected
-  paths.
+  findings of the computational doc checks (Q3, broken links; stale QUALITY rows only once a grading agent
+  exists, ADR 0028) and never touches protected paths.
 - **P3.5 — quality grades.** `docs/QUALITY.md` grades per domain *and* layer, each row with an `Updated:`
   date. The drift run flags rows older than 30 days or rows for deleted domains. `new-domain.sh` already
   writes the row marker (`harness:quality-rows`).
@@ -457,7 +508,7 @@ code: `deadcode` and knip do that without false positives from entry points they
   - TS: ESLint `max-lines`, `max-lines-per-function`, `complexity`, `max-params`.
   - Generated code is excluded.
 - **P4.3 — template sync.** `.harness-version` records the upstream commit a product was cut from.
-  `make harness-sync-check` diffs the protected paths against that upstream tag and lists what changed. It
+  `make harness-sync-check` diffs the protected paths against that upstream commit and lists what changed. It
   never applies anything. The weekly drift run reports when a product falls behind.
 - **P4.4 — rippable harness.** `run.sh` adds the finding count per rule to `timings.jsonl`. The drift issue
   lists rules that never fired in 90 days. A human decides to keep or retire each one; this rule is never
@@ -503,6 +554,105 @@ give it a sensor. Each touches protected paths.
   `HARNESS_STACK=go make setup check harness-selftest`. This is the sensor for README §(b); without it the
   procedure drifts again.
   - Acceptance: green on the template; red when the fixture's `layout.env` still points at `apps/api`.
+
+Review feedback loop. P4.11 and P4.12 come from the harness assessment of this loop (Log, 2026-10-29): the
+same classes of mistake were caught by reviewers again and again, and three of three sensor evasions were
+found only after integration.
+
+- **P4.11 — earned rules.** Every reviewer finding class this plan caught at least twice (lane reviews, phase
+  gates, the peer evasion review) becomes a rule in rules.md with `Status: earned (<finding 1>, <finding 2>)`
+  (ADR 0019), a sensor, a remediation and a fixture. Candidates, each kept only if the Log or a review shows
+  two findings:
+  - `harness-reads-layout`: no `apps/api/tools/harness/*.go` other than `layout.go` (and the tool's own
+    module constants) holds a template layout literal (`apps/api`, `internal/`, `db/migrations`); a Go test
+    in `tools/harness` scans its own sources (P4.6 review, Phase 3 gate on `qualityrows.go`).
+  - `docs-make-targets-exist`: every `make <target>` named in AGENTS.md, CLAUDE.md, the guides and the skills
+    is a target `make help` lists.
+  - `harness-rule-lists-match`: hand-copied rule lists (the skip lists in `.claude/skills/review-*/SKILL.md`,
+    `.claude/agents/reuse-reviewer.md`) name only rule ids rules.md defines and every rule of the sections
+    they claim to skip (TD-94). The slice may edit those named skill and agent files;
+    `.claude/hooks/fast-check.sh` stays a human PR (TD-66).
+  - `harness-sensor-deps-pinned`: a version change of a sensor devDependency (jscpd, eslint,
+    dependency-cruiser, knip, Stryker) is a `config` change in `integrity-check` (TD-91, ADR 0027).
+  - A near-miss fixture (must pass) for each sensor of this plan that had a substring or path bug
+    (`orphans` TD-75/TD-78, `check-links`, `quality-rows`), so the fix cannot regress into a false positive.
+  - Candidates with one finding only stay in the tracker; the Log names them.
+  - Acceptance: each new rule's fixture fails with its remediation; `make check`, `harness-selftest` and
+    `rules-fixture-claims` are green; each rule's `Status:` links two findings.
+- **P4.12 — evasion review.** A read-only `.claude/agents/evasion-reviewer.md` (tools Read, Grep, Glob and
+  `.bin/harness`/`make` sensor runs in a scratch copy) tries to make a new or changed sensor pass on bad
+  input: substrings, comments, symlinks, build tags, empty listings, wrong roots, untracked files. It
+  reproduces each bypass against the real sensor and reports `file:line — bypass — repro — fix`, as the peer
+  review of 3edf728 did (TD-75..TD-78). It runs for any slice that adds a rule id or changes
+  `scripts/harness/**` or `apps/api/tools/harness/**`, next to code-reviewer. After a retry, code-reviewer
+  runs once more on the retry diff only: each finding fixed, nothing new broken. A slice never edits this plan
+  or [the loop prompt](0003-loop-prompt.md), so the slice's Decisions carry the exact text for the loop
+  prompt's §5c and for the CLAUDE.md "before calling a change done" line; a human applies both (hand-off).
+  - Acceptance: run on 3edf728's diff, the agent reproduces at least three of the eleven bypasses filed as
+    TD-75..TD-78; the proposed §5c and CLAUDE.md text is in the hand-off.
+
+- **P4.13 — leftover stacks (G17).** `scripts/setup-worktree.sh` names each worktree's compose project
+  `harness-<slug>-<hash>`, and compose labels its containers and volumes with
+  `com.docker.compose.project.working_dir`. Lanes, aborted sessions and scratch copies leave these running.
+  - `make stacks` lists every `harness-*` project, running or stopped, with its volumes, whose working dir is
+    missing or not in `git worktree list`. Read-only, exit 0; without a reachable Docker daemon it prints a
+    notice and exits 0.
+  - `make stacks-prune` runs `docker compose -p <project> down -v` for the listed projects only: never a live
+    worktree's stack, never a project without the `harness-` prefix (an adopter's own stacks). The loop
+    prompt's §5g calls it after `git worktree remove` instead of the hand-typed `down -v` (hand-off, since a
+    slice never edits the loop prompt).
+  - `make setup` prints "N leftover harness stacks, see make stacks" when N > 0. No sensor verdict: the
+    answer depends on Docker state, not the tree, so it cannot meet NFR-R1, and CI has no local stacks to
+    see.
+  - Acceptance: a bats test with a fake `docker` on `PATH` lists and prunes a project whose worktree was
+    removed and leaves a live worktree's project and a non-`harness-` project alone; run on 2026-10-29's
+    machine state it would have listed `harness-go-only-r2`.
+
+### Phase 5 — spec-to-test and cross-repo feedback
+
+From Nandyala and Pani, [Engineering the harness](https://www.thoughtworks.com/insights/blog/architecture/engineering-the-harness-a-practical-pattern-for-reliable-coding-agents) (Thoughtworks, 2026-09-29), compared with this
+repo on 2026-10-29. Most of its practices are already here: scoped guides, read-only reviewers,
+silent-success sensors (`scripts/harness/run.sh`), prose promoted to rules, earned and pruned rules (G10), and
+gates for contract, migration and harness changes. Four are not.
+
+- **P5.1 — scenarios traced to tests (G13).** spec-kit writes acceptance scenarios as numbered
+  `Given/When/Then` items under each user story (`.specify/templates/spec-template.md:34-65`). Rule
+  `specs-scenarios-tested`:
+  - A scenario's id is `<NNN>/US<story>-AS<n>`, derived from its position; nothing is written into the spec
+    (A17).
+  - Each id appears in a Go or TS test (test name or a `// spec: 001/US1-AS2` comment), or the scenario
+    ends with `(untested: <reason>)` in the spec.
+  - The sensor is in `.bin/harness`, runs in `check-all` and in `check` when `specs/` or a test file changes,
+    and lists each untested id with its scenario text. A red run sends the agent back to the test step on its
+    own, as the article's REVIEW → RED loop does. Whether a test that names an id really checks its scenario
+    is code-reviewer's call (advisory, ADR 0019).
+  - Acceptance: a fixture spec with one untested scenario fails with the remediation; the template's own
+    specs pass or carry exemptions; `rules-fixture-claims` is green.
+- **P5.2 — cross-repo contract impact (G14).** The template is one repo, so this lands as layout keys an
+  adopter fills in; 7ed-emergencies is the first.
+  - `layout.env` gets `UPSTREAM_SPECS` (each vendored upstream spec with its source and pinned revision) and
+    `CONTRACT_CONSUMERS` (repos that vendor this repo's contract). Both may be empty.
+  - Weekly in drift.yml (network, so never in `check`, NFR-R1): fetch each upstream spec at its source's
+    head and run `oasdiff breaking` against the vendored copy; findings go to the drift issue (A18).
+  - `api-no-breaking-change`'s remediation lists `CONTRACT_CONSUMERS`, so contract-gate's label stands for a
+    confirmed multi-repo change, the article's confirmation gate.
+  - Acceptance: a fixture with a vendored spec behind a breaking upstream change reports it; on
+    7ed-emergencies' upstream specs the run is quiet or names real drift.
+- **P5.3 — recorded defaults (G15).** The PR template gets an "Assumptions" section: each default chosen
+  without asking, and where it sits in the diff. code-reviewer reports guessed values (timeouts, limits,
+  names, fallbacks) that the diff adds and the section does not list. Advisory only: parsing cannot tell a
+  guess from a decision.
+  - Acceptance: run on a past PR diff, the reviewer names at least one unlisted default; the template change
+    ships in a human-approved harness PR (P4.9 lists the PR template).
+- **P5.4 — tests apart from the implementation (G16), as a trial.** A `test-writer` subagent that may write
+  only test files gets the spec and the task, not the implementation, and writes the failing tests first
+  (`/speckit-implement`'s test tasks). The implementer may not weaken them; code-reviewer flags assertions
+  removed or loosened after the test commit.
+  - Earned, not assumed: build two features this way and compare their mutation scores (P2.6) and review
+    findings with two built the usual way. Keep it only if the trial shows fewer surviving mutants or fewer
+    missed scenarios; record the result either way in the Log.
+  - Acceptance: trial result and decision recorded; if kept, an ADR and the agent file in a human `.claude`
+    PR.
 
 ## Open assumptions
 
@@ -640,6 +790,25 @@ give it a sensor. Each touches protected paths.
   - **Proposed, not made** (protected): depguard rule `go-otel-sdk-only-in-telemetry` (otel SDK, exporters
     and bridges only in `internal/platform/telemetry`, otelpgx only in `internal/platform/db`, tests exempt),
     with a fixture and a rules.md entry.
+
+- **A17 — scenario ids.** Positional ids (`US1-AS2`) are assumed stable enough, since merged specs rarely
+  renumber. If P5.1 shows churn, write ids into the spec instead, which changes spec-kit's template and so
+  needs a `.specify` harness PR.
+- **A18 — upstream access.** The weekly drift run is assumed able to read an adopter's upstream specs. If
+  their source repos need credentials, use a read-only repo secret, or run the check locally via `make` and
+  paste its result into the drift issue.
+- **A19 — stack profile choices (P4.7).**
+  - `STACK` lives in `scripts/harness/layout.env`, `HARNESS_STACK` overrides it for one run; a missing
+    `STACK` means `go:db:web` so readers of older layout.env copies keep working, an invalid value fails
+    closed. Leaving out a group whose git-known files exist is red (`harness-layout-valid`).
+  - A tool a stack without web still needs goes to `.bin` (spectral, squawk, bats); web-only tools stay
+    in the lockfile (ADR 0023 and 0027 narrowed accordingly). spectral bundles a Node runtime no scanner
+    reads (TD-86). Linux release digests match GitHub's but were installed only on macOS; CI's first
+    `make setup` is the proof.
+  - The acceptance copy also needed links pruned that the plan did not name: AGENTS.md's links to
+    `apps/api/db/`, `apps/web/` and orval, and `docs/references/orval-llms.txt`. Only `setup check
+    harness-selftest` were run on it, not `check-all`.
+  - NFR-B1/B2 (Postgres and browser budgets) do not apply without db or web (nfr.md notes).
 
 ## Log
 
@@ -919,3 +1088,427 @@ give it a sensor. Each touches protected paths.
   `.bin/claude` was never executed: human TODO after the secret is set, one workflow_dispatch drift run on the
   default branch (TD-38, ci.md "Turning it on"). Sensor candidates: `agent-skip-list-ids-exist`,
   `ci-no-marketplace-agent-runtime`, `ci-agent-job-least-privilege`.
+- 2026-10-29: P2.3 integrated (afdfeee, rebased from the lane onto 49dba05; one conflict, the tracker's
+  TD-36/TD-37/TD-38 rows: HEAD's TD-38 kept, the lane's TD-37 with e2e taken, TD-36 dropped). `make e2e`
+  drives one journey with pinned Playwright (headless Chromium from `.bin/playwright`) against this worktree's
+  `make dev`, in check-all and CI; skill `drive-app`; rule `web-e2e-journeys` (Fixture: none); budget row
+  `e2e 30000` (NFR-H7, no value raised). TD-36 closed as obsolete: no second boot copy was written. TD-42
+  (Playwright provenance per bump). Reviews: architecture 7 and code 15 findings, 13 fixed in one retry;
+  rejected: root AGENTS.md/CLAUDE.md rows (protected, Noticed) and a playwright-config fixture (the config is
+  a protected path, not a rule). Noticed: AGENTS.md/CLAUDE.md rows for `make e2e` and `drive-app`; bats suite
+  ~80 s. Lane `check` green, `harness-selftest` 47/47, `lint-ci` green, `check-all` red only on
+  harness-integrity and specs, `test-integration`, `test-obs` and `e2e` green. CI not run (actionlint only).
+- 2026-10-29: P4.2 integrated (f49fc8d, rebased from the lane onto 075dcfb with no conflict). Size and
+  complexity limits per ADR 0024: Go `funlen`, `gocognit`, revive `argument-limit` and `file-length-limit`;
+  TS `max-lines-per-function`, `complexity`, `max-params`, `max-lines`; tests and Playwright journeys exempt
+  from the per-function limits, not from file length; thresholds just above the worst non-test value at
+  1b7aa0f, re-verified at 0bd8958. Rules `code-function-length`, `code-complexity`, `code-parameters`,
+  `code-file-length`, one Go and one web fixture each. `run.sh` maps lint finding lines to their rule
+  (`finding_pattern`, `web-lint` the ESLint catch-all; `go-sec`, `go-structured-logging`, `go-format` mapped
+  too); `run.bats` table-driven, 13 cases. Review: code 8 findings, 6 fixed in one retry; fast-check.sh
+  SIZE_RULES Noticed (protected `.claude/**`), one informational. Noticed: integrity counts every new fixture
+  line as a loosened config line; check-all's second recipe line skipped after a first-line red (TD-37); bats
+  ~85-90 s (NFR-H5). Lane `check` green, `harness-selftest` 55/55, `check-all` red only on harness-integrity
+  (specs green since PR #4 merged), `test-integration`, `test-obs` and `e2e` green.
+- 2026-10-29: Phase 2 gate. Reviews of the Phase 2 commits at 0bd8958: architecture 14 findings plus 4 sensor
+  candidates, code 10. Fixed in fad6b28: ADR 0025 (browser e2e is the NFR-B2 sensor) and rules.md cites it;
+  the browser installs only where e2e runs (`make e2e`, `make e2e-deps`, the setup action's `browser` input);
+  `make mutation-scores` puts the weekly score table in the drift issue (ADR 0023 amended); `make
+  test-scaffold` checks the generator probe's tests ran and passed, none skipped; coverage.yml no longer
+  continues on error (ADR 0020 amended); `new-domain.sh` prints an undo hint scoped to its own files; the e2e
+  test parses `/health` with the generated schema; TD-41 absorbs TD-36, TD-43..TD-49 record the deferred
+  findings (scaffold approval tests, workspace report contract, loosened weekly, layout paths, protected
+  config in apps/web, testkit, gremlins everywhere), TD-31 extended. Rejected: CI evidence for NFR-B1/B2 (the
+  loop may not push; local evidence below, one `ci.yml` run is a human TODO that also updates nfr.md's Today
+  cells, still **fail**); an e2e selftest fixture (`harness-selftest` runs inside `make check`'s budget and
+  cannot boot `make dev` plus a browser; TD-42 keeps it); check-all's two recipe lines (already TD-37); a
+  budget-row nit and one informational finding. Noticed (protected): the drive-app skill (lines 21-23) and
+  the new-domain skill (line 29) predate `make e2e` and the scoped undo hint; AGENTS.md and CLAUDE.md should
+  name `make e2e`, `e2e-deps`, `test-scaffold` and `mutation-scores`; drift.yml's header line 3; the
+  code-reviewer's only-make-check hook blocks `git show`/`diff --cached`, so reviews read files only. Sensor
+  candidates: `rule-status-cites-adopting-adr`, `workspace-report-scripts`, `report-config-no-threshold`,
+  `probe-tests-not-skipped`, `scaffold-templates-render`, an undo-hint/probe-cleanup consistency check.
+  Gate lane: `check` green, `harness-selftest` 55/55, `lint-ci` green, `check-all` red only on
+  harness-integrity, `test-integration`, `test-obs` and `e2e` green; main after integration: `check` green,
+  `harness-selftest` 55/55. Exit criterion: met locally. NFR-B1: `make new-domain NAME=zzz_probe`, `make
+  check` and `make test-scaffold NAME=zzz_probe` green, and the printed undo hint left the tree clean; NFR-B2:
+  `make e2e` green; coverage per package: `make coverage` printed 15 rows (Go packages and JS workspaces);
+  mutation: `make mutation` then `make mutation-scores` (the table drift.yml puts in the issue) printed apps/api 61.5 % (91 mutants) and apps/web 20.0 % (15), the two packages without tests named. CI confirmation of NFR-B1/B2 waits for the human run above; Phase 2 implemented.
+- 2026-10-29: P3.4 done (14d7317). `scripts/harness/agent-gc.sh` (findings, targets, prompt, lock, baseline,
+  added-line leak screen, confinement, patch, apply, body); agent job without token or cache save (setup action
+  input `save-caches`), PR job in environment `agent-gc` with the token's own commit identity; `ci-agent.sh`
+  shares `agent_structured`, `agent_nonce`, `agent_cap`; agent-gc.bats 27 cases, including the sensor
+  candidates `ci-agent-writable-job-no-cache-save` and `ci-write-token-environment-scoped` as checks. Review:
+  architecture CHANGES (repo-secret write token → environment secret on the default branch, non-admin
+  identity; confinement over every post-agent path; post-agent code run from a writable tree; eight low),
+  code CHANGES (15: body from edited paths only, prompt policy, tests, shared helpers, base branch); all fixed
+  in one retry. Rebase onto 51523e8: setup action conflict with ADR 0025's `browser` input (the Playwright
+  cache needs both `browser` and `save-caches`), TD-43 renumbered TD-50 (G2 took TD-43..49). Noticed: whether
+  Claude Code's Edit works on a writable file in a read-only directory and whether `claude -p` writes to its
+  cwd are unverified until TD-50's dummy-key run; auto-delete of head branches covers merged PRs only (ci.md
+  says whoever closes one deletes it); agent-gc's findings source is `docs-links-resolve` only, so P3.5's
+  staleness check must join `RULES` and the prompt. Lane `check` green, `harness-selftest` 55/55, `lint-ci`
+  green, `check-all` red only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
+- 2026-10-29: P4.3 done (a91b86d). `.harness-version` (template commit, `# declined` lines; protected),
+  `HARNESS_UPSTREAM` in `tool-versions.env` (empty = this repo is the template, the check notes it and exits
+  0; `make rename` writes it, `TestRenameSetsUpstream`), `scripts/harness/sync-check.sh` (throwaway bare
+  fetch, marker/tip/working-tree three-way, exit 2 with a remediation when upstream or marker is unusable),
+  drift.yml step, rule `harness-upstream-in-sync` with fixture `harness-behind-upstream`, sync-check.bats 17
+  cases, ADR 0026. Review: architecture and code CHANGES, fixed in one retry; architecture's "URL in
+  `.harness-version`" rejected per §4 (the URL stays in `tool-versions.env`, recorded in the ADR). Rebase onto
+  3822912: ADR index, ci.md drift row and tracker (TD-45 → TD-51) conflicts. The plan's "upstream tag" and the
+  loop prompt's "defaulting to `origin`" corrected to what shipped. Noticed: the sync fetch runs under the
+  default 5000 ms step budget (2.9 s measured); `harness-version-well-formed` is a sensor candidate; the
+  protected-path globs are now parsed in seven places (TD-39). Lane `check` green, `harness-selftest` 56/56,
+  `lint-ci` green, `check-all` red only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
+- 2026-10-29: P3.7 done (8e4f77b). `dupl` in `apps/api/.golangci.yml` (26; 25 trips `platform/problem`'s test),
+  `run.sh` maps `(dupl)` to the rule; `make clones-web` runs jscpd with the protected `scripts/harness/jscpd.json`
+  by `--config` (a stray `.jscpd.json`, `.config/jscpd.json` or `package.json` key is never loaded; fixture
+  `web-clone-stray-config`), import and re-export statements ignored (two identical import lines already reach
+  16 tokens); `jscpd:ignore` is a never-allowed marker in the integrity check; the `nolint:dupl` with
+  `reason: … (rule: repo-no-clones)` is the Go exception, jscpd has none. Deviation from the plan's "in
+  `check-all`": `dupl` runs in `make check`, since it rides lint-go at no measurable cost (warm golangci with and
+  without dupl within noise, 0.7–1.1 s); TS clones surface only at `check-all` (ADR 0027). Cheap fixes before
+  measuring: the scaffold's handler-test assertion into one `t.Helper` (dupl with a probe domain 41 → 26), the
+  web providers into `AppProviders` plus `renderWithProviders` (jscpd 22 → 16), so the planned threshold
+  tech-debt row was dropped. Review: architecture CHANGES (8: ADR, cheap fixes, cross-domain placement policy,
+  npm native-binary supply chain, scan roots, wording), code CHANGES (9: thresholds were a baseline,
+  remediation, jscpd escape hatches, fixture sizing, path stripping); all fixed in one retry. **Ground-rule
+  breach:** the lane agent's first run used `HARNESS_CHANGE_APPROVED=1 make check-all`; that run was discarded
+  as evidence, the agent was told never to set an approval override, and the retry's runs were plain. Rebase
+  onto 9579f99: ADR index and tracker conflicts (TD-44/45 → TD-52, TD-45 dropped). Noticed: AGENTS.md's
+  `check-all` row should name clones (protected); `fast-check.sh` does not run `repo-no-clones`, as for the size
+  rules; the next Go ratchet step is a table-driven `problem_test.go` (then 23, `logging_test.go`);
+  `new-domain.sh`'s undo hint (`git checkout -- . && git clean -fd …`) would wipe uncommitted work when run in a
+  dirty tree. Post-commit security review: jscpd's import `ignorePattern` can span newlines and `format` lacks
+  `jsx`, so a shaped TS clone can evade the sensor (TD-53). Lane `check` green, `harness-selftest` 59/59, `lint-ci`, `knip` and `clones-web` green,
+  `check-all` red only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
+- 2026-10-29: P3.5 done (5be0ad6). `.bin/harness quality-rows` with one table parser and two modes: `-no-clock`
+  (`make docs-quality-shape`, rules `docs-quality-rows-well-formed` and `docs-quality-rows-match-domains`) and the
+  clock mode (`make docs-quality`, `docs-quality-row-fresh`, age only, UTC, 30 days). Deviation from the plan's
+  "the drift run flags rows older than 30 days or rows for deleted domains": the deterministic half (shape,
+  deleted and missing domains) gates `check-all` and the required generator-probe; only the age check is
+  drift-only, because a clock-dependent sensor in a required job breaks NFR-R1 and only the domain's reviewer can
+  re-grade a row (ADR 0028). This reverses the P3.4 Log note that P3.5's staleness check must join agent-gc's
+  `RULES`: agent-gc does not fix QUALITY rows until a grading agent exists (P3.4 bullet amended). `new-domain.sh`
+  writes today into the scaffolded row; `TestQualityRowTemplateMatchesHeader` renders the real template under
+  the real header. Fixtures `docs-quality-row-malformed`, `-missing`, `-orphan` (shape) and `-stale` (age).
+  Review: architecture CHANGES (9, plus a template-parser test and a deterministic half), code CHANGES (13); the
+  blocker was the clock sensor in the generator-probe; all fixed in one retry. Rebase onto 6a6a435: Makefile
+  `check-all` list (clones-web and docs-quality-shape both kept), ADR index, tracker, ci.md drift row and
+  drift.yml (header and Sweep targets: harness-sync-check and docs-quality both kept; two markers there were
+  missed at first and caught by `lint-ci`, then rechecked).
+  Noticed: `.claude/agents/code-reviewer.md:33` should ask for a grade per layer (protected); harness-integrity
+  scans untracked binaries built in the tree; `harness-tests` 6.3 s over its 5 s budget after the new tests and
+  bats over budget already (budgets untouched); agent-gc's "drop the link" fix would leave a bare domain name,
+  which the shape check accepts. Post-commit security review: the marker is matched as a substring and the age
+  check skips unparsable rows (TD-54). Lane `check` green, `harness-selftest` 63/63, `lint-ci`, `docs-quality-shape`,
+  `docs-quality` and `clones-web` green, `check-all` red only on harness-integrity, `test-integration`,
+  `test-obs` and `e2e` green.
+- 2026-10-29: P4.5 done (d518888). Four references taken at the pinned tags (sqlc v1.31.1, oapi-codegen v2.8.1,
+  Atlas v1.3.0, orval 8.45.0), each with `Version:`, `Pin: <file> <key>`, `Source:` and `License:` headers;
+  `.bin/harness references-pinned` checks the header only (pin file git-known and inside the repo, exact
+  version, Source names it as a path segment or tag). Deviations from the plan: the Progress line said "–"
+  (no harness change), but the sensor touches the Makefile, `apps/api/tools/harness/`, fixtures, rules.md,
+  protected-paths.txt, CODEOWNERS and AGENTS.md, so the PR is H; and "Drift fails when `tool-versions.env`
+  moves" became `make check`, offline and under 1 s, so the PR that raises a pin fails instead of a weekly
+  report (ADR 0029). `docs/references/*` is a guide path (CODEOWNERS review) so template sync reports it with
+  the pin. Review: architecture CHANGES (12: plan/ADR wording, licences, supply chain, protection, pin file
+  could name an ignored `.env` and print a secret, substring Source match, inline config copies), code
+  CHANGES (9: same pin-file and Source issues, finding order, package.json ranges, sqlc "404 in the service"
+  contradicting the layer rule); all fixed in one retry. TD-60 (orval `runtimeValidation` dead with
+  react-query, verified in orval's source at the tag), TD-61 (the strict server checks no schema
+  constraint, against golden principle 2), TD-62 (upstream commit next to the tag). TD-63 from the post-commit security review: a tracked
+  symlink as pin file is read through and the finding echoes the pinned value. Accepted as is: an
+  untracked, not-ignored pin file passes (git-known, as everywhere in the harness). **Ground-rule breach:**
+  in its first run the lane agent removed `.tmp/p4-5-refs` with `python3 -I -c shutil.rmtree` after
+  guard-bash refused `rm -r`; told never to work around a guard, the retry did not. Rebase onto 1ebd557:
+  Makefile docs targets, harness `main.go` usage and dispatch, ADR index, tracker and rules.md. Noticed:
+  `harness-tests` and bats over their NFR-H5 budgets (the references tests take 0.7 s). Lane `check` green,
+  `harness-selftest` 64/64, `lint-ci`, `references-pinned` and `docs-quality-shape` green, `check-all` red
+  only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
+- 2026-10-29: P3.6 done (3edf728). `harness orphans <root>` flags a file under `scripts/` that no Makefile
+  target, workflow, hook, skill, agent, guide or named script names, and a make target neither in `make help`
+  (`name: ## …`) nor called. Paths match whole only (a `/` before one only after `.`, `..` or a variable);
+  only the runner directories `scripts/test` and `scripts/git-hooks`, named in code, cover their files;
+  executable referencers lose their comments, guides count whole. Runs in `check-all`, not `check`: mid-change
+  a new script is an orphan until its caller lands (ADR 0031). Deviations from the plan: the help marker is
+  `##` (not `## `), so the existing `check-all: check ##Everything` was fixed to `## Everything`; `deadcode-go`
+  also scans tools/harness, and tools/analyzers stays out because deadcode cannot see golangci-lint's
+  module-plugin entry points (TD-70). Review: code CHANGES (2 medium: a path matched under any directory, e.g.
+  `apps/scripts/x.sh` or a URL, and any mention of a `scripts/` directory kept all its files alive; 10 low:
+  help-line and target-specific-variable parsing, comments as callers, rules.md exclusions, ADR rationale,
+  helper split, tests); all fixed in one retry. Rebase onto 6853cdd: harness `main.go` usage (orphans next to
+  references-pinned), ADR index and tracker. Noticed: an earlier P3.6 `check-all` run listed P4.6 files under
+  harness-integrity; my recheck did not reproduce it (watch for cross-worktree reads in integritycheck).
+  bats and `harness-tests` over their NFR-H5 budgets (TestOrphans 0.2 s). Lane `check` green,
+  `harness-selftest` 67/67, fixtures, `orphans`, `deadcode-go`, `fixture-claims` and `references-pinned`
+  green, `check-all` red only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
+- 2026-10-29: P4.6 done (449d561). `scripts/harness/layout.env` is data, never sourced: `layout.sh` parses
+  and validates it (`--print` emits only the known keys), `layout.go` reads it for `.bin/harness`, the
+  domainiso analyzer reads `LAYER_GLOB`; the setup action exports it to `$GITHUB_ENV`, migration-gate runs
+  on every PR and gates only when `MIGRATIONS_DIR` changed. Acceptance grep 342 → 259 lines, the rest in the
+  allowed classes. Deviations from the plan: `API_CLIENT_DIR` added (orval runs there); item "domainiso
+  reports when `LAYER_GLOB` matches no package" taken literally turned the template red, so `layout-check`
+  reports the empty glob and domainiso skips `platform` and fails flat packages (ADR 0030);
+  `fast-check.sh` is under `.claude/**`, so it stays on the template layout until a human PR sources
+  `layout.sh` (TD-66); the new-domain generator also encodes import paths and `routes.go` wiring and
+  stays out (TD-67); golangci's analysis cache does not key on `LAYER_GLOB` (TD-65). TD-26 closed, TD-20,
+  TD-25 and TD-46 narrowed. Review: architecture CHANGES (12) and code CHANGES (16), fixed in one retry.
+  Rebase onto 5121d5d: Makefile `check` (layout-check next to references-pinned), `deadcode-go` (P3.6's
+  recipe on `$(API_DIR)`), `.PHONY`, harness `main.go` (orphans and references-pinned moved into the new
+  `rootSensors` map, quality-rows kept apart), ADR index, ci.md and tracker. Lane `check` green,
+  `harness-selftest` 69/69, `orphans`, `deadcode-go`, `references-pinned` and `lint-ci` green, `check-all` red
+  only on harness-integrity, `test-integration`, `test-obs` and `e2e` green.
+- 2026-10-29: P3.8 done (ddd125f). `reuse-reviewer` reviews the diff only (`review-modularity` covers the
+  tree), skips what `dupl`/`jscpd` (within one Go package; across packages is in scope, TD-52), deadcode,
+  knip, orphans and the layer linters catch, generated code, fixtures and the new-domain scaffold, and
+  reports only with an existing repo `path:line` or `<module>@<version> <pkg>.<Symbol>` the new code may use
+  under the layer rule. It names globs and directories, never one script or target, so it keeps no
+  orphan alive. Advisory (ADR 0019): no rule, fixture or budget row. Review: code CHANGES (10: location
+  format, class granularity, clone scope, scaffold skip, `make help` wording, search list, injection
+  defence, rule ids, unverifiable pinned API, CLAUDE.md trigger); all fixed in one retry. Noticed: the
+  loop prompt's §5c does not call reuse-reviewer yet (protected, human hand-off); protect-harness takes
+  its root from the session's project dir, so lane worktrees are unguarded (as guard-bash). Lane `check`
+  green, `harness-selftest` 67/67, `orphans` and `docs-links` green, `check-all` red only on
+  harness-integrity.
+- 2026-10-29: P4.11 and P4.12 added at the user's request, from recommendations 3 and 4 of the harness
+  assessment of this loop: reviewer catches seen twice become earned rules (ADR 0019), and sensor slices get
+  an evasion review plus a diff-only re-review after a retry. Both are H; P4.12's loop prompt and CLAUDE.md
+  wiring is a human step. Recommendations 1, 2 and 5 stay in the hand-off.
+- 2026-10-29: Phase 3 gate. `check-all` red only on harness-integrity, `harness-selftest` 69/69. Reviews of
+  the Phase 3 commits (eb61f5e, 1b33d8e, f5b5d27, 14d7317, 5be0ad6, 3edf728, 8e4f77b, ddd125f): architecture
+  9 findings, code 6. Fixed in d8a6ff9: docs-quality reads the domains' directory from layout.env and fails
+  closed; pr-review.bats checks every `.bin/claude -p` call for a cap and pr-review.yml caps the agent below
+  the job timeout; agent-gc's guide filter; clones-web exit codes; ADRs 0015, 0019, 0028, 0030, rules.md,
+  ci.md, QUALITY.md; TD-91..TD-94 record the rest (sensor devDependencies, review output `class` field,
+  orphans' `make help` regex copy, hand-copied skip lists in protected agents). The fix's own review
+  (APPROVE) left four low findings, deferred: the cap sweep misses `*.yaml`, composite actions and other call
+  forms; the cap-below-timeout check covers pr-review.yml only, not drift.yml's jobs; exit 137 may be the OOM
+  killer rather than the cap (guard with `SECONDS`); applied: the precise layout assertion and `writeLines`
+  reuse. Exit criterion: met for the staleness check (`make docs-quality`), orphans, `deadcode-go` and
+  `clones-web` in `check-all`, dupl in `check`, and `reuse-reviewer` (CLAUDE.md names it); not demonstrable
+  here: a PR comment and scheduled-review/agent-gc issues, blocked on ADR 0019 acceptance, TD-38
+  (`ANTHROPIC_API_KEY`) and TD-50 (`AGENT_GC_TOKEN`), and pr-review skips harness-only PRs. Noticed:
+  `make check` was green while the pre-commit `go-format` sensor refused a one-line `layerDir` in
+  layout.go, so `lint-go`'s scope can miss a format finding the hook sees. Protected proposal (TD-94):
+  `.claude/agents/code-reviewer.md:33` should read "Suggest a grade (A–F, or – if not graded yet) for each
+  layer (`model`, `store`, `service`, `api`) of each touched domain per docs/QUALITY.md, for a human to
+  write into its row with a new `Updated` date; never edit docs/QUALITY.md yourself."
+- 2026-10-29: P4.8 done (70e8066). `checkRenameArgs` takes `^(host|bare)(/elem)*$` and refuses malformed
+  names, owners and modules with one error each; `moduleArg` maps `skip` to the template module, whose owner
+  leftovers other than the template's own URL are still reported; `stripModule` strips the module only as a
+  whole word, so a short module such as `harness` hides no leftover. Documented, not detected: a bare module
+  rewrites `http://`, `pkg.go.dev/` and `go install …@latest` forms of the template URL unreported. Not fixed:
+  a bare module named `aheumaier` would hide `git@github.com:aheumaier/…` leftovers. Review: code CHANGES (8:
+  TestRenameArgs proved nothing, skip guard, dotted one-element module, identity pair, short module,
+  malformed layout, two README lines), fixed in one retry with mutation evidence. Rebase onto ee79ecb clean.
+  Lane `check` green, `harness-selftest` 69/69, `check-all` red only on harness-integrity, `test-integration`,
+  `test-obs` and `e2e` green.
+- 2026-10-29: P4.4 done (bb790ee). `run.sh` writes each rule's finding count to `timings.jsonl`;
+  `scripts/harness/ci-timings.sh` (shared with `nfr-report.sh`) downloads ci.yml's timing artifacts within
+  their retention; `scripts/harness/rule-fires.sh` validates every row and merges them into a v2 ledger
+  deduplicated by artifact id. drift.yml's Baselines step fetches the last ledger (found / fresh / error);
+  a gh error or a failing merge keeps the last ledger as the baseline and uploads none. ADR 0032 amends ADR
+  0013; rules.md says rules also leave. Review: code and architecture CHANGES, fixed in one retry (shared
+  timing reader, ledger dedupe, error states, ADR relation). Rebase onto eb4b28c: rules.md and the tracker
+  conflicted, both sides kept. Lane `check` green, `harness-selftest` 69/69, `check-all` red only on
+  harness-integrity, `test-integration`, `test-obs` and `e2e` green. Noticed, not fixed: the Baselines step
+  needs `zip`/`unzip` on the runner; 13 failing drift weeks in a row let the ledger artifact expire, so the
+  90-day history restarts; a zero-byte ledger artifact is treated as absent, not recorded.
+- 2026-10-29: P4.4 security follow-up (0b9708e). An automated security review of the P4.4 commit: `ci-timings.sh`
+  unzipped fork-controllable artifacts whole in the drift job. It now extracts only `timings.jsonl` (`unzip -p`)
+  and drops artifacts of fork PR runs (head repository != repository); drift.yml's timings check uses
+  `find -type f`. Same-repository PR rows are still trusted by shape only (ADR 0032, ci.md).
+- 2026-10-29: P4.9 done (dbaaa39). The 8 workflows (the plan named 6; coverage.yml and pr-review.yml carry
+  the harness header too), `.github/actions/setup/*`, CODEOWNERS and the PR template are listed by name;
+  codeowners.bats keeps list, first-line header and per-file CODEOWNERS lines equal and every named file
+  tracked; TestIntegrityCheckRealListSparesProductWorkflows runs the real list. Review: code CHANGES (8)
+  and architecture CHANGES (7), both naming a HIGH: a product job named after a required check could stand
+  in for it without label or owner review (branch protection matches any Actions app). Fixed in one retry:
+  CODEOWNERS keeps `/.github/workflows/` and `/.github/actions/` owner-reviewed, ADR 0035 (amends ADR 0010),
+  TD-95 (required-check name collision sensor), TD-96 (label actor check), TD-97 (listed workflows use only
+  listed local actions); README step 3 no longer copies `.github/` whole; reuse finding (shared list parsing
+  in codeowners.bats) fixed. Rebase onto the P4.4 commits: ADR index conflicted, both rows kept. Lane
+  `check` green, `harness-selftest` 69/69, `check-all` red only on harness-integrity, `test-integration`,
+  `test-obs` and `e2e` green. Hand-off: AGENTS.md golden principle 5 still says `.github/**`; proposed
+  wording "`.github/` workflows and actions named in `scripts/harness/protected-paths.txt`". Noticed: a
+  product workflow can use `pull_request_target` or broad `permissions:` gated only by owner review; input
+  for P4.12's evasion review.
+- 2026-10-29: Phase 5 (G13–G16) added from the Thoughtworks article "Engineering the harness" (Nandyala,
+  Pani, 2026-09-29). Compared practice by practice: scoped guides, least-privilege reviewers, silent-success
+  sensors, prose-to-rule promotion, earned and pruned rules and gates for contract, migration and harness
+  changes are already here; spec-to-test traceability, cross-repo contract impact, recorded defaults and
+  separate test authorship are not.
+- 2026-10-29: P4.7 done (bfec770). `STACK` (default `go:db:web`) selects what `check`, `check-all`, `gen`,
+  `tools`, `deps`, `setup` and `harness-selftest` run; spectral, squawk and bats are pinned releases in
+  `.bin`. Acceptance: in a copy without `apps/web`, `packages/` and `apps/api/db`, `HARNESS_STACK=go make
+  setup check harness-selftest` green (selftest 50 passed, 20 skipped). Review: code, architecture and
+  reuse together 19 items, all fixed in one retry, none rejected; among them an absent STACK failing
+  closed (now a default), a narrowed stack silently hiding a present group (now red, fixture
+  `harness-stack-hides-web`) and ADR 0033 reconciling ADRs 0016, 0023 and 0027. The retry found that
+  `make -n` is no dry run on this Makefile: recipe lines naming `$(MAKE)` still run, so the first
+  make-stack.bats ran Playwright and obs-e2e inside every `make check`; the test now sets
+  `MAKE='echo make'`. Rebase onto P4.4 and P4.9: ARCHITECTURE.md, the ADR index and the tracker
+  conflicted, both sides kept. Lane `check` green, `harness-selftest` 70/70, `check-all` red only on
+  harness-integrity, `test-integration`, `test-obs` and `e2e` green. Hand-off: `make -n check-all`,
+  `make -n e2e` and `make -n test-obs` still run obs-e2e and Playwright (the Makefile is protected);
+  the PR needs the `harness-change-approved` label.
+- 2026-10-29: P4.12 done (8445e4d). `.claude/agents/evasion-reviewer.md`: read-only, plants bypasses in a
+  throwaway `git worktree` with hooks off, cost cap 4 sensors × 30 attempts, 45 min; findings are
+  `evasion:<rule-id>:<class>` and advisory (ADR 0019 gains a Decision bullet; ADR 0034 stays unused).
+  Acceptance on 3edf728's diff with the pre-retry prompt: 9 of the 11 TD-75..78 bypasses reproduced; not
+  rerun on the final prompt. Review: code-reviewer CHANGES (1 high: TD-107 named the wrong scratch path;
+  6 medium, 8 low), reuse 6 items, 5 accepted, 1 rejected (TD-108 adds no code, so no SH_FILES idiom);
+  all fixed in one retry. A mktemp copy was dropped because guard-bash refuses `rm -r` outside the
+  project. Gaps TD-107..110. Lane `check` green, `harness-selftest` green, `check-all` red only on
+  harness-integrity. Hand-off: the agent's proposed loop-prompt §5c/§5d text (run it on sensor slices;
+  a retry gets a diff-only re-review), the slice-rule line and the CLAUDE.md review row; the PR needs
+  the `harness-change-approved` label.
+- 2026-10-29: G17 and P4.13 added. A load check found five `harness-*` Postgres stacks running, one from
+  another session's scratchpad copy (`harness-go-only-r2`, stopped by hand with 7ed-emergencies' leaked
+  `emergencies-ci`); teardown exists (`make down`, §5g) but only as prose.
+- 2026-10-29: P4.11 done (0e03d34). Earned (ADR 0019), each with fixtures:
+  `harness-rule-lists-match` (P3.8 lane review, TD-94 as opened in d8a6ff9; a `requiredSkips` manifest in
+  rulelists.go names the ids and section claims each rule list must keep, fails closed on a file with no
+  entry; goldmark code spans) and `harness-reads-layout` (TD-46 as opened in fad6b28, approvedcheck.go:99,
+  fixed 449d561; d8a6ff9's qualityrows.go `domainsDir`; a test reads paths via loadLayout, folds + chains
+  and Join arguments, whole path segments; rules.md lists what stays uncaught). Dropped candidates:
+  `harness-sensor-deps-pinned` (one finding, TD-91) and `docs-make-targets-exist` (no finding, TD-103).
+  Shared helpers `ruleHeadings` and `printFinding`. Review: code-reviewer CHANGES (1 high, 3 medium,
+  5 low), reuse 5 items, R1 and R5 accepted, R2 rejected (run.sh:86 is live: `finding_pattern` makes the
+  rule non-general) and R4 rejected (a make macro differs from the sibling targets); all fixed in one
+  retry. Rebased onto 749e76a (tracker rows only). Lane `check` and `harness-selftest` green, `check-all`
+  red only on harness-integrity, `test-obs` failed once under three-lane load and passed on rerun. Noticed: references.go:73 could use printFinding; protect-harness does
+  not fire in lane worktrees (hand-off).
+- 2026-10-30: P5.1 done (9f6771d). `harness specs-tested` traces each acceptance scenario to a test naming
+  `NNN/US<n>-AS<m>` or an `(untested: <reason>)` exemption; goldmark parse, fails closed on a spec without a
+  recognised story; web tests count except the API client and generated code; placeholder tests and reasons
+  rejected; `protectedPaths` extracted from integritycheck.go. Review: code-reviewer CHANGES with 2 blocking
+  (a spec with no story passed; `sc.Err` unchecked) plus medium and low items; reuse 6 items: R1 goldmark and
+  R2 protectedPaths accepted, R5 not applied (rename.go needs Perm), R3 rejected (TD-113, one gated make
+  macro), R4 rejected (P4.11's `printFinding` landed after; unify as a follow-up), R6 noted; all fixed in one
+  retry. Rebased onto ed1d5c7 (three one-line list conflicts: ARCHITECTURE.md, Makefile `check`, main.go).
+  Lane `check` green, `harness-selftest` 75/75, `check-all` red only on harness-integrity, int/obs/e2e green.
+- 2026-10-30: P5.3 done (0117216). PR template `## Assumptions` (`path — value — why this value`, or "none");
+  code-reviewer check 6 lists added defaults the section misses, matched by path and value, advisory only;
+  without the PR body one grouped line. Acceptance: run on 1b33d8e it named the unlisted defaults at
+  pr-review.yml:60-63 (REVIEW_MODEL, REVIEW_MAX_DIFF_BYTES 100000, REVIEW_MAX_TURNS 20, REVIEW_MAX_BUDGET_USD
+  1.00) and `timeout-minutes` 15 (:68) and 5 (:157); negative controls stayed quiet (MAX_COMMENT_BYTES 60000
+  has its comment, `5*time.Second` is in ADR 0021). Review: code-reviewer CHANGES (noise without the PR body,
+  "one option chosen from several" too broad, contract and migration names, moved values, line-number
+  matching, template/agent drift, TD-119 plan, agent-gc body); all 10 fixed in one retry. TD-119: CI review
+  gets no PR body (two harness PRs: `pr-review.sh prompt` input, then the workflow with an `edited` trigger).
+  Lane `check` green, `harness-selftest` 75/75, `check-all` red only on harness-integrity, int/obs/e2e green.
+  Proposal (AGENTS.md, protected): Working agreements also name the Assumptions section.
+- 2026-10-30: P5.2 done (cfce60f). `layout.env` gains `UPSTREAM_SPECS` (vendored path, source, spec path,
+  revision) and `CONTRACT_CONSUMERS`; layout-check validates entries offline against shared vectors
+  (`testdata/upstream-spec-vectors.txt`, 5 ok / 24 reject, also read by upstream-drift.bats).
+  `upstream-drift.sh` (file/https only) compares each copy with its source's head through oasdiff; drift.yml
+  runs it weekly as a report with a fence longer than any backtick run in the output; fixture
+  `api-upstream-breaking` proves a break is reported. contract-check names the repos the approval must cover.
+  `harness spec-refs` (yaml.v3, already in the tools module) replaces the `$ref` grep in both scripts.
+  Review: code-reviewer CHANGES (2 blocking security: issue-fence break-out in drift.yml, `$ref` grep bypass),
+  architecture 8 findings, reuse 7; one retry fixed 13 items plus a selftest collision (the new fixture left
+  `.tmp/upstream` behind for `harness-behind-upstream`). Decided: the revision stays in `layout.env` as the
+  plan says; ADR 0037 answers ADR 0026, calls the revision informational and the vendored copy unprotected
+  (TD-117 offers a deeper fetch or a per-copy `COMMIT` file). Kept `GIT_ALLOW_PROTOCOL=file:https`: git applies
+  `insteadOf` before the allowlist, so ssh-only users get an https credential helper instead. Not done: a shared
+  fetch script (TD-116), a shared oasdiff wrapper (TD-118, contract-check treats exit 102 as a break), an
+  exit-124 timeout test, other fixed fences in drift.yml. Lane `check` green, `harness-selftest` 75/75,
+  `check-all` red only on harness-integrity, int/obs/e2e green. Proposal: code-reviewer checks that the PR body
+  addresses each named consumer.
+- 2026-10-30: P5.4 done (5b7ee88). Trial: four small spec'd features, two built test-first (a subagent that saw
+  only spec, plan and tasks wrote tests committed red before a separate implementer ran), two the usual way.
+  Mutation scores tied once equivalent mutants are set aside; scenario tracing tied; a blind review found one
+  weakly checked case and three bugs the tests miss in the usual arm (one confirmed by a hand mutant), none in
+  the test-first arm. By the plan's rule: KEEP. Caveats in ADR 0039 (proposed, amends 0019): n=2 per arm, one
+  arm per feature, pure model functions only. Review: architecture CHANGES (11), code-reviewer CHANGES (16),
+  reuse 2; one retry fixed all 16: writes confined by `.claude/hooks/only-test-files.sh` through the new
+  `harness test-file` subcommand (same pattern as `specs-tested`, bats, budget row `only-test-files 50 NFR-H1`);
+  only-make-check.sh's message speaks to any agent; the agent writes unit tests for model/service and
+  packages/domain only, needs pinned names in plan.md, commits red with a `Test-Writer: specs/<NNN-slug>`
+  trailer. Decided defaults: cost cap 4 test files, 3 `make check` runs, 30 minutes. code-reviewer check 7
+  (advisory) lists assertions loosened since the first Test-Writer commit; skipped without a diff, so in CI
+  today (TD-125). Not done: CLAUDE.md and constitution wiring (TD-124, hand-off), the gremlins mutator gap
+  (TD-123), a re-measure on the first adopter (TD-126). Measured: the hook's median is 57 ms against its 50 ms
+  budget under three parallel lanes; nfr.md's NFR-H1 row does not list it; TD-107 is stale. Rule candidates
+  for a harness PR: `harness-hooks-tested`, `test-first-commit-untouched`. Lane `check` green, `harness-selftest`
+  76/76, `check-all` red only on harness-integrity, int/obs/e2e green.
+- 2026-10-30: Phase 5 gate. Reviews of 9f6771d, cfce60f, 0117216, 5b7ee88 together: code-reviewer CHANGES
+  (10, harness grade B, no security defect), architecture-reviewer CHANGES (7). Main green after P5.4
+  (`make check` 0, `harness-selftest` 76/76). Fixed in 1368b9b: one product test-file predicate for
+  `harness test-file` and specs-tested (the guard let test-writer write into generated code, the API client,
+  store packages and harness files) with shared vectors run through Go, specs-tested and the hook; after
+  code-reviewer CHANGES on the fix itself (one retry), exclusions match ignoring case (`tools/Harness/` reached
+  the harness package on macOS), `..` parts, an empty protected list and `?`/`[`/`\` patterns fail closed,
+  gitignored product paths are a stated limit (TD-128) and `**/vite.config.*` joins check 7's runner configs;
+  contract-check exits 2 on an oasdiff exit other than 1, so the label cannot approve an uncompared spec;
+  check 7 covers every test-file form and is silent without the diff; hook message from `harness test-file`;
+  ADR 0039 amends 0019 explicitly; hook median 24 ms (load 3–4) in nfr.md; tracker newest first, TD-107/118/125
+  updated, TD-127 new; and contract-check.bats/upstream-drift.bats no longer assume optional `layout.env` keys,
+  which P4.10's adoption probe caught. Deferred: the bash upstream entry parser (TD-127); the revision in
+  protected `layout.env` (TD-117, settle before ADR 0037 is accepted); the Makefile `specs-tested` pathspecs
+  remain a second spelling of the test-file forms. Rejected: renaming `spec-refs` to `openapi-refs` (naming
+  churn for two callers). TD-114 and TD-120..122 are unassigned: ids were handed to lanes in flight and not all
+  used. ci.md and rules.md#api-no-breaking-change do not yet mention the cannot-compare exit, and
+  `protect-harness.sh` still compares case-sensitively (hand-off: protected `.claude/hooks/`). Exit
+  criterion: scenarios traced or exempted in `check` and `check-all` (fixture `specs-scenarios-tested`; the
+  template has no `specs/`); PR template Assumptions checked by code-reviewer check 6 (in CI without the PR
+  body, TD-119); trial recorded in ADR 0039 and the P5.4 Log line; weekly upstream drift exists in drift.yml
+  but has not run on a first adopter (TD-115: anonymous fetch exits 2 on private upstreams). State: partial.
+- 2026-10-30: P4.10 done (84399b7). `adoption-probe.sh` (`make adoption-probe`) commits the skeleton in
+  `scripts/templates/adoption-probe/` (root `go.mod`, `internal/<domain>/<layer>`, a contract, no db or web)
+  into a temp repo, follows README (b) steps 1–7 with this checkout's harness and ends with
+  `HARNESS_STACK=go make setup`, `make check`, `make harness-selftest` green there; step 3 and step 6 must name
+  exactly the paths it copies, skips or drops (fixture `harness-adoption-stale-layout`). Required CI job beside
+  `check-all`; skeleton is protected config owned in CODEOWNERS; ADR 0038 amends 0009. After the rebase onto
+  P4.12/P5.1 the probe went red on two Go tests with a hard-coded `../../../..` root; the integration retry
+  moved them to `repoRoot` and changed `harness-reads-layout-literal`'s EXPECT path from `apps/api` to
+  `internal` (still one exact path, LAYER_GLOB's prefix, reported in both layouts). Second catch: P5.2's
+  contract-check.bats edited an optional `layout.env` key the adopted repo lacks (fixed in 1368b9b). Third
+  catch, after the rebase onto the Phase 5 gate: only-test-files.bats, timing.bats and upstream-drift.bats
+  built paths under `apps/api` (G5, P5.2); fixed here from `layout.env`. Not counted as P4.10's second
+  failure: the defect was in code integrated after its review round, outside its diff (§5f.3). The class
+  recurs; rule candidate `bats-paths-from-layout` (hand-off). Declined review items:
+  dropping `HARNESS_STACK=go`, a `.go-arch-lint` exclusion, a second red fixture. Not done: TD-99 (eleven
+  bats files dropped instead of ported), TD-100, TD-101 (four shell helpers duplicated). Measured: the probe
+  took 164 s locally on the final run against its 600 s NFR-H7 budget (1233 s earlier, under three parallel
+  lanes); the third catch also fixed `api-upstream-breaking` (renamed `/healthz`, edited an optional
+  `UPSTREAM_SPECS` line) and a test-writer.md link the probe drops; its timing artifact is not
+  read by `ci-timings.sh` or `nfr-report.sh` yet (hand-off). Lane `check` green, `harness-selftest` 77/77,
+  `check-all` red only on harness-integrity, int/obs/e2e green, `make adoption-probe` green.
+- 2026-10-30: Phase 4 gate (56e35b9). On ccebaff: `check` green, `harness-selftest` 77/77, lint, links and
+  orphans green, `check-all` red only on harness-integrity, int/obs/e2e green. Two independent reviews of the
+  twelve Phase 4 slices plus an architecture review; the G4 fix lane closed the blocking findings:
+  `migrations-append-only` let an applied migration be edited if it rode along with a moved
+  MIGRATIONS_DIR (now every base migration must reach the new dir with the same blob); `make STACK=…` or
+  `make -e` overrode `layout.env` without the decline the sync check reads (now a `harness-layout-valid`
+  error, layout keys applied with `override`); the adoption probe and README hand-edited files the template
+  sync owns (now ci.yml skips the probe job when the script is removed and declined in `.harness-version`;
+  ADR 0038 narrowed). Also fixed: migration-gate's MIGRATIONS_DIR step runs under bash (pipefail), README's
+  STACK table matches DB_TARGETS and WEB_TARGETS, the probe no longer needs `HARNESS_STACK=go`. Advisory
+  findings not fixed: TD-129..136. Rejected: replacing testfile_test.go's hand list of protected paths
+  with a read of `protected-paths.txt` (the test pins the template's list on purpose; drift risk is in the
+  hand-off). One review round and one retry (§5d); the retry was rechecked here, not re-reviewed. The
+  gate assessed the twelve committed Phase 4 slices; P4.13 (G17) was added outside this run and is not
+  part of it. State `partial`: the exit needs ADR 0024 accepted, which is a human step. After the gate:
+  `check` green, `harness-selftest` 77/77, `make adoption-probe` green.
+- 2026-10-30: Finish (§6, 6f885ad). §6.1 on a133fad: `check` green, `harness-selftest` 77/77, lint, links and
+  orphans green, `check-all` red only on harness-integrity, int/obs/e2e green, `harness-determinism` 0
+  differences (NFR-R1) but 287.5 s against its 120 s NFR-H4 budget, measured beside two reviewers and a lane's
+  `make setup`; rerun on the final HEAD with no lane running (hand-off). §6.2: `code-reviewer` and
+  `architecture-reviewer` on `main...HEAD`, both CHANGES. The FIN lane closed the blocking one: a greenfield
+  product rewrites README.md, losing (b), which turned the required `adoption-probe` job, the
+  `harness-adoption-stale-layout` fixture and `adoption-probe.bats` red; a non-empty `HARNESS_UPSTREAM` in
+  `tool-versions.env` (ADR 0026, read from the file only) now switches all three off (ADR 0038 amended, also
+  amends 0026; fixture.conf key `TEMPLATE_ONLY`). Also: the ADR README states that proposed ADRs are amended
+  in place and accepted ones superseded, marks 0034 unused, ADR 0033 names what it amends; a rules.md
+  blank line; this plan's Phase 5 exit says `make check` (specs-tested runs there). FIN's own review round
+  found that `adoption-probe.bats` still read the real `tool-versions.env` (a product's `make check` red);
+  fixed in the retry (§5d) and checked on a simulated product copy. Not fixed: AGENTS.md golden principle 5
+  still lists `.github/**` as protected (stale since ADR 0035; AGENTS.md is not the loop's to edit, TD-137,
+  wording in the hand-off), TD-138..141. The PR cuts in the hand-off follow the shared files the review
+  named (layout.go, testfile.go, protectedPaths, printFinding, ci-timings.sh, P4.10's edits to other
+  slices' bats). Every ADR left proposed. After FIN: `check` green, `harness-selftest` 77/77,
+  `make adoption-probe` green.

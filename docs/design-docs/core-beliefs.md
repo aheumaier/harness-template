@@ -24,7 +24,7 @@ Rules constrain what must always be true (dependency direction, no root contexts
 change, no destructive migration) and leave the how open. Every invariant has a deterministic sensor and a
 fixture proving the sensor fires. *Consequences:* no style rules beyond formatters; new rules are earned by
 real mistakes, not anticipated, unless an ADR adopts them as `team-convention`, as
-[ADR 0024](../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md) (proposed) does for
+[ADR 0024](../adr/0024-size-and-complexity-limits-are-maintainability-sensors.md) does for
 function length, file length, complexity and parameter count, which are maintainability sensors, not style.
 
 ## 4. Prefer boring, in-repo-reasonable dependencies

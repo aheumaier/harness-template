@@ -10,6 +10,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 # shellcheck source=tool-versions.env
 source scripts/tool-versions.env
+# shellcheck source=harness/layout.sh
+source scripts/harness/layout.sh || exit 2
 # OBS_IMAGE: compose interpolates every service, the inactive obs profile too.
 export GOTOOLCHAIN="$GO_TOOLCHAIN" PATH="$ROOT/.bin:$ROOT/node_modules/.bin:$PATH" OBS_IMAGE
 ENV_FILE="$ROOT/.env.local"
@@ -115,6 +117,10 @@ else
 fi
 
 # --- database -----------------------------------------------------------------------------------------
+if ! harness_stack_has db; then
+  log "STACK=$STACK has no db: not starting Postgres"
+  exit 0
+fi
 if [[ "${SKIP_DB:-0}" == 1 ]]; then
   log "SKIP_DB=1: not starting Postgres"
   exit 0
@@ -129,6 +135,6 @@ docker compose --progress quiet --env-file "$ENV_FILE" up -d --wait db >/dev/nul
   # shellcheck source=/dev/null # generated per worktree
   source "$ENV_FILE"
   set +a
-  cd apps/api && atlas migrate apply --env local >/dev/null
+  cd "$API_DIR" && atlas migrate apply --env local >/dev/null
 )
 log "ready: project $project, DATABASE_URL in .env.local"

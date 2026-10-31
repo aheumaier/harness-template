@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# PreToolUse hook for read-only subagents (code-reviewer): the only Bash command allowed is `make check`
-# (optionally `make check-all`). Agent frontmatter `tools:` cannot restrict Bash to one command.
+# PreToolUse hook (Bash) for subagents whose only shell command is `make check` or `make check-all`
+# (code-reviewer, test-writer). Agent frontmatter `tools:` cannot restrict Bash to one command.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
@@ -14,5 +14,5 @@ source "$ROOT/scripts/harness/timing.sh" 2>/dev/null && harness_time_exit hook o
 cmd="$("$ROOT/.bin/harness" hook-input command 2>/dev/null)"
 cmd="$(sed -E 's/^[[:space:]]+|[[:space:]]+$//g' <<<"$cmd")"
 [[ "$cmd" =~ ^make\ check(-all)?$ ]] && exit 0
-echo "only-make-check: this reviewer may only run \`make check\` or \`make check-all\` (got: $cmd). Use Read/Grep/Glob to inspect code and \`git diff\` output provided in your prompt." >&2
+echo "only-make-check: this agent may only run \`make check\` or \`make check-all\` (got: $cmd). Use Read/Grep/Glob to inspect code, and the \`git diff\` output provided in your prompt." >&2
 exit 2

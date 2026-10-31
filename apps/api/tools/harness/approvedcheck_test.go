@@ -78,7 +78,7 @@ const approvedDir = "apps/api/internal/platform/health/testdata/approved/"
 // approvedRepo is a repo with approvedSpec and files: a bare name goes in approvedDir, a path is repo-relative.
 func approvedRepo(t *testing.T, files map[string]string) string {
 	t.Helper()
-	all := map[string][]string{specFile: approvedSpec}
+	all := map[string][]string{"api/openapi.yaml": approvedSpec, layoutFile: templateLayout}
 	for name, content := range files {
 		if !strings.Contains(name, "/") {
 			name = approvedDir + name
@@ -190,8 +190,12 @@ func TestApprovedCheckExitCodes(t *testing.T) {
 	bad := approvedRepo(t, map[string]string{"getHealth.200.json": `{}`})
 	none := approvedRepo(t, nil) // the template ships getHealth's: none means layout or pathspec drift
 	onlyFixtures := approvedRepo(t, map[string]string{"scripts/harness/fixtures/x/files/" + approvedDir + "getHealth.200.json": okResponse})
-	noSpec := linkRepo(t, map[string][]string{"a.md": {"# A"}})
-	badSpec := linkRepo(t, map[string][]string{specFile: {"paths: [unclosed"}})
+	noSpec := linkRepo(t, map[string][]string{layoutFile: templateLayout})
+	badSpec := linkRepo(t, map[string][]string{"api/openapi.yaml": {"paths: [unclosed"}, layoutFile: templateLayout})
+	// The spec is where the layout's SPEC says, not at a fixed path.
+	movedSpec := linkRepo(t, map[string][]string{"contract/v1.yaml": approvedSpec, layoutFile: withLayout("SPEC", "contract/v1.yaml"),
+		approvedDir + "getHealth.200.json": {okResponse}})
+	noLayout := linkRepo(t, map[string][]string{"api/openapi.yaml": approvedSpec, approvedDir + "getHealth.200.json": {okResponse}})
 	for _, tt := range []struct {
 		args       []string
 		want       int
@@ -201,7 +205,9 @@ func TestApprovedCheckExitCodes(t *testing.T) {
 		{[]string{"approved-check", bad}, 1, ""},
 		{[]string{"approved-check", none}, 2, "no approved response matches */testdata/approved/* (fixtures skipped)"},
 		{[]string{"approved-check", onlyFixtures}, 2, "restore them with `make approve`"},
-		{[]string{"approved-check", noSpec}, 2, ""},
+		{[]string{"approved-check", noSpec}, 2, "api/openapi.yaml: "},
+		{[]string{"approved-check", movedSpec}, 0, ""},
+		{[]string{"approved-check", noLayout}, 2, layoutFile},
 		{[]string{"approved-check", badSpec}, 2, ""},
 		{[]string{"approved-check", t.TempDir()}, 2, ""},
 		{[]string{"approved-check"}, 2, ""},

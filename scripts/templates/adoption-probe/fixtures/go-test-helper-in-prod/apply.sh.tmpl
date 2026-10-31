@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Runs in the repo copy: the repo has no approvaltest package, so the fixture adds one at the path depguard bans
+# and imports it from a non-test file of the greeting api.
+set -euo pipefail
+module="$(sed -n 's/^module //p' go.mod)"
+mkdir -p internal/platform/approvaltest
+cat >internal/platform/approvaltest/approvaltest.go <<'EOF'
+// Package approvaltest is a selftest fixture: the test-only helper package depguard names.
+package approvaltest
+
+// Dir is where approved responses live.
+const Dir = "testdata/approved"
+EOF
+cat >internal/greeting/api/approved.go <<EOF
+package api
+
+import "$module/internal/platform/approvaltest"
+
+// approvedDir reuses a test helper from production code.
+var approvedDir = approvaltest.Dir
+EOF

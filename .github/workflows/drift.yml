@@ -1,32 +1,43 @@
 # Harness file (protected). Weekly sweep for drift that accumulates without any single PR causing it:
-# dead code, known vulnerabilities in dependencies, a stale schema doc, dead doc links, test coverage that
-# fell since the last run, mutants that survived in the week's changes, and the advisory findings of three
-# read-only review agents (security, data handling, modularity; ci.md#scheduled-reviews). Findings go to one
-# open issue labelled `drift` (created, or commented on).
+# dead code, known vulnerabilities in dependencies, a stale schema doc, dead doc links, harness files behind the
+# template (make harness-sync-check; anonymous fetch, so a private template exits 2), vendored upstream specs
+# that their sources broke since (make upstream-drift, ADR 0037; anonymous too), QUALITY.md rows not
+# graded in the last 30 days (ADR 0028), test coverage that fell since the last run, mutants that survived in
+# the week's changes, rules that never fired in 90 days (ADR 0032; a human decides to keep or retire each),
+# and the advisory findings of three read-only review agents (security, data handling,
+# modularity; ci.md#scheduled-reviews). Findings go to one
+# open issue labelled `drift` (created, or commented on). When enabled, agent-gc proposes fixes for the doc
+# check's broken links as a small PR (ci.md#agent-gc).
 #
 # Scheduled reviews (exec plan 0003 P3.3), an inferential sensor (docs/adr/0019-inferential-sensors-are-advisory.md):
 # never a required check, and a finding never turns a job red. They share pr-review.yml's CI agent contract
-# (scripts/harness/ci-agent.sh, ADR 0016 and 0019 amendments). A review that cannot run (no ANTHROPIC_API_KEY
-# secret, not the default branch, a cap reached, an API error) leaves a notice and is skipped. Harness breakage
+# (scripts/harness/ci-agent.sh, ADR 0016, 0019 and 0040). A review that cannot run (no ANTHROPIC_API_KEY
+# or CLAUDE_CODE_OAUTH_TOKEN secret, not the default branch, a cap reached, an API error) leaves a notice and is skipped. Harness breakage
 # turns it red: the agent did not start, or it succeeded without structured findings.
 #
 # Trust boundary: write-access collaborators are trusted with the key. A workflow_dispatch runs the dispatched
 # branch's copy of this file with the repository's secrets: anyone who can push a branch can edit it to print
 # or use the key in that run. The default-branch gate keeps the reviews on reviewed code, but an edited copy
 # can drop it. So ANTHROPIC_API_KEY must be a dedicated Anthropic workspace key with a hard spend limit, used
-# for nothing else (pr-review.yml's key has the same trust). Optional hardening: an `environment:` on the
+# for nothing else (pr-review.yml's key has the same trust), or CLAUDE_CODE_OAUTH_TOKEN, a subscription
+# token with no spend limit (ADR 0040). Optional hardening: an `environment:` on the
 # reviews job whose deployment branches are the default branch only, holding the key as an environment
-# secret, so GitHub itself withholds it from any other branch.
+# secret, so GitHub itself withholds it from any other branch. The agent-gc write token is an environment
+# secret limited to the default branch, held by a non-admin identity outside every branch-protection bypass
+# and without Workflows or Administration permission; write collaborators are trusted with the key, not with
+# this token.
 #
 # The repository is untrusted input to an agent that holds the key (prompt injection, secret exfiltration).
 # Safe against repository content only while all of these hold (scripts/test/scheduled-review.bats checks them):
 #   - the reviews job holds `contents: read` and no write token (credentials not persisted); the key is in the
 #     env of the agent step alone, which runs only `claude`, the schema and the leak screen. The agent's flags
-#     are pr-review.yml's: --bare, --restricted, --tools Read,Grep,Glob, --disallowedTools 'mcp__*',
-#     --strict-mcp-config, --permission-mode dontAsk, --no-session-persistence and a --settings file that
+#     are pr-review.yml's: --restricted, --tools Read,Grep,Glob, --disallowedTools 'mcp__*',
+#     --strict-mcp-config, --permission-mode dontAsk, --disable-slash-commands, --no-session-persistence,
+#     CLAUDE_CODE_DISABLE_CLAUDE_MDS, CLAUDE_CODE_DISABLE_AUTO_MEMORY and CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS,
+#     and a --settings file that
 #     blocks reads outside the working directory and denies Read under system and runner dirs and of every
 #     env file (`scheduled-review.sh settings`).
-#   - `scheduled-review.sh screen` withholds output holding the key verbatim or an `sk-ant-` prefix: a backstop,
+#   - `scheduled-review.sh screen` withholds output holding either secret verbatim or an `sk-ant-` prefix: a backstop,
 #     not the control.
 #   - the artifact is the raw findings JSON; the drift job renders it (`scheduled-review.sh render`, pinned jq)
 #     as one fenced block per review, so no mention, link, image or HTML in it renders. The log shows the
@@ -34,7 +45,25 @@
 #   - only the matrix entry, booleans, the default branch name, the agent's exit code and the caps below reach
 #     `run:` blocks, via env; no `${{ }}` inside a `run:` block.
 #
-# Cost cap per review (ADR 0019: raising one is a harness-config change): the REVIEW_* values below.
+# agent-gc (exec plan 0003 P3.4, ci.md#agent-gc), the doc gardener, shares that contract and those caps, with
+# these differences (scripts/test/agent-gc.bats checks them):
+#   - its agent has Edit too, allowed by its --settings file on the target files alone (tracked docs outside
+#     scripts/harness/protected-paths.txt, no AGENTS.md or CLAUDE.md, no ADR, plan, spec, generated doc or
+#     fixture, that `harness check-links` flagged;
+#     `agent-gc.sh settings`), with Write still denied. Before it runs, the tree must be clean and the checkout
+#     is made read-only, .git included, except the target files (`agent-gc.sh baseline` and `lock`).
+#   - its job saves no cache (setup `save-caches: "false"`) and keeps every file it writes under $RUNNER_TEMP,
+#     so nothing the agent touched reaches another job but the checked patch.
+#   - after the agent, whatever its outcome (success, cap, timeout, withheld), `agent-gc.sh confined` turns the
+#     job red when the tree holds anything but edits of target files, ignored files and .git included; the leak
+#     screen reads the lines the edit adds; `agent-gc.sh patch` proposes nothing when the edit is over the
+#     REVIEW_GC_* caps or the check still fails on an edited file.
+#   - the agent-gc-pr job, which holds AGENT_GC_TOKEN and runs no agent, checks the patch again (`agent-gc.sh
+#     apply`), pushes only an `agent-gc/<run id>` branch and opens a PR with a fixed body. The PR goes through
+#     the same required checks and code-owner review as any other (ADR 0019).
+#
+# Cost cap per review and per agent-gc run (ADR 0019: raising one is a harness-config change): the REVIEW_*
+# values below.
 name: drift
 
 on:
@@ -55,6 +84,9 @@ env:
   REVIEW_MAX_TURNS: "40"
   REVIEW_MAX_BUDGET_USD: "3.00"
   REVIEW_MAX_MINUTES: "15"
+  # agent-gc: the four caps above per run, and these: the files it may edit and the lines it may change.
+  REVIEW_GC_MAX_FILES: "5"
+  REVIEW_GC_MAX_CHANGED_LINES: "40"
 
 jobs:
   # The `secrets` context is not allowed in a job's `if:`, hence a job that tests it and holds nothing else.
@@ -68,7 +100,7 @@ jobs:
       - name: Gate (secret, default branch)
         id: gate
         env:
-          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }} # a boolean: the key's value never reaches this step
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }} # a boolean: no secret's value reaches this step
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           skip() {
@@ -76,7 +108,7 @@ jobs:
             echo "enabled=false" >>"$GITHUB_OUTPUT"
             exit 0
           }
-          [[ $HAS_KEY == true ]] || skip "the ANTHROPIC_API_KEY repository secret is not set"
+          [[ $HAS_KEY == true ]] || skip "neither the ANTHROPIC_API_KEY nor the CLAUDE_CODE_OAUTH_TOKEN repository secret is set"
           # A schedule always runs on the default branch, and its payload may lack `repository`.
           [[ $GITHUB_EVENT_NAME == schedule || $GITHUB_REF_NAME == "$DEFAULT_BRANCH" ]] ||
             skip "they run on the default branch only"
@@ -117,17 +149,21 @@ jobs:
       - name: Review (agent and leak screen only; no write token, no shell)
         id: agent
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }} # wins over the token when both are set
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }} # from `claude setup-token` (ADR 0040)
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" # no auto-update, telemetry or error reporting
+          CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" # no CLAUDE.md from the checkout in the system prompt
+          CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" # no memory read or written under ~/.claude
+          CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: "1" # no git status snapshot in the system prompt
         run: |
           d=.cache/review
           REVIEW_SCHEMA=$(scripts/harness/scheduled-review.sh schema)
           code=0
           # The minutes cap is a notice like the others (124: timed out, 137: killed after the grace period).
           timeout -k 30 "${REVIEW_MAX_MINUTES}m" \
-            .bin/claude -p --bare --restricted --strict-mcp-config --tools Read,Grep,Glob --disallowedTools 'mcp__*' \
+            .bin/claude -p --restricted --strict-mcp-config --tools Read,Grep,Glob --disallowedTools 'mcp__*' \
             --permission-mode dontAsk --settings "$d/settings.json" --no-session-persistence \
-            --output-format json --json-schema "$REVIEW_SCHEMA" --model "$REVIEW_MODEL" \
+            --output-format json --json-schema "$REVIEW_SCHEMA" --model "$REVIEW_MODEL" --disable-slash-commands \
             --max-turns "$REVIEW_MAX_TURNS" --max-budget-usd "$REVIEW_MAX_BUDGET_USD" \
             <"$d/prompt.txt" >"$d/out.json" 2>"$d/err.txt" || code=$?
           if [[ $code == 124 || $code == 137 ]]; then
@@ -142,7 +178,7 @@ jobs:
             0) echo "screened=true" >>"$GITHUB_OUTPUT" ;;
             1)
               rm -f "$d/out.json" "$d/err.txt"
-              echo "::warning title=Scheduled review withheld::the agent output holds the API key or an sk-ant- prefix; nothing reported (rotate the key if it is the key)"
+              echo "::warning title=Scheduled review withheld::the agent output holds the API key, the OAuth token or an sk-ant- prefix; nothing reported (rotate the secret if it is one)"
               ;;
             *) exit "$rc" ;;
           esac
@@ -179,7 +215,7 @@ jobs:
     if: ${{ !cancelled() }}
     permissions:
       contents: read
-      actions: read # earlier drift runs and their coverage artifacts
+      actions: read # earlier drift runs with their coverage and rule-fires artifacts; ci.yml's timing artifacts
       issues: write
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -198,31 +234,64 @@ jobs:
           path: .cache/trivy
           key: trivy-db-${{ steps.today.outputs.date }}
           restore-keys: trivy-db-
-      # The baseline for the coverage change (ADR 0020): coverage.tsv of the newest earlier scheduled drift run
-      # that has one, so a manual run never resets the weekly baseline. Any completed run counts when it
-      # uploaded the artifact (a failed review job no longer hides a good baseline). Its own step, because
+      # The baselines of the week-on-week reports, each from the newest earlier scheduled drift run that has it,
+      # so a manual run never resets them: coverage.tsv for the coverage change (ADR 0020) and the rule-fires
+      # ledger (ADR 0032, ci.md#rule-fires). Any completed run counts when it uploaded the artifact (a failed
+      # review job no longer hides a good baseline). Also ci.yml's timing artifacts (harness-timings-check-all)
+      # of its retention window, which the ledger merges (scripts/harness/ci-timings.sh). Whether a run has the
+      # ledger is asked apart from downloading it, so a gh error never reads as "no ledger": fires_state is
+      # found, fresh (the list worked and no run has one) or error; retention is set only when every timing
+      # artifact downloaded. Otherwise the Sweep merges nothing and uploads no ledger. Its own step, because
       # only it needs a token; the Sweep runs third-party code (pnpm, deadcode, knip, Trivy) and gets none.
-      - name: Coverage baseline
+      - name: Baselines (coverage, rule fires)
         id: baseline
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          coverage='' fires_state=fresh
           if ! ids="$(gh run list --workflow drift.yml --branch "$GITHUB_REF_NAME" --event schedule \
-            --status completed --limit 10 --json databaseId --jq '.[].databaseId')"; then
-            echo "::warning::gh run list failed: this drift run reports coverage without the change since the last one"
-            exit 0
+            --status completed --limit 14 --json databaseId --jq '.[].databaseId')"; then
+            echo "::warning::gh run list failed: this drift run reports coverage without the change since the last one, and does not merge rule fires"
+            ids='' fires_state=error
           fi
           for id in $ids; do
-            if gh run download "$id" --name coverage --dir "$RUNNER_TEMP/coverage-$id" 2>/dev/null &&
+            if [[ -z $coverage ]] && gh run download "$id" --name coverage --dir "$RUNNER_TEMP/coverage-$id" 2>/dev/null &&
               [[ -s "$RUNNER_TEMP/coverage-$id/coverage.tsv" ]]; then
-              echo "previous=$RUNNER_TEMP/coverage-$id/coverage.tsv" >>"$GITHUB_OUTPUT"
-              break
+              coverage="$RUNNER_TEMP/coverage-$id/coverage.tsv"
+              echo "previous=$coverage" >>"$GITHUB_OUTPUT"
             fi
+            if [[ $fires_state == fresh ]]; then
+              if ! n="$(gh api "repos/$GH_REPO/actions/runs/$id/artifacts?name=rule-fires" \
+                --jq '[.artifacts[] | select(.expired | not)] | length')"; then
+                echo "::warning::listing the artifacts of drift run $id failed: rule fires are not merged this week"
+                fires_state=error
+              elif [[ $n != 0 ]]; then
+                fires="$RUNNER_TEMP/rule-fires-$id/rule-fires.txt"
+                if gh run download "$id" --name rule-fires --dir "$RUNNER_TEMP/rule-fires-$id" && [[ -s $fires ]]; then
+                  echo "fires=$fires" >>"$GITHUB_OUTPUT"
+                  fires_state=found
+                else
+                  echo "::warning::downloading the rule-fires ledger of drift run $id failed: rule fires are not merged this week"
+                  fires_state=error
+                fi
+              fi
+            fi
+            [[ -z $coverage || $fires_state == fresh ]] || break
           done
+          echo "fires_state=$fires_state" >>"$GITHUB_OUTPUT"
+          timings="$RUNNER_TEMP/timings"
+          echo "timings=$timings" >>"$GITHUB_OUTPUT"
+          if retention="$(scripts/harness/ci-timings.sh retention)" &&
+            scripts/harness/ci-timings.sh download "$timings" "$retention"; then
+            echo "retention=$retention" >>"$GITHUB_OUTPUT"
+          else
+            echo "::warning::ci-timings.sh failed: rule fires are not merged this week"
+          fi
       # Mutation testing of the files changed in the last 7 days (ADR 0023, ci.md#mutation-testing), a trend,
-      # never a gate: scores and survivors go to the job summary only; the issue gets an entry only when it
-      # cannot measure (make mutation failed, or this step hit its wall-clock cap; the Sweep reports both).
+      # never a gate: scores and survivors go to the job summary; the Sweep puts the score table (no survivors)
+      # in the issue every week, or an entry saying it could not measure (make mutation failed, or this step
+      # hit its wall-clock cap).
       - name: Mutation
         id: mutation
         continue-on-error: true
@@ -248,13 +317,21 @@ jobs:
           COVERAGE_BASELINE: ${{ steps.baseline.outputs.previous }}
           MUTATION_OUTCOME: ${{ steps.mutation.outcome }}
           REVIEWS_RESULT: ${{ needs.reviews.result }}
+          RULE_FIRES_LEDGER: ${{ steps.baseline.outputs.fires }}
+          RULE_FIRES_STATE: ${{ steps.baseline.outputs.fires_state }}
+          RULE_FIRES_TIMINGS: ${{ steps.baseline.outputs.timings }}
+          RULE_FIRES_RETENTION: ${{ steps.baseline.outputs.retention }}
         run: |
           report="$RUNNER_TEMP/drift.md"
           fence='```'
           : >"$report"
-          for target in deadcode-go knip vuln-go vuln-deps docs-links; do
+          for target in deadcode-go knip vuln-go vuln-deps docs-links harness-sync-check upstream-drift docs-quality; do
             if ! out="$(make "$target" 2>&1)"; then
-              printf '### make %s\n\n%s\n%s\n%s\n\n' "$target" "$fence" "$out" "$fence" >>"$report"
+              # One backtick more than the longest run in the output (at least three), so the output (upstream
+              # specs' paths among it) cannot close the block: no mention, link, image or HTML in it renders.
+              f="$fence"
+              while [[ "$out" == *"$f"* ]]; do f="$f\`"; done
+              printf '### make %s\n\n%s\n%s\n%s\n\n' "$target" "$f" "$out" "$f" >>"$report"
             fi
           done
           if ! out="$(make gen-schema-doc 2>&1)"; then
@@ -275,13 +352,41 @@ jobs:
               [[ -z "$out" ]] || printf '%s\n\n' "$out" >>"$report"
             fi
           fi
-          # Mutation (ADR 0023): only a run that could not measure reaches the issue. mutation.md exists when
-          # make mutation failed; without it, the step was killed by its timeout.
+          # Mutation (ADR 0023): the weekly score per package (no survivors: they stay in the job summary), or
+          # why there is none. mutation.md exists when make mutation failed; without it and without success, the
+          # step was killed by its timeout.
           if [[ -s "$RUNNER_TEMP/mutation.md" ]]; then
             cat "$RUNNER_TEMP/mutation.md" >>"$report"
             echo >>"$report"
           elif [[ "$MUTATION_OUTCOME" != success ]]; then
             printf '### make mutation did not finish (%s; its step log has the output)\n\n' "$MUTATION_OUTCOME" >>"$report"
+          else
+            out="$(make mutation-scores 2>&1)" ||
+              out="$(printf '### make mutation-scores failed\n\n%s\n%s\n%s' "$fence" "$out" "$fence")"
+            printf '%s\n\n' "$out" >>"$report"
+          fi
+          # Rules that never fired (ADR 0032, ci.md#rule-fires): merges the ci.yml timing rows, each artifact
+          # once, into the ledger carried from the last scheduled run and lists the rules without a finding in 90
+          # days; a human decides to keep or retire each. rule-fires.sh validates every row (PR runs write them).
+          # A gh error in the Baselines step, or a failing rule-fires.sh, merges nothing and uploads no ledger, so
+          # the last one stays the newest and a bad week never resets the history; tracking starts fresh only
+          # when no earlier scheduled run has a ledger.
+          fires_out=.cache/harness/rule-fires.txt
+          mkdir -p "${fires_out%/*}"
+          if [[ ! "$RULE_FIRES_STATE" =~ ^(found|fresh)$ || -z "$RULE_FIRES_RETENTION" ]]; then
+            printf '### Rule fires: not merged this week (a gh error reading the last ledger or the ci.yml timings; the Baselines step log has it), so the last ledger stays the baseline\n\n' >>"$report"
+          else
+            [[ "$RULE_FIRES_STATE" == found ]] ||
+              printf '### Rule fires: no ledger from an earlier scheduled run; tracking starts today, so no rule is listed for 90 days\n\n' >>"$report"
+            [[ -n "$(find "$RULE_FIRES_TIMINGS" -type f -name timings.jsonl)" ]] ||
+              printf '### Rule fires: no ci.yml timings (harness-timings-check-all) from the last %s days to merge\n\n' "$RULE_FIRES_RETENTION" >>"$report"
+            if out="$(scripts/harness/rule-fires.sh "$RULE_FIRES_LEDGER" "$fires_out" "$RULE_FIRES_RETENTION" "$RULE_FIRES_TIMINGS" 2>"$RUNNER_TEMP/rule-fires.log")"; then
+              cat "$RUNNER_TEMP/rule-fires.log"
+              [[ -z "$out" ]] || printf '%s\n\n' "$out" >>"$report"
+              echo "fires_merged=true" >>"$GITHUB_OUTPUT"
+            else
+              printf '### scripts/harness/rule-fires.sh failed (not merged; the last ledger stays the baseline)\n\n%s\n%s\n%s\n\n' "$fence" "$(cat "$RUNNER_TEMP/rule-fires.log")" "$fence" >>"$report"
+            fi
           fi
           # Scheduled reviews (ci.md#scheduled-reviews), advisory (ADR 0019): last and security first, so the
           # cut below drops modularity first. render takes the untrusted findings with the pinned jq.
@@ -319,6 +424,16 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 35
+      # Next week's rule-fires ledger (ci.md#rule-fires): it holds the 90-day history, so it outlives the window.
+      # Only a merged one: otherwise the last ledger stays the newest.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.sweep.outputs.fires_merged == 'true'
+        with:
+          name: rule-fires
+          path: .cache/harness/rule-fires.txt
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 90
       - name: Open or update the drift issue
         if: steps.sweep.outputs.found == 'true'
         env:
@@ -333,14 +448,215 @@ jobs:
             gh issue create --title "Drift: weekly sweep found issues" --label drift --body-file "$REPORT"
           fi
 
-  # TODO(agent-gc): garbage-collection agent. Once the drift issue is reliable, run a coding agent on a
-  # schedule that takes one finding from the open `drift` issue (or docs/exec-plans/tech-debt-tracker.md),
-  # fixes it on a branch, runs `make check-all` and opens a small PR for human review. Never pushes to main,
-  # never edits harness files. Off until a human sets the repository variable AGENT_GC_ENABLED=true after
-  # configuring the agent runner and its token.
-  agent-gc:
-    if: vars.AGENT_GC_ENABLED == 'true'
-    needs: drift
+  # agent-gc, the doc gardener (exec plan 0003 P3.4, ci.md#agent-gc): one agent fixes broken links in
+  # unprotected docs; a separate job without the agent opens a small PR for human review. Off until a human
+  # sets the repository variable AGENT_GC_ENABLED=true (ci.md#agent-gc lists what comes first). review-gate
+  # checks the key and the default branch. AGENT_GC_TOKEN is an environment secret, invisible here: the PR job
+  # fails red when the agent-gc environment does not provide it.
+  gc-gate:
+    needs: review-gate
+    if: needs.review-gate.outputs.enabled == 'true' && vars.AGENT_GC_ENABLED == 'true'
+    permissions:
+      pull-requests: read # the open agent-gc PR check
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      enabled: ${{ steps.gc-gate.outputs.enabled }}
     steps:
-      - run: echo "not configured"
+      - name: Gate (no open agent-gc PR)
+        id: gc-gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          open="$(gh pr list --label agent-gc --state open --json number --jq 'length')"
+          if [[ $open != 0 ]]; then
+            echo "::notice title=agent-gc skipped::an agent-gc PR is still open, one at a time (docs/harness/ci.md#agent-gc)"
+            echo "enabled=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "enabled=true" >>"$GITHUB_OUTPUT"
+
+  # The agent edits this job's working tree only: no write token, Edit allowed on the target files alone, the
+  # rest of the checkout read-only, no cache saved, every file the job writes under $RUNNER_TEMP.
+  agent-gc:
+    needs: gc-gate
+    if: needs.gc-gate.outputs.enabled == 'true'
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      pr: ${{ steps.patch.outputs.pr }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          deps: "false"
+          save-caches: "false"
+
+      - name: Findings, prompt and settings
+        id: targets
+        run: |
+          d="$RUNNER_TEMP/agent-gc"
+          mkdir -p "$d"
+          scripts/harness/agent-gc.sh findings >"$d/findings.txt"
+          counts="$(scripts/harness/agent-gc.sh targets "$d/findings.txt" "$d/targets.txt")"
+          read -r kept files left <<<"$counts"
+          if ((left > 0)); then
+            echo "::notice title=agent-gc::$left docs-links-resolve findings are not agent-gc's to fix (a protected or untracked file, an AGENTS.md or CLAUDE.md, history or generated Markdown, or past the ${REVIEW_GC_MAX_FILES}-file cap); the drift issue's make docs-links section lists every finding"
+          fi
+          if ((kept == 0)); then
+            echo "::notice title=agent-gc::nothing to fix"
+            exit 0
+          fi
+          echo "agent-gc: $kept findings in $files files"
+          scripts/harness/agent-gc.sh prompt "$d/targets.txt" >"$d/prompt.txt"
+          scripts/harness/agent-gc.sh settings "$d/targets.txt" "$RUNNER_TEMP" "$RUNNER_TOOL_CACHE" \
+            "$HOME/.claude" "$HOME/.config" "$HOME/.ssh" "$HOME/runners" >"$d/settings.json"
+          echo "run=true" >>"$GITHUB_OUTPUT"
+
+      - name: Install Claude Code (pinned, sha256-verified)
+        if: steps.targets.outputs.run == 'true'
+        run: |
+          scripts/install-tools.sh claude
+          .bin/claude --version
+
+      - name: Clean tree, baseline, checkout read-only but the target files
+        id: lock
+        if: steps.targets.outputs.run == 'true'
+        run: |
+          d="$RUNNER_TEMP/agent-gc"
+          scripts/harness/agent-gc.sh baseline "$d/baseline.txt"
+          scripts/harness/agent-gc.sh lock "$d/targets.txt"
+
+      - name: Fix (agent and leak screen only; no write token, no shell)
+        id: gc-agent
+        if: steps.targets.outputs.run == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }} # wins over the token when both are set
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }} # from `claude setup-token` (ADR 0040)
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" # no auto-update, telemetry or error reporting
+          CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" # no CLAUDE.md from the checkout in the system prompt
+          CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" # no memory read or written under ~/.claude
+          CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: "1" # no git status snapshot in the system prompt
+        run: |
+          d="$RUNNER_TEMP/agent-gc"
+          GC_SCHEMA=$(scripts/harness/agent-gc.sh schema)
+          code=0
+          timeout -k 30 "${REVIEW_MAX_MINUTES}m" \
+            .bin/claude -p --restricted --strict-mcp-config --tools Read,Grep,Glob,Edit --disallowedTools 'mcp__*' \
+            --permission-mode dontAsk --settings "$d/settings.json" --no-session-persistence \
+            --output-format json --json-schema "$GC_SCHEMA" --model "$REVIEW_MODEL" --disable-slash-commands \
+            --max-turns "$REVIEW_MAX_TURNS" --max-budget-usd "$REVIEW_MAX_BUDGET_USD" \
+            <"$d/prompt.txt" >"$d/out.json" 2>"$d/err.txt" || code=$?
+          if [[ $code == 124 || $code == 137 ]]; then
+            rm -f "$d/out.json" "$d/err.txt"
+            echo "::notice title=agent-gc skipped::the agent hit the ${REVIEW_MAX_MINUTES}-minute cap"
+            exit 0
+          fi
+          echo "exit=$code" >>"$GITHUB_OUTPUT"
+          scripts/harness/agent-gc.sh added "$d/added.txt"
+          rc=0
+          scripts/harness/agent-gc.sh screen "$d/out.json" "$d/err.txt" "$d/added.txt" || rc=$?
+          case $rc in
+            0) echo "screened=true" >>"$GITHUB_OUTPUT" ;;
+            1)
+              rm -f "$d/out.json" "$d/err.txt" "$d/added.txt"
+              echo "::warning title=agent-gc withheld::the agent output or edit holds the API key, the OAuth token or an sk-ant- prefix; nothing proposed (rotate the secret if it is one)"
+              ;;
+            *) exit "$rc" ;;
+          esac
+
+      # Whatever the agent's outcome: a change beyond the target files is a confinement failure, a red job.
+      - name: Confined (edits of the target files only)
+        id: confined
+        if: ${{ !cancelled() && steps.lock.outcome == 'success' }}
+        run: scripts/harness/agent-gc.sh confined "$RUNNER_TEMP/agent-gc/targets.txt" "$RUNNER_TEMP/agent-gc/baseline.txt"
+
+      - name: Patch (within the cap, the doc check passes again)
+        id: patch
+        if: steps.gc-agent.outputs.screened == 'true'
+        env:
+          AGENT_EXIT: ${{ steps.gc-agent.outputs.exit }}
+        run: |
+          d="$RUNNER_TEMP/agent-gc"
+          export PATH="$PWD/.bin:$PATH" # the pinned jq reads the agent's output
+          verdict="$(scripts/harness/agent-gc.sh result "$AGENT_EXIT" "$d/out.json" "$d/err.txt")"
+          if [[ $verdict == edited ]]; then
+            verdict="$(scripts/harness/agent-gc.sh patch "$d/findings.txt" "$d/targets.txt" "$d/fix.patch")"
+          fi
+          if [[ $verdict != patch ]]; then
+            echo "::notice title=agent-gc skipped::${verdict#skip: }"
+            exit 0
+          fi
+          echo "pr=true" >>"$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.patch.outputs.pr == 'true'
+        with:
+          name: agent-gc
+          path: |
+            ${{ runner.temp }}/agent-gc/targets.txt
+            ${{ runner.temp }}/agent-gc/fix.patch
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Make the checkout writable again (post steps)
+        if: always()
+        run: chmod -R u+w .
+
+  # Applies the patch to the same commit and opens the PR, with its own token and no agent: the patch and the
+  # targets are data, checked again (`agent-gc.sh apply`), and the PR body is fixed text. A PR opened with
+  # GITHUB_TOKEN would start no workflow, so AGENT_GC_TOKEN opens it and the required checks run on it. The
+  # token is a secret of the agent-gc environment, whose deployment branches are the default branch only.
+  agent-gc-pr:
+    needs: agent-gc
+    if: needs.agent-gc.outputs.pr == 'true'
+    environment: agent-gc
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: agent-gc
+          path: ${{ runner.temp }}/agent-gc
+      - name: Apply the patch (checked again) and write the PR body
+        env:
+          GC_DIR: ${{ runner.temp }}/agent-gc
+        run: |
+          scripts/harness/agent-gc.sh apply "$GC_DIR/targets.txt" "$GC_DIR/fix.patch"
+          scripts/harness/agent-gc.sh body "$GC_DIR/targets.txt" "$GC_DIR/fix.patch" >"$RUNNER_TEMP/body.md"
+      # The commit is the token's identity. The agent-gc label exists already (ci.md#agent-gc): the token has
+      # no Issues permission to create it.
+      - name: Commit, push the agent-gc branch, open the PR
+        id: gc-pr
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GC_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [[ -z $GH_TOKEN ]]; then
+            echo "::error title=agent-gc::no AGENT_GC_TOKEN secret in the agent-gc environment (docs/harness/ci.md#agent-gc)"
+            exit 1
+          fi
+          read -r login id < <(gh api user --jq '"\(.login) \(.id)"')
+          [[ $login =~ ^[A-Za-z0-9-]+(\[bot\])?$ && $id =~ ^[0-9]+$ ]] || {
+            echo "::error title=agent-gc::AGENT_GC_TOKEN's identity is not a GitHub account ('$login' '$id')"
+            exit 1
+          }
+          branch="agent-gc/$GITHUB_RUN_ID"
+          git config user.name "$login"
+          git config user.email "$id+$login@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -q -m "docs: fix broken doc links (agent-gc)" -m "drift.yml run $GITHUB_RUN_ID (exec plan 0003 P3.4)."
+          gh auth setup-git
+          git push origin "HEAD:refs/heads/$branch"
+          gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --label agent-gc \
+            --title "docs: fix broken doc links (agent-gc)" --body-file "$RUNNER_TEMP/body.md"

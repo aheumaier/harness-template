@@ -6,7 +6,6 @@ packages:
 # pnpm 12 fails install on unreviewed build scripts. Review new entries in PRs.
 allowBuilds:
   esbuild: true       # verifies its platform binary
-  "@scarf/scarf": false # install telemetry
 
 # pnpm 12's built-in default, made explicit (pnpm.io/settings/dependency-resolution#minimumreleaseage):
 # install no version published less than 24 h ago. Setting it explicitly would also turn

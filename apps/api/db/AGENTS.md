@@ -9,3 +9,5 @@
   `internal/<domain>/store`; never edit it.
 - Current schema: [docs/generated/db-schema.md](../../../docs/generated/db-schema.md) (generated, do not edit).
 - Sensors: `make lint-migrations squawk` (in `check-all`) and the migration-gate workflow.
+- Tool docs at the pinned versions: [atlas-llms.txt](../../../docs/references/atlas-llms.txt),
+  [sqlc-llms.txt](../../../docs/references/sqlc-llms.txt).

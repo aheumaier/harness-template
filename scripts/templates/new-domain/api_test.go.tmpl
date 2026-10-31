@@ -29,23 +29,33 @@ func get(t *testing.T, svc *service.Service, path string) *httptest.ResponseReco
 	return rec
 }
 
-func TestGet__PASCAL__Status_OK(t *testing.T) {
-	rec := get(t, service.New(fakeQueries{}), "/__KEBAB__/status")
-	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "application/json" {
-		t.Fatalf("got %d %q, want 200 application/json: %s", rec.Code, rec.Header().Get("Content-Type"), rec.Body)
+// wantResponse fails the test unless rec has the status code and Content-Type the contract gives it.
+func wantResponse(t *testing.T, rec *httptest.ResponseRecorder, code int, contentType string) {
+	t.Helper()
+	if rec.Code != code || rec.Header().Get("Content-Type") != contentType {
+		t.Fatalf("got %d %q, want %d %s: %s", rec.Code, rec.Header().Get("Content-Type"), code, contentType, rec.Body)
 	}
+}
+
+// wantStatusOK fails the test unless rec is a 200 whose body reports status ok (the integration test
+// uses it too).
+func wantStatusOK(t *testing.T, rec *httptest.ResponseRecorder) {
+	t.Helper()
+	wantResponse(t, rec, http.StatusOK, "application/json")
 	var body api.__PASCAL__Status
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.Status != api.Ok {
 		t.Fatalf("body = %s (%v), want status ok", rec.Body, err)
 	}
 }
 
+func TestGet__PASCAL__Status_OK(t *testing.T) {
+	wantStatusOK(t, get(t, service.New(fakeQueries{}), "/__KEBAB__/status"))
+}
+
 // A failing store is a 503 problem whose instance names the request (components.schemas.Problem).
 func TestGet__PASCAL__Status_StorageDown(t *testing.T) {
 	rec := get(t, service.New(fakeQueries{err: errors.New("connection refused")}), "/__KEBAB__/status")
-	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Content-Type") != "application/problem+json" {
-		t.Fatalf("got %d %q, want 503 application/problem+json: %s", rec.Code, rec.Header().Get("Content-Type"), rec.Body)
-	}
+	wantResponse(t, rec, http.StatusServiceUnavailable, "application/problem+json")
 	var p api.Problem
 	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
 		t.Fatal(err)

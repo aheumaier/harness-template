@@ -44,9 +44,11 @@ jobs:
           path: pr-head
           fetch-depth: 0
           persist-credentials: false
+      - name: Load the base branch's scripts/harness/layout.env (API_DIR)
+        run: scripts/harness/layout.sh --print >>"$GITHUB_ENV"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: apps/api/go.mod
+          go-version-file: ${{ env.API_DIR }}/go.mod
           cache: false # no cache written from a pull_request_target run
       - run: make harness-integrity BASE_REF="origin/$GITHUB_BASE_REF"
         env:

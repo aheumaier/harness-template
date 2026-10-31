@@ -1,10 +1,20 @@
 # Harness file (protected). Pinned toolchain for every workflow: versions come from scripts/tool-versions.env
-# (Go from apps/api/go.mod), tools land in .bin exactly as `make tools` puts them locally.
+# (Go from API_DIR's go.mod), tools land in .bin exactly as `make tools` puts them locally. The repo layout
+# (scripts/harness/layout.env: API_DIR, SPEC, MIGRATIONS_DIR, ...) is loaded into the job's env for later steps.
 name: setup
 description: Go, Node, pinned tools in .bin and JS dependencies, with caches.
 inputs:
   deps:
     description: Install JS dependencies (pnpm install --frozen-lockfile).
+    default: "true"
+  browser:
+    description: Restore the cache of make e2e's browser (.bin/playwright), for the one job that runs e2e (ADR 0025).
+    default: "false"
+  save-caches:
+    description: >-
+      Save the caches this job fills. "false" for a job that runs code after an agent edited its checkout
+      (drift.yml agent-gc): it restores .bin only and saves nothing, so no later job restores what this job
+      wrote. Go's module cache and the pnpm and Playwright caches are skipped.
     default: "true"
 runs:
   using: composite
@@ -13,13 +23,18 @@ runs:
       shell: bash
       run: grep -E '^[A-Z_]+=' scripts/tool-versions.env >>"$GITHUB_ENV"
 
+    - name: Load scripts/harness/layout.env
+      shell: bash
+      run: scripts/harness/layout.sh --print >>"$GITHUB_ENV"
+
     - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-        go-version-file: apps/api/go.mod
+        go-version-file: ${{ env.API_DIR }}/go.mod
+        cache: ${{ inputs.save-caches == 'true' }}
         cache-dependency-path: |
-          apps/api/go.sum
-          apps/api/tools/analyzers/go.sum
-          apps/api/tools/harness/go.sum
+          ${{ env.API_DIR }}/go.sum
+          ${{ env.API_DIR }}/tools/analyzers/go.sum
+          ${{ env.API_DIR }}/tools/harness/go.sum
 
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
@@ -27,39 +42,52 @@ runs:
 
     - name: Cache pinned tools (.bin)
       id: bin
+      if: inputs.save-caches == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         # Playwright's browser follows the lockfile, not these inputs: it has its own cache below.
         path: |
           .bin
           !.bin/playwright
-        key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', 'apps/api/.custom-gcl.yml', 'apps/api/tools/analyzers/**', 'apps/api/tools/harness/**') }}
+        key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', format('{0}/.custom-gcl.yml', env.API_DIR), format('{0}/tools/analyzers/**', env.API_DIR), format('{0}/tools/harness/**', env.API_DIR), 'scripts/harness/layout.env') }}
+
+    - name: Restore pinned tools (.bin), saving nothing
+      id: bin-restore
+      if: inputs.save-caches != 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          .bin
+          !.bin/playwright
+        key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', format('{0}/.custom-gcl.yml', env.API_DIR), format('{0}/tools/analyzers/**', env.API_DIR), format('{0}/tools/harness/**', env.API_DIR), 'scripts/harness/layout.env') }}
 
     - name: Install pinned tools
       shell: bash
       env:
-        BIN_CACHE_HIT: ${{ steps.bin.outputs.cache-hit }}
+        BIN_CACHE_HIT: ${{ steps.bin.outputs.cache-hit || steps.bin-restore.outputs.cache-hit }}
       run: |
         # The key covers every input of the custom golangci-lint build; a fresh checkout's mtimes would
         # otherwise make `make` rebuild it.
         if [[ "$BIN_CACHE_HIT" == true ]]; then touch .bin/golangci-lint-custom; fi
         make tools
-        echo "PNPM_STORE=$(.bin/pnpm store path)" >>"$GITHUB_ENV"
+        # A stack without web installs no pnpm (STACK, exported from layout.env above; ADR 0033): no store to cache.
+        if [[ ":$STACK:" == *":web:"* ]]; then echo "PNPM_STORE=$(.bin/pnpm store path)" >>"$GITHUB_ENV"; fi
 
     - name: Cache pnpm store
-      if: inputs.deps == 'true'
+      if: inputs.deps == 'true' && inputs.save-caches == 'true' && env.PNPM_STORE != ''
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ env.PNPM_STORE }}
         key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
         restore-keys: pnpm-${{ runner.os }}-
 
-    # make deps installs the browser of the locked Playwright here (scripts/install-tools.sh browsers). The pin is
-    # exact, so apps/web/package.json names the locked version (--frozen-lockfile fails otherwise); a restored
-    # older browser fails its version stamp and is replaced.
+    # make e2e installs the browser of the locked Playwright here on demand (scripts/install-tools.sh browsers,
+    # ADR 0025), so only a job with input browser caches it. The pin is exact, so apps/web/package.json names the
+    # locked version (--frozen-lockfile fails otherwise); a restored older browser fails its version stamp and is
+    # replaced.
     - name: Locked Playwright version
       id: playwright
-      if: inputs.deps == 'true'
+      if: inputs.browser == 'true'
       shell: bash
       run: |
         v="$(node -p 'require("./apps/web/package.json").devDependencies["@playwright/test"]')"
@@ -70,7 +98,7 @@ runs:
         echo "version=$v" >>"$GITHUB_OUTPUT"
 
     - name: Cache Playwright's browser (.bin/playwright)
-      if: inputs.deps == 'true'
+      if: inputs.browser == 'true' && inputs.save-caches == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: .bin/playwright

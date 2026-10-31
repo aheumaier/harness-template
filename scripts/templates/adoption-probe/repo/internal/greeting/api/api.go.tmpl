@@ -1,0 +1,23 @@
+// Package api serves the greeting domain over HTTP (operation getGreeting in api/openapi.yaml).
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"example.com/hello/internal/greeting/service"
+)
+
+type greetingJSON struct {
+	Message string `json:"message"`
+}
+
+// Handler answers GET /greeting?name=<name>.
+func Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /greeting", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(greetingJSON{Message: service.Greet(r.URL.Query().Get("name")).Message})
+	})
+	return mux
+}

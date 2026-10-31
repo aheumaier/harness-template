@@ -27,12 +27,17 @@ harness_seconds() { # ms -> seconds without trailing zeros: 52830 -> 52.83, 50 -
   echo "$(($1 / 1000))${f:+.$f}"
 }
 
-# harness_record <sensor|hook> <name> <start-ms> <exit-status>
+# harness_record <sensor|hook> <name> <start-ms> <exit-status> [<findings> [<end-ms>]]
+# <findings>: a JSON object of counts per rule id (run.sh: {"rule-a":0,"rule-b":2}: output lines naming the
+# rule, at least 1 when it fired; only > 0 is used), appended to the row as "findings" for the drift report of
+# rules that never fire (scripts/harness/rule-fires.sh); last, after the fields nfr-report.sh reads. <end-ms>
+# (default: now) lets run.sh count the findings after the command without timing the count.
 harness_record() {
-  local end ms sha="" scope="hook" budgets id b="" n="" bm nf rest msg
+  local end="${6:-}" ms sha="" scope="hook" budgets id b="" n="" bm nf rest msg findings=""
   local timings="$ROOT/.cache/harness/timings.jsonl"
-  end="$(harness_now_ms)"
+  [[ -n "$end" ]] || end="$(harness_now_ms)"
   [[ "$3" =~ ^[0-9]+$ && "$end" =~ ^[0-9]+$ ]] || return 0
+  [[ -z "${5:-}" ]] || findings=",\"findings\":$5"
   ms=$((end - $3))
   if [[ "$1" == sensor ]]; then
     scope="${HARNESS_SCOPE:-changed}"
@@ -40,8 +45,8 @@ harness_record() {
   fi
   # One printf per row: appends this short are atomic, so parallel sensors (make -j) do not interleave.
   { [[ -d "${timings%/*}" ]] || mkdir -p "${timings%/*}" 2>/dev/null; } &&
-    printf '{"sensor":"%s","start_ms":%s,"ms":%s,"exit":%s,"scope":"%s","sha":"%s","os":"%s"}\n' \
-      "$2" "$3" "$ms" "$4" "$scope" "$sha" "$OSTYPE" >>"$timings" 2>/dev/null
+    printf '{"sensor":"%s","start_ms":%s,"ms":%s,"exit":%s,"scope":"%s","sha":"%s","os":"%s"%s}\n' \
+      "$2" "$3" "$ms" "$4" "$scope" "$sha" "$OSTYPE" "$findings" >>"$timings" 2>/dev/null
 
   # budgets.txt: "<name> <budget-ms> <nfr-id>"; the "default" row applies to names without a row.
   budgets="${HARNESS_BUDGETS:-$ROOT/scripts/harness/budgets.txt}"

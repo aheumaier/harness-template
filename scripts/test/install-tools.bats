@@ -1,6 +1,8 @@
 #!/usr/bin/env bats
 # scripts/install-tools.sh claude: the CI-only Claude Code install (exec plan 0003 P3.2, ADR 0016) fails closed
 # on a missing pin or a checksum mismatch. A stub curl serves fake bytes: no network.
+# scripts/install-tools.sh browsers: make e2e's on-demand browser install (ADR 0025), against a stub playwright.
+# scripts/install-tools.sh (make tools): the stack picks the tools (ADR 0033), against stub go, curl and npm.
 bats_require_minimum_version 1.5.0
 load helpers
 
@@ -58,5 +60,109 @@ pins() {
   [ "$(find "$SANDBOX/.bin" -mindepth 1 -maxdepth 1 -exec basename {} \; | LC_ALL=C sort | tr '\n' ' ')" = '.claude.version claude ' ]
   rm "$BATS_TEST_TMPDIR/curl.log"
   run -0 "$I" claude
+  [ ! -e "$BATS_TEST_TMPDIR/curl.log" ]
+}
+
+# fake_playwright: apps/web/node_modules/.bin/playwright in the sandbox; `install` logs its arguments, the
+# browsers path and any download override it sees, and writes a marker there.
+fake_playwright() {
+  mkdir -p "$SANDBOX/apps/web/node_modules/.bin"
+  cat >"$SANDBOX/apps/web/node_modules/.bin/playwright" <<'EOF'
+#!/usr/bin/env bash
+[[ "$1" != --version ]] || { echo "Version 1.64.1"; exit 0; }
+echo "$* $PLAYWRIGHT_BROWSERS_PATH ${PLAYWRIGHT_DOWNLOAD_HOST:-}${npm_config_playwright_download_host:-}" >>"$BATS_TEST_TMPDIR/pw.log"
+touch "$PLAYWRIGHT_BROWSERS_PATH/chromium_headless_shell"
+EOF
+  chmod +x "$SANDBOX/apps/web/node_modules/.bin/playwright"
+}
+
+@test "browsers: installs the locked headless shell once into PLAYWRIGHT_BROWSERS_PATH, ignoring download overrides" {
+  fake_playwright
+  local pw="$BATS_TEST_TMPDIR/browsers"
+  run -0 env PLAYWRIGHT_BROWSERS_PATH="$pw" PLAYWRIGHT_DOWNLOAD_HOST=http://evil \
+    npm_config_playwright_download_host=http://evil "$I" browsers
+  has 'installing playwright chromium headless shell 1.64.1'
+  [ "$(cat "$BATS_TEST_TMPDIR/pw.log")" = "install --only-shell chromium $pw " ]
+  [ "$(cat "$pw/.version")" = 1.64.1 ]
+  [ -e "$pw/chromium_headless_shell" ]
+  # Stamped: a second run downloads nothing.
+  run -0 env PLAYWRIGHT_BROWSERS_PATH="$pw" "$I" browsers
+  [ -z "$output" ]
+  [ "$(wc -l <"$BATS_TEST_TMPDIR/pw.log")" -eq 1 ]
+}
+
+@test "browsers: defaults to .bin/playwright; replaces an older stamped build, never deletes an unstamped directory" {
+  fake_playwright
+  mkdir -p "$SANDBOX/.bin/playwright"
+  echo 1.0.0 >"$SANDBOX/.bin/playwright/.version"
+  touch "$SANDBOX/.bin/playwright/old-build"
+  run -0 env -u PLAYWRIGHT_BROWSERS_PATH "$I" browsers
+  [ "$(cat "$SANDBOX/.bin/playwright/.version")" = 1.64.1 ]
+  [ ! -e "$SANDBOX/.bin/playwright/old-build" ]
+  local mine="$BATS_TEST_TMPDIR/mine"
+  mkdir -p "$mine"
+  touch "$mine/keep"
+  run -0 env PLAYWRIGHT_BROWSERS_PATH="$mine" "$I" browsers
+  [ -e "$mine/keep" ]
+  [ -e "$mine/chromium_headless_shell" ]
+}
+
+@test "browsers: without node_modules it fails with the remediation and installs nothing" {
+  run -1 env PLAYWRIGHT_BROWSERS_PATH="$BATS_TEST_TMPDIR/browsers" "$I" browsers
+  has 'run make deps first'
+  [ ! -e "$BATS_TEST_TMPDIR/browsers" ]
+}
+
+# stack_stubs: every go-group tool stamped at its pin in the sandbox's .bin, and stub go and npm that log.
+stack_stubs() {
+  local name var
+  mkdir -p "$SANDBOX/.bin"
+  while read -r name var; do
+    printf '#!/bin/sh\n' >"$SANDBOX/.bin/$name"
+    chmod +x "$SANDBOX/.bin/$name"
+    sed -n "s/^$var=//p" "$V" >"$SANDBOX/.bin/.$name.version"
+  done <<'TOOLS'
+golangci-lint GOLANGCI_LINT_VERSION
+go-arch-lint GO_ARCH_LINT_VERSION
+govulncheck GOVULNCHECK_VERSION
+deadcode DEADCODE_VERSION
+oapi-codegen OAPI_CODEGEN_VERSION
+oasdiff OASDIFF_VERSION
+shfmt SHFMT_VERSION
+actionlint ACTIONLINT_VERSION
+gremlins GREMLINS_VERSION
+shellcheck SHELLCHECK_VERSION
+trivy TRIVY_VERSION
+jq JQ_VERSION
+spectral SPECTRAL_VERSION
+bats BATS_VERSION
+TOOLS
+  printf '#!/usr/bin/env bash\necho "go $*" >>"$BATS_TEST_TMPDIR/tools.log"\n' >"$STUB/go"
+  printf '#!/usr/bin/env bash\necho "npm $*" >>"$BATS_TEST_TMPDIR/tools.log"\n' >"$STUB/npm"
+  chmod +x "$STUB/go" "$STUB/npm"
+}
+
+@test "stack go: installs no db or web tool (sqlc, atlas, squawk, pnpm)" {
+  stack_stubs
+  HARNESS_STACK=go run -0 "$I"
+  [ ! -e "$BATS_TEST_TMPDIR/tools.log" ]
+  [ ! -e "$BATS_TEST_TMPDIR/curl.log" ]
+}
+
+@test "stack go,db: installs sqlc and atlas, no pnpm" {
+  stack_stubs
+  HARNESS_STACK=go,db run -1 "$I" # the stub curl's bytes fail atlas's sha256 pin
+  grep -q '^go install github.com/sqlc-dev/sqlc/cmd/sqlc@' "$BATS_TEST_TMPDIR/tools.log"
+  grep -q '^https://release.ariga.io/atlas/atlas-community-' "$BATS_TEST_TMPDIR/curl.log"
+  has 'sha256 mismatch for atlas'
+  run -1 grep -q '^npm ' "$BATS_TEST_TMPDIR/tools.log"
+}
+
+@test "stack go,web: installs pnpm with npm and checks package.json's packageManager, no db tool" {
+  stack_stubs
+  HARNESS_STACK=go,web run -1 "$I" # the sandbox has no package.json
+  grep -q '^npm install .* pnpm@' "$BATS_TEST_TMPDIR/tools.log"
+  has 'package.json packageManager must be pnpm@'
+  run -1 grep -q 'sqlc' "$BATS_TEST_TMPDIR/tools.log"
   [ ! -e "$BATS_TEST_TMPDIR/curl.log" ]
 }

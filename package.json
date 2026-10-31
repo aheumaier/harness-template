@@ -13,14 +13,12 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@stoplight/spectral-cli": "6.17.0",
     "@types/node": "26.6.5",
-    "bats": "1.13.0",
     "dependency-cruiser": "18.7.0",
     "eslint": "10.13.0",
     "eslint-plugin-react-hooks": "7.1.1",
+    "jscpd": "5.4.1",
     "knip": "6.43.0",
-    "squawk-cli": "2.70.0",
     "turbo": "2.11.10",
     "typescript": "6.0.3",
     "typescript-eslint": "8.72.0"

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Runs in the repo copy: hand-edit the approved 200 response to a message the spec does not allow (a number).
+set -euo pipefail
+f=internal/greeting/api/testdata/approved/getGreeting.200.json
+sed -i.bak 's/"message": "hello, ada"/"message": 42/' "$f"
+rm "$f.bak"

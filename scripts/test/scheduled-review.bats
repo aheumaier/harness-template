@@ -88,8 +88,9 @@ finding() { jq -cn --arg f "$1" --argjson l "$2" --arg s "$3" --arg p "$4" '{fil
   ANTHROPIC_API_KEY=sk-ant-test run -0 "$S" screen "$T/clean.json"
   ANTHROPIC_API_KEY=sk-ant-test run -1 "$S" screen "$T/clean.json" "$T/leak.json"
   has 'scheduled-review: '
-  has 'contains the API key or an sk-ant- prefix'
-  ANTHROPIC_API_KEY='' run -2 "$S" screen "$T/clean.json"
+  has 'contains the API key, the OAuth token or an sk-ant- prefix'
+  CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-test run -1 "$S" screen "$T/leak.json"
+  ANTHROPIC_API_KEY='' CLAUDE_CODE_OAUTH_TOKEN='' run -2 "$S" screen "$T/clean.json"
 }
 
 @test "result: findings only from structured output on success; a cap or API error is a skip; anything else red" {
@@ -230,15 +231,20 @@ EOF
 }
 
 # The reviews' trust invariants (drift.yml header), read from the real file.
-@test "drift.yml: no marketplace agent action; the key only in the reviews' agent step; no \${{ in run blocks" {
+# agent-gc's secrets (ci.md#agent-gc) are listed here too: the check covers the whole file.
+@test "drift.yml: no marketplace agent action; the key and token only in the agent steps, AGENT_GC_TOKEN only in the PR step; no \${{ in run blocks" {
   run -1 grep -nE '^[^#]*(anthropics/|claude-code-action)' "$W"
   run -0 awk '
     /^      - / { s++ }
     /^        id: / { id[s] = $2 }
     /^[^#]*secrets\./ { t = $0; sub(/^ +/, "", t); sub(/ +#.*/, "", t); hit[++n] = s; txt[n] = t }
     END { for (i = 1; i <= n; i++) print ((hit[i] in id) ? id[hit[i]] : "?") ": " txt[i] }' "$W"
-  [ "$output" = "gate: HAS_KEY: \${{ secrets.ANTHROPIC_API_KEY != '' }}
-agent: ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}" ]
+  [ "$output" = "gate: HAS_KEY: \${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+agent: ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}
+agent: CLAUDE_CODE_OAUTH_TOKEN: \${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+gc-agent: ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}
+gc-agent: CLAUDE_CODE_OAUTH_TOKEN: \${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+gc-pr: GH_TOKEN: \${{ secrets.AGENT_GC_TOKEN }}" ]
   run -0 awk '
     inrun { match($0, /^ */); if ($0 ~ /^ *$/ || RLENGTH > ind) { if (index($0, "${{")) print NR ": " $0; next } inrun = 0 }
     /^ *run:/ { match($0, /^ */); ind = RLENGTH; inrun = 1; if (index($0, "${{")) print NR ": " $0 }' "$W"
@@ -247,10 +253,11 @@ agent: ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}" ]
 
 @test "drift.yml: the agent runs with the shared CI agent flags, on the default branch only, one run at a time" {
   agent=$(awk '/^      - / { s = 0 } /^        id: agent$/ { s = 1 } s' "$W")
-  for flag in '.bin/claude -p' --bare --restricted --strict-mcp-config '--tools Read,Grep,Glob' "--disallowedTools 'mcp__*'" \
+  for flag in '.bin/claude -p' --restricted --disable-slash-commands --strict-mcp-config '--tools Read,Grep,Glob' "--disallowedTools 'mcp__*'" \
     '--permission-mode dontAsk' '--settings' '--no-session-persistence' '--output-format json' '--json-schema "$REVIEW_SCHEMA"' \
     '--model "$REVIEW_MODEL"' '--max-turns "$REVIEW_MAX_TURNS"' '--max-budget-usd "$REVIEW_MAX_BUDGET_USD"' \
-    'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"' 'timeout -k 30 "${REVIEW_MAX_MINUTES}m"'; do
+    'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"' 'CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1"' 'CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1"' \
+    'CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: "1"' 'timeout -k 30 "${REVIEW_MAX_MINUTES}m"'; do
     [[ $agent == *"$flag"* ]] || {
       echo "agent step lacks: $flag" >&2
       return 1

@@ -1,0 +1,97 @@
+# orval
+
+> Upstream reference for orval at the version this repository pins, trimmed to what an agent needs here:
+> TanStack Query hooks and zod schemas generated from `api/openapi.yaml` into `packages/api-client/src/gen/`.
+
+Version: 8.45.0
+Pin: packages/api-client/package.json orval
+License: MIT (Copyright (c) 2022-present Victor Bury; LICENSE at v8.45.0); excerpts adapted and trimmed, not the upstream text
+Source: https://github.com/orval-labs/orval/blob/v8.45.0/docs/content/docs/reference/configuration/output.mdx
+Source: https://github.com/orval-labs/orval/blob/v8.45.0/docs/content/docs/guides/react-query.mdx
+Source: https://github.com/orval-labs/orval/blob/v8.45.0/docs/content/docs/guides/fetch-client.mdx
+Source: https://github.com/orval-labs/orval/blob/v8.45.0/docs/content/docs/guides/zod.mdx
+
+When the pin moves, take this file again from upstream at the new tag and update Version and Source in the
+same change (rules.md#docs-references-pinned). Where upstream text conflicts with this repository's rules
+(AGENTS.md, docs/harness/rules.md) or with the section below, the repository wins.
+
+## How this repository uses it
+
+- Config: packages/api-client/orval.config.ts. `make gen` runs `node_modules/.bin/orval --config
+  orval.config.ts` in `packages/api-client`. Everything under `src/gen/` is generated: never edit it. Apps
+  import hooks and schemas only through `packages/api-client` (rules.md#web-no-direct-http).
+- Options in that file that are not obvious:
+  - `mode: 'tags-split'` with `schemas.type: 'zod'`: one folder of hooks per OpenAPI tag, models as zod
+    schemas in one shared directory.
+  - `clean: true` empties `src/gen/endpoints` and `src/gen/model` on every run; keep hand-written code
+    elsewhere.
+  - `override.fetch`: `runtimeValidation: true` zod-parses success bodies inside the generated fetchers
+    (the response half of parse at boundaries), `forceSuccessResponse: true` throws on non-2xx so errors
+    reach TanStack Query's `error` channel, `includeHttpResponseReturnType: false` returns the body, not
+    `{ data, status }`.
+  - `override.query.signal: true` passes TanStack's `AbortSignal`, so superseded queries cancel.
+  - `override.query.runtimeValidation: true` has no effect with `client: 'react-query'` (see
+    override.query below); validation comes from `override.fetch.runtimeValidation` (tech-debt TD-60).
+
+## output options in use
+
+- `target`: where operation files go. `mode: 'tags-split'` writes `<target>/<tag>/<tag>.ts` per tag; with
+  `schemas` set, models go to that one shared directory (an `index.ts` barrel unless `indexFiles: false`),
+  never duplicated per tag. `schemas.splitByTags: true` would split models per tag instead.
+- `schemas`: string path, `false`, or `{ path, type: 'typescript' | 'zod', importPath, splitByTags, routes,
+  mode: 'split' | 'single' }`.
+- `client`: `react-query` here (the default is `axios-functions`); others include `fetch`, `axios`, `swr`,
+  `vue-query`, `svelte-query`, `solid-query`, `angular-query`, `zod`, `hono`, `mcp`.
+- `httpClient`: `'fetch'` (default) | `'axios'` | `'angular'`.
+- `clean: true` removes every file in `target` and `schemas` before writing (`.d.ts` kept), not only files
+  orval wrote. Keep hand-written code (mutators, helpers) outside both directories. `clean: [globs]` adds
+  patterns; `'!**/keep.ts'` preserves a file.
+
+## override.fetch (the request functions the hooks call)
+
+- `includeHttpResponseReturnType` (default `true`): returns `{ data, status }`. `false` (here) returns the
+  body type directly.
+- `forceSuccessResponse` (default `false`): throw on non-2xx instead of returning the error body. `true`
+  here, so errors reach TanStack Query's `error` channel.
+- `runtimeValidation` (default `false`; `true` ≡ `{ strategy: 'throw' }`, or `{ strategy: 'both' }` to
+  `console.error` then rethrow): zod-parse JSON responses before returning. Requires `schemas.type: 'zod'`.
+  Covers `client: 'fetch'` and `react-query`, `vue-query`, `svelte-query`, `solid-query`, `swr`,
+  `pinia-colada` under `httpClient: 'fetch'`. Skipped for primitive responses, ndjson streams and
+  operations with a custom mutator. A validated response is typed with the schema's zod output alias (e.g. `PetsOutput`).
+- `includeHttpErrorResponse` (default `false`): passes declared error statuses to a custom fetch mutator
+  (needs `includeHttpResponseReturnType: true` and `forceSuccessResponse: true`).
+- `arrayFormat`: `'repeat'` (`?a=1&a=2`) | `'brackets'` | `'comma'`, when the spec sets no `explode`.
+
+## override.query (TanStack Query hooks)
+
+- `useQuery`, `useSuspenseQuery`, `useMutation`, `useInfinite` + `useInfiniteQueryParam`,
+  `useSuspenseInfiniteQuery`, `usePrefetch`, `useInvalidate`, `useSetQueryData`, `useGetQueryData`:
+  booleans that choose which helpers are generated.
+- `signal: true` passes TanStack's `AbortSignal` to the request, so unmounted or superseded queries cancel.
+- `useSkipToken` (React Query v5): hold a query with unresolved params via `skipToken` instead of the
+  generated `enabled` guard; it also blocks `refetch()`, and the caller's own `enabled` no longer replaces
+  the param check (callers' `...queryOptions` are spread last).
+- `useSetQueryData` helpers call `setQueriesData` (since 8.11.0): they update only existing entries, exact
+  key by default; pass `$exactMatch: false` to match by path prefix.
+- `mutationInvalidates`: invalidate or reset queries when a mutation succeeds.
+- `options`: default query options (e.g. `{ staleTime: 10000 }`).
+- `runtimeValidation` here drives only the Angular HttpClient pipeline that `angular-query` generates (the
+  generator gates it on the Angular adapter). For `react-query` validation comes from
+  `override.fetch.runtimeValidation` with `httpClient: 'fetch'`.
+- Per operation or tag: `override.operations.<operationId>.query` / `override.tags.<tag>`.
+
+## override.zod (schema generation)
+
+- `strict`, `coerce`, `generate` (which schemas: params, query, header, body, response), `preprocess`,
+  `dateTimeOptions`, `useBrandedTypes`, `exactOptional`, `generateDiscriminatedUnion`.
+- Generated schemas are plain zod objects: `Pet.parse(x)`, `Pet.safeParse(x)`, `z.infer<typeof Pet>`.
+
+## Other options agents reach for
+
+- `override.mutator: { path, name }`: route every request through a hand-written function (auth headers,
+  base URL). The path must be outside `target`/`schemas` (see `clean`). With a mutator the generated zod
+  parse does not run.
+- `baseUrl` (default `''`, so URLs are the spec's paths): a string prefix, or an object with
+  `runtime: 'process.env.API_BASE_URL'` (a trusted JS expression embedded in the URLs) or
+  `getBaseUrlFromSpecification: true`.
+- `override.transformer`: a function that rewrites the parsed spec before generation.

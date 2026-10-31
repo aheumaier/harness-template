@@ -9,13 +9,16 @@
 #                              (rules.md#harness-scope)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+# shellcheck source=layout.sh
+source scripts/harness/layout.sh || exit 2
 
-# Every generated path in the repo. Keep in sync with `make gen`.
-GEN_RE='^(apps/api/internal/.*\.gen\.go|apps/api/internal/[^/]+/store/(db|models|[^/]+\.sql)\.go|apps/api/db/migrations/atlas\.sum|packages/api-client/src/gen/.*)$'
+# Every generated path in the repo (layout.env's GENERATED_GLOBS, plus Atlas's checksum file), fixture overlays
+# aside. Keep GENERATED_GLOBS in sync with `make gen`.
+GENERATED=("${GENERATED_GLOBS[@]}" "$MIGRATIONS_DIR/atlas.sum" ':!:scripts/harness/fixtures/*')
 # What `make gen` reads: sources, generator configs, tool versions and the gen recipes themselves.
-INPUTS=(api/openapi.yaml apps/api/db/queries apps/api/db/migrations 'apps/api/internal/*oapi-codegen.yaml'
-  apps/api/sqlc.yaml apps/api/atlas.hcl packages/api-client/orval.config.ts packages/api-client/package.json
-  pnpm-lock.yaml scripts/tool-versions.env Makefile scripts/harness/gen-check.sh)
+INPUTS=("$SPEC" "$QUERIES_DIR" "$MIGRATIONS_DIR" "$DOMAINS_DIR/*oapi-codegen.yaml"
+  "${API_PREFIX}sqlc.yaml" "${API_PREFIX}atlas.hcl" "$API_CLIENT_DIR/orval.config.ts" "$API_CLIENT_DIR/package.json"
+  pnpm-lock.yaml scripts/tool-versions.env Makefile scripts/harness/gen-check.sh scripts/harness/layout.env)
 STAMP=.cache/harness/gen-check.stamp
 
 hashes() {
@@ -23,10 +26,11 @@ hashes() {
     [[ -f "$f" ]] && shasum -a 256 "$f"
   done || true
 }
-snapshot() { git ls-files -co --exclude-standard | grep -E "$GEN_RE" | sort | hashes; }
-stamp() {
+snapshot() { git ls-files -co --exclude-standard -- "${GENERATED[@]}" | sort | hashes; }
+stamp() { # the effective STACK too: a HARNESS_STACK run of make gen leaves generators out (ADR 0033)
   {
-    git ls-files -co --exclude-standard -- "${INPUTS[@]}" | sort | hashes &&
+    echo "STACK=$STACK" &&
+      git ls-files -co --exclude-standard -- "${INPUTS[@]}" | sort | hashes &&
       snapshot
   } | shasum -a 256
 }

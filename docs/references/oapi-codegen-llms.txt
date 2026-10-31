@@ -1,0 +1,129 @@
+# oapi-codegen
+
+> Upstream reference for oapi-codegen at the version this repository pins, trimmed to what an agent needs
+> here: the strict net/http server generated per OpenAPI tag into `apps/api/internal/**/api.gen.go`.
+
+Version: v2.8.1
+Pin: scripts/tool-versions.env OAPI_CODEGEN_VERSION
+License: Apache-2.0 (oapi-codegen authors; LICENSE at v2.8.1); excerpts adapted and trimmed, not the upstream text
+Source: https://github.com/oapi-codegen/oapi-codegen/blob/v2.8.1/README.md
+Source: https://github.com/oapi-codegen/oapi-codegen/blob/v2.8.1/docs/configuration.md
+
+When the pin moves, take this file again from upstream at the new tag and update Version and Source in the
+same change (rules.md#docs-references-pinned). Where upstream text conflicts with this repository's rules
+(AGENTS.md, docs/harness/rules.md) or with the section below, the repository wins.
+
+## How this repository uses it
+
+- Config: one `oapi-codegen.yaml` per OpenAPI tag, next to the generated code
+  (apps/api/internal/platform/health/oapi-codegen.yaml; `make new-domain` writes new ones from
+  scripts/templates/new-domain/oapi-codegen.yaml.tmpl). `make gen` runs
+  `oapi-codegen -config oapi-codegen.yaml` in each of those directories. Never hand-edit `api.gen.go`.
+- Options in those files that are not obvious:
+  - `std-http-server: true` generates `net/http` routing on `http.ServeMux` (needs Go 1.24+);
+    `strict-server: true` adds the typed request/response layer on top of it. Both are needed.
+  - `output-options.include-tags: [<tag>]` puts only that tag's operations (and the schemas they use)
+    into the package, so one spec yields one Go package per domain.
+- The handler is wired with `NewStrictHandlerWithOptions(impl, middlewares, StrictHTTPServerOptions{...})`;
+  apps/api/internal/platform/health/health.go sets both error hooks to the RFC 9457 helpers in
+  `platform/problem`.
+
+## Config file structure (docs/configuration.md)
+
+```yaml
+package: ""                  # required
+output: ""                   # output file; stdout if empty
+generate:                    # omitted entirely = Echo server + models + embedded spec
+  chi-server | echo-server | fiber-server | gin-server | gorilla-server | iris-server | std-http-server: false
+  strict-server: false       # used alongside exactly one of the server types above
+  client: false
+  models: false
+  embedded-spec: false
+  server-urls: false
+compatibility: {...}         # old-* flags that keep pre-bug-fix output; leave unset
+output-options:
+  include-tags: []           # exclude-tags, include-operation-ids, exclude-operation-ids, exclude-schemas
+  skip-fmt: false
+  skip-prune: false          # true keeps schemas no operation references
+  response-type-suffix: ""
+  nullable-type: false       # nullable.Nullable[T] for nullable fields (see below)
+  prefer-skip-optional-pointer: false
+  prefer-skip-optional-pointer-with-omitzero: false
+  generate-types-for-anonymous-schemas: false
+  type-mapping: {...}        # OpenAPI type/format -> Go type
+  user-templates: {}         # override built-in templates
+  overlay: { path: "", strict: true }   # OpenAPI Overlay applied before generation
+import-mapping: {}           # external $ref file -> Go package (spec split across packages)
+allow-remote-refs-from: ["*"]  # default when omitted; [] refuses remote $refs (only local files followed)
+additional-imports: []
+```
+
+Only one server type per config, and one output file per run; this repo runs the tool once per config, one
+config (and Go package) per tag.
+
+## Strict server
+
+- Generated interface, one method per operation:
+
+  ```go
+  type StrictServerInterface interface {
+      FindPets(ctx context.Context, request FindPetsRequestObject) (FindPetsResponseObject, error)
+  }
+  ```
+
+- `<Op>RequestObject` holds the path params, `Params` (query/header), and `Body` already decoded.
+  Return one of the generated `<Op><Status>JSONResponse` (or `...Response` for no body) types; each
+  implements `Visit<Op>Response(w)` which writes status, headers and body.
+- `RequestErrorHandlerFunc` gets parameter and body decode errors (the request never reaches your method).
+  `ResponseErrorHandlerFunc` gets an `error` your method returned, a `Visit...` write error, or an
+  unexpected response type. Default handlers write plain-text `http.Error` 400/500; this repo replaces both
+  with problem+json.
+- Prefer returning a typed error response (e.g. `GetThing404ApplicationProblemPlusJSONResponse`) over
+  returning an `error`: an `error` always becomes the 500 path.
+- `StrictMiddlewareFunc` wraps the typed handler: `func(f StrictHandlerFunc, operationID string)
+  StrictHandlerFunc`. Use plain `net/http` middleware for transport concerns.
+- No request validation against the schema is generated (types only): the strict server decodes
+  parameters and JSON bodies into the generated types and checks no schema constraint. Validation needs a separate middleware (`oapi-codegen/nethttp-middleware`, kin-openapi); with such a
+  middleware keep its validated value so the strict handler does not decode the body twice
+  (case-insensitive JSON decode can bind a member the validator did not check). Response validation by
+  middleware is not possible.
+
+## Types and pointers
+
+- Optional fields become pointers (`*string`) with `omitempty`. Per field `x-go-type-skip-optional-pointer:
+  true`, or globally `output-options.prefer-skip-optional-pointer: true` (per-field `false` undoes it).
+- `nullable: true` (3.0) or `type: [T, "null"]` (3.1): with `output-options.nullable-type: true` the field
+  is `nullable.Nullable[T]` (module `github.com/oapi-codegen/nullable`), which distinguishes absent, null
+  and set (useful for PATCH).
+- OpenAPI 3.0 and 3.1 are both supported at this version (3.1 adds webhooks, `type: [T, "null"]`,
+  `oneOf` + `const` enums).
+- `anyOf`, `allOf` and `oneOf` are supported: `allOf` merges into one struct; `anyOf`/`oneOf` generate a
+  union type (a `json.RawMessage` inside) with `As<Type>`, `From<Type>` and `Merge<Type>` methods.
+
+## Extensions (in the spec, per schema/property)
+
+| Extension | Effect |
+|-----------|--------|
+| `x-go-type` / `x-go-type-import` | use an existing Go type (and import it) instead of generating one |
+| `x-go-type-skip-optional-pointer` | no pointer for this optional field |
+| `x-go-name` | Go name of a field or type |
+| `x-go-type-name` | Go name of a generated type |
+| `x-omitempty` | force `omitempty` on or off |
+| `x-omitzero` | force `omitzero` on a field |
+| `x-go-json-ignore` | ignore the field when (un)marshaling JSON |
+| `x-oapi-codegen-extra-tags` | extra struct tags, e.g. `validate:"..."` |
+| `x-enum-varnames` / `x-enumNames` | names for enum constants |
+| `x-deprecated-reason` | GoDoc deprecation warning on a type |
+| `x-order` | explicit struct field order |
+
+Since v2.4.0 these can also be applied without editing the spec, through an OpenAPI Overlay
+(`output-options.overlay`).
+
+## FAQ points that apply here
+
+- Commit generated code and let CI check it is up to date (`make gen-check` here); do not lint it:
+  upstream does not promise it passes linters.
+- Use `include-tags` / `exclude-tags` to split one spec into several packages; schemas the selected
+  operations use are generated into each package (pruning removes the rest).
+- A breaking change in generated output between versions is kept behind a `compatibility` flag; read the
+  release notes before raising the pin.

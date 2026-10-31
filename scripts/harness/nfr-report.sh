@@ -18,7 +18,7 @@ budgets="${HARNESS_BUDGETS:-$ROOT/scripts/harness/budgets.txt}"
 
 # timing.sh writes one fixed-format JSON object per line; rows from PR runs are untrusted, so only ids made of
 # [A-Za-z0-9_.-] are kept. Output: "<name> <ms>", sorted by name, then by time.
-rows="$(cat "$@" | sed -nE 's/^\{"sensor":"([A-Za-z0-9_.-]+)",.*"ms":([0-9]+),.*$/\1 \2/p' | LC_ALL=C sort -k1,1 -k2,2n)"
+rows="$(cat "$@" | sed -nE 's/^\{"sensor":"([A-Za-z0-9_.-]+)","start_ms":[0-9]+,"ms":([0-9]+),.*$/\1 \2/p' | LC_ALL=C sort -k1,1 -k2,2n)"
 [[ -n "$rows" ]] || {
   echo "nfr-report: no timing rows in $*" >&2
   exit 2

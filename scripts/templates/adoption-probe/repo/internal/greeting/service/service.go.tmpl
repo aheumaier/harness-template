@@ -1,0 +1,12 @@
+// Package service is the greeting domain's logic.
+package service
+
+import "example.com/hello/internal/greeting/model"
+
+// Greet greets name, or the world when name is empty.
+func Greet(name string) model.Greeting {
+	if name == "" {
+		name = "world"
+	}
+	return model.Greeting{Message: "hello, " + name}
+}
