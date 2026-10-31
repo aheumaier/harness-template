@@ -29,9 +29,10 @@ services:
       - "127.0.0.1:${PROMETHEUS_PORT:?run make setup}:9090"
       - "127.0.0.1:${TEMPO_PORT:?run make setup}:3200"
       - "127.0.0.1:${GRAFANA_PORT:?run make setup}:3000"
-    environment: # DIAG (temporary)
-      ENABLE_LOGS_LOKI: "true"
-      ENABLE_LOGS_OTELCOL: "true"
+    environment:
+      ENABLE_LOGS_LOKI: "true" # DIAG (temporary)
+      ENABLE_LOGS_OTELCOL: "true" # DIAG (temporary)
+      LOKI_EXTRA_ARGS: -ingester.wal-disk-full-threshold=0
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/ready"]
       interval: 1s
