@@ -145,7 +145,8 @@ for name in "${names[@]}"; do
 
   # .tmp/ is gitignored, so clean keeps it: drop it too, or one fixture's scratch (harness-behind-upstream's
   # clone in .tmp/upstream) is linted and scanned by every later fixture under HARNESS_SCOPE=full. One command
-  # per line: set -e ignores a failure inside an && list.
+  # per line: set -e ignores a failure inside an && list. Other ignored state (.cache/, .turbo/, the linked
+  # .bin) still carries over: tech-debt TD-147.
   g checkout -qf -B main "$base"
   g clean -fdq
   rm -rf "$work/.tmp"
