@@ -17,9 +17,10 @@ var (
 	// app target's folder, so a Swift test also needs a directory named *Tests (SwiftPM's Tests/<X>Tests/,
 	// Xcode's <App>Tests/ and <App>UITests/; a bare Tests/ is in no target; ADR 0041).
 	swiftTestRE = regexp.MustCompile(`(^|/)[^/]+Tests/([^/]+/)*[^/]*Tests\.swift$`)
-	// swiftSourcesRE: SwiftPM compiles everything under Sources/<Target>/, a *Tests subfolder too, so a file
-	// there ships in the app whatever its folder is named.
-	swiftSourcesRE = regexp.MustCompile(`(^|/)Sources/`)
+	// swiftSourcesRE: SwiftPM compiles everything under a source target's folder (Sources/, Source/, src/ or
+	// srcs/ by default), a *Tests subfolder too, so a file there ships unless Package.swift says otherwise; a
+	// test target placed there is refused as well (fails closed: move it to Tests/).
+	swiftSourcesRE = regexp.MustCompile(`(?i)(^|/)(sources?|srcs?)/`) // any case: macOS disks fold it, as matchesAnyFold says
 	// testFileForms says in words what testFileRE and swiftTestRE match; TestTestFileForms holds them together.
 	testFileForms = "*_test.go, or *.test.*, *.spec.* or *.e2e.* ending in .js, .ts, .jsx or .tsx (also .mjs, .cjs, .mts, .cts), or *Tests.swift under a *Tests directory, not under Sources/"
 	// testFilePathspecs selects, by name alone, every file the two can match (`*` also matches `/`): git's

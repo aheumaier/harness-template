@@ -27,12 +27,13 @@ needs no Xcode and runs on the Ubuntu CI as it is.
   Swift (Objective-C under an XcodeGen `project.yml`) is not found until phase 2 knows `project.yml`. Fixture
   `harness-stack-hides-ios`.
 - **Swift test files (amends ADR 0036).** A product test file is also `*Tests.swift` inside a directory whose
-  name ends in `Tests` and not under a `Sources/` directory (SwiftPM's `Tests/<X>Tests/`, Xcode's `<App>Tests/`
+  name ends in `Tests` and not under a SwiftPM source folder (`Sources/`, `Source/`, `src/`, `srcs/`; SwiftPM's `Tests/<X>Tests/`, Xcode's `<App>Tests/`
   and `<App>UITests/`; a bare `Tests/` folder is in no target). The name alone is not enough: Swift has no
   build rule like `_test.go`, and Xcode compiles any file in an app target's folder, so `Sources/AppCore/PayTests.swift` would ship in the app; SwiftPM compiles a `Sources/<X>/MockTests/`
   folder too. An Xcode app folder with a `*Tests` subfolder is not caught: Xcode decides by target, which a
   path cannot show. In a `.swift` file, a line with `XCTSkip` or Swift Testing's `.disabled(` or
-  `.enabled(if: false)` names nothing, and so does every line inside `#if false`. The check stays per line: Swift Testing names a scenario in
+  `.enabled(` (any condition: a test that runs only sometimes is no evidence) names nothing, and so does every
+  line inside a bare `#if false`; other ways to compile code out are not read. The check stays per line: Swift Testing names a scenario in
   its title, `@Test("001/US1-AS2 signs out")`, and skips on that line; an XCTest skip below a
   `// spec: <id>` comment is not seen, nor a skip on an `@Test(` that swift-format wrapped onto several lines,
   the same gap as Go's `t.Skip` on a following line.

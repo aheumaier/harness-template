@@ -206,9 +206,9 @@ func TestTestFileForms(t *testing.T) {
 		}
 	}
 	pt := productTests{include: []string{"apps/*"}}
-	for _, f := range []string{"apps/ios/Sources/AppCore/MockTests/PayTests.swift", "apps/ios/Sources/AppCoreTests/PayTests.swift"} {
+	for _, f := range []string{"apps/ios/Sources/AppCore/MockTests/PayTests.swift", "apps/ios/Sources/AppCoreTests/PayTests.swift", "apps/ios/src/AppCore/MockTests/PayTests.swift", "apps/ios/Source/AppCore/MockTests/PayTests.swift", "apps/watch/sources/App/HelperTests/PayTests.swift"} {
 		if pt.why(f) == "" {
-			t.Errorf("%s: a *Tests folder under Sources/ ships in the app, but why allows it", f)
+			t.Errorf("%s: a *Tests folder under a SwiftPM source folder ships by default, but why allows it", f)
 		}
 	}
 }

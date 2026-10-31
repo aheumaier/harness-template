@@ -90,14 +90,15 @@ matches the ios line only.
 
 **D5. Swift test files and skips.**
 - A Swift test file is `*Tests.swift` inside a directory whose name ends in `Tests` (a bare `Tests/` is in no
-  target), not under `Sources/` (SwiftPM compiles every subfolder there): SwiftPM's `Tests/<X>Tests/`, Xcode's
+  target), not under a SwiftPM source folder, `Sources/`, `Source/`, `src/` or `srcs/` (SwiftPM compiles every
+  subfolder there): SwiftPM's `Tests/<X>Tests/`, Xcode's
   `<App>Tests/` and `<App>UITests/`. The name alone is not enough: Swift has no
   build rule like `_test.go`, and Xcode 16's synchronized folders compile any file dropped into the app's
   folder, so `apps/ios/App/LoginTests.swift` would ship in the app and still pass the `test-writer` guard.
   `testdata/test-files.txt` gets rows for both.
 - A Swift test line names nothing when it has `XCTSkip` (`throw XCTSkip(…)`, `XCTSkipIf`, `XCTSkipUnless`),
-  `.disabled(` or `.enabled(if: false)` (Swift Testing, with optional spaces or backticks), and neither does a
-  line inside `#if false` (its `#else` branch counts). These apply to `.swift` files only, so a SwiftUI `.disabled(` modifier or a TS
+  `.disabled(` or `.enabled(` with any condition (Swift Testing, with optional spaces or backticks), and neither
+  does a line inside a bare `#if false` (its `#else` branch counts; other ways to compile code out: TD-149). These apply to `.swift` files only, so a SwiftUI `.disabled(` modifier or a TS
   line is never mistaken for a skip. `withKnownIssue` stays counted, like JS `.fails(`.
 - The skip check is line by line (`scenarios.go:162`). rules.md says so and recommends Swift Testing,
   `@Test("001/US1-AS2 signs out")`, skipped as `@Test("001/US1-AS2 signs out", .disabled("…"))` on the same
