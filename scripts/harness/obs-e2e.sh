@@ -70,37 +70,7 @@ fail() {
     [[ -s "$f" ]] && printf -- '--- %s (last 20 lines)\n%s\n' "${f##*/}" "$(tail -n 20 "$f")" >&2
   done
   echo "obs-e2e: $1" >&2
-  diag >&2
   exit 1
-}
-
-# DIAG (temporary, to be dropped): what the stack did with the request.
-diag() {
-  set +e
-  echo "=== DIAG $(date -u +%FT%TZ)"
-  local tr
-  tr="$("$JQ" -r 'select(.msg == "request") | .trace_id' "$tmp/api.log" 2>/dev/null | head -n 1)"
-  echo "--- loki metrics"
-  curl -s --noproxy '*' "http://127.0.0.1:$LOKI_PORT/metrics" |
-    grep -E '^loki_(request_duration_seconds_count|distributor_lines_received_total|discarded_samples_total|ingester_streams_created_total|ingester_memory_streams|ingester_wal_disk)' |
-    grep -Ev 'route="(metrics|ready|loki_api_v1_query_range|api_v1_query_range)"'
-  echo "--- collector metrics"
-  (cd "$ROOT" && docker compose --profile obs exec -T obs curl -s 127.0.0.1:8888/metrics) |
-    grep -E 'log_records|send_failed|enqueue_failed|queue_size|spans' | grep -v '^#'
-  echo "--- traces of $tr"
-  m traces ID="$tr" 2>&1 | head -n 5
-  echo "--- metric"
-  m metrics QUERY="http_server_request_duration_seconds_count{instance=\"$id\"}" 2>&1 | head -n 5
-  echo "--- loki query, no filter"
-  m logs SINCE=15m 2>&1 | tail -n 5
-  echo "--- disk"
-  df -h / /var/lib/docker 2>&1
-  (cd "$ROOT" && docker compose --profile obs exec -T obs df -h /data/loki) 2>&1
-  echo "--- loki throttle lines"
-  (cd "$ROOT" && docker compose --profile obs logs --timestamps obs 2>&1) | grep -E 'disk usage|shutting down|Loki started|/tmp/ready' | cut -c 1-400 | head -n 20
-  echo "--- obs logs"
-  (cd "$ROOT" && docker compose --profile obs logs --timestamps obs 2>&1) | grep -v 'level=debug' | cut -c 1-400 | tail -n 30
-  echo "=== END DIAG"
 }
 
 # poll <name> <function>: reruns the function (stdout in $tmp/out, stderr in $tmp/err) until it succeeds,
@@ -123,7 +93,6 @@ ids="$(cd "$ROOT" && docker compose --profile obs ps --status running -q obs 2>"
 m obs-up >"$tmp/err" 2>&1 ||
   fail "make obs-up failed: Docker could not start the obs stack (OBS_IMAGE ${OBS_IMAGE:-unset}); check its network and disk space"
 
-sleep "${DIAG_DELAY:-0}" # DIAG (temporary)
 # The API, built (killing `go run` can orphan its child) and listening on a port nobody else uses.
 (cd "$ROOT/$API_DIR" && go build -o "$tmp/api" ./cmd/api) >"$tmp/err" 2>&1 || fail "the API does not build"
 port="$(perl -MIO::Socket::INET -e 'print IO::Socket::INET->new(Listen => 1, LocalAddr => "127.0.0.1:0")->sockport')" ||
@@ -166,4 +135,3 @@ poll "server span of trace $trace (make traces ID=$trace)" server_span
 p95q="histogram_quantile(0.95, sum by (le) (http_server_request_duration_seconds_bucket{http_route=\"/healthz\",instance=\"$id\"}))"
 p95() { m metrics QUERY="$p95q" | tee "$tmp/got" | grep -E ' [0-9]+(\.[0-9]+)?(e[-+]?[0-9]+)?$'; }
 poll "p95 latency of /healthz of this API process (make metrics QUERY='$p95q')" p95
-[[ -z "${DIAG_FORCE:-}" ]] || fail "DIAG_FORCE"
