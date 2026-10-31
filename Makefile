@@ -169,7 +169,7 @@ traces: ## Spans of one trace as JSON lines, in start order: make traces ID=<tra
 # obs-e2e's latency budget. MAKE: the script's own make calls use this make (macOS ships 3.81).
 test-obs: ## One request's access line, trace and p95 latency through make logs, traces and metrics (Docker)
 	@$(WITH_ENV) $(RUN) obs-pull obs-request-queryable -- scripts/harness/obs-e2e.sh pull
-	@$(WITH_ENV) $(RUN) obs-e2e obs-request-queryable -- env MAKE="$(MAKE)" scripts/harness/obs-e2e.sh
+	@$(WITH_ENV) rc=0; for i in $$(seq $(or $(DIAG_N),8)); do echo "DIAG obs-e2e run $$i $$(date -u +%T)"; env MAKE="$(MAKE)" scripts/harness/obs-e2e.sh || rc=1; done; exit $$rc
 
 ##@ Behaviour: browser journeys against this worktree's make dev (exec plan 0003 P2.3, NFR-B2)
 .PHONY: e2e e2e-deps
