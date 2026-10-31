@@ -99,7 +99,7 @@ verdict() { # trivy's exit status → status: 0 clean, 3 findings (→ 1); anyth
 has_packages() { # a go.mod with a require directive, a Package.resolved with a pin, or a pnpm-lock.yaml with a non-empty packages: section
   case "$1" in
     *go.mod) grep -Eq '^require[[:space:](]' "$1" ;;
-    *Package.resolved) grep -q '"identity"' "$1" ;;
+    *Package.resolved) grep -Eq '"(identity|package)"[[:space:]]*:' "$1" ;; # a pin: version 2-3, version 1
     *) awk '/^packages:/ { p = 1; next } p && /^[^[:space:]]/ { exit } p && /^[[:space:]]+[^[:space:]]/ { f = 1; exit }
       END { exit !f }' "$1" ;;
   esac

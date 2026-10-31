@@ -1,8 +1,8 @@
 # harness-template
 
 A template for products built by coding agents. It has a Go HTTP API (`apps/api`), a React web app (`apps/web`),
-a shared OpenAPI contract (`api/openapi.yaml`) and Postgres. There are no business domains yet. What the
-template really offers is the **harness**:
+an iOS app's Swift package (`apps/ios`), a shared OpenAPI contract (`api/openapi.yaml`) and Postgres. There are
+no business domains yet. What the template really offers is the **harness**:
 
 - **Guides** say what good looks like: [AGENTS.md](AGENTS.md), [ARCHITECTURE.md](ARCHITECTURE.md) and
   [docs/](docs/).

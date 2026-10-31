@@ -3,8 +3,7 @@
 # names 900/US1-AS1 in a test that runs and 900/US1-AS2 in one disabled on the same line.
 set -euo pipefail
 # shellcheck source=scripts/harness/layout.sh
-source scripts/harness/layout.sh
-harness_layout_load scripts/harness/layout.env
+source scripts/harness/layout.sh || exit 2
 dir="${PRODUCT_GLOBS[0]%/\*}/ios/Tests/FixtureTests"
 mkdir -p "$dir"
 cat >"$dir/SignOutTests.swift" <<'SWIFT'

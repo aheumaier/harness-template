@@ -50,7 +50,7 @@ only in the iOS app. That ADR requires this template to:
 | Q5 | Does the `test-writer` write Swift tests? | **Yes**, unit tests in the logic package. `swift test` on that package joins `make check` on macOS, with its own time budget, and is skipped by name elsewhere. ADR 0039 is amended. |
 | Q6 | Generated client | Apple's swift-openapi-generator, pinned; Phase 3's ADR decides how it handles `x-extensible-enum`. |
 | Q7 | macOS CI and merge rules | The macOS job always starts and passes with a notice when nothing iOS changed (the `adoption-probe` pattern), so it can be a required check. |
-| Q8 | What counts as iOS code | Any Swift under a `PRODUCT_GLOBS` entry, hybrid app shells and server-side Swift included. |
+| Q8 | What counts as iOS code | Any Swift under a `PRODUCT_GLOBS` entry, hybrid app shells and server-side Swift included. Built as `PRODUCT_GLOBS` or `WEB_GLOBS`, the places where Swift tests count (architecture review of phase 1). |
 
 This Mac (2026-10-31) has Apple's command-line tools (Swift 6.2.4) but no Xcode. Plain `swift test` fails
 there with `no such module 'Testing'` (and `'XCTest'`): the tools ship Swift Testing in
@@ -78,22 +78,26 @@ on stderr when `ios` is in `STACK` (so on Ubuntu, never silently). `selftest.sh`
 target is in `HOST_OFF` like D2's skip.
 
 **D4. A left-out `ios` group is found, not hidden** (ADR 0033, "fail closed, both ways"). When `ios` is not
-in `STACK`, `layout-check` reports a git-known `Package.swift`, XcodeGen `project.yml`,
-`*.xcodeproj/project.pbxproj` or `*.swift` under a `PRODUCT_GLOBS` entry (Q8), for example
-`STACK=go:db:web: leaves out ios, but apps/ios/Package.swift exists`. The pathspecs need `**`: `hiddenGroups`
-uses `:(glob)`, where `*` does not cross `/`. Fixture `harness-stack-hides-ios`: its `apply.sh` removes only
-`ios` from `STACK` and, when the tree has no Swift (the adoption probe's repo, whose layout is `STACK=go`
-and `PRODUCT_GLOBS=cmd/*:internal/*:api/*`), first writes a marker under the first `PRODUCT_GLOBS` entry read
-from `layout.sh`; its EXPECT matches the ios line only.
+in `STACK`, `layout-check` reports a git-known `*.swift` or `*.xcodeproj/project.pbxproj` under a
+`PRODUCT_GLOBS` or `WEB_GLOBS` entry (Q8), for example
+`STACK=go:db:web: leaves out ios, but apps/ios/Package.swift exists`. It lists those files once (`gitKnown`, so a
+`fixtures/` folder inside the app still counts) and keeps the ones `matchesAny` puts under an entry, the
+predicate `productTests` uses, so an entry with or without a trailing `*` works the same. XcodeGen's
+`project.yml` (an app with no Swift) is phase 2's. Fixture `harness-stack-hides-ios`: its `apply.sh` writes a
+Swift marker under the first `PRODUCT_GLOBS` entry read from `layout.sh` (so it holds in the adoption probe's
+layout, `STACK=go`, `PRODUCT_GLOBS=cmd/*:internal/*:api/*`) and removes only `ios` from `STACK`; its EXPECT
+matches the ios line only.
 
 **D5. Swift test files and skips.**
-- A Swift test file is `*Tests.swift` inside a directory whose name ends in `Tests`: SwiftPM's
-  `Tests/<X>Tests/`, Xcode's `<App>Tests/` and `<App>UITests/`. The name alone is not enough: Swift has no
+- A Swift test file is `*Tests.swift` inside a directory whose name ends in `Tests` (a bare `Tests/` is in no
+  target), not under `Sources/` (SwiftPM compiles every subfolder there): SwiftPM's `Tests/<X>Tests/`, Xcode's
+  `<App>Tests/` and `<App>UITests/`. The name alone is not enough: Swift has no
   build rule like `_test.go`, and Xcode 16's synchronized folders compile any file dropped into the app's
   folder, so `apps/ios/App/LoginTests.swift` would ship in the app and still pass the `test-writer` guard.
   `testdata/test-files.txt` gets rows for both.
-- A Swift test line names nothing when it has `XCTSkip` (`throw XCTSkip(…)`, `XCTSkipIf`, `XCTSkipUnless`) or
-  `.disabled(` (Swift Testing). These apply to `.swift` files only, so a SwiftUI `.disabled(` modifier or a TS
+- A Swift test line names nothing when it has `XCTSkip` (`throw XCTSkip(…)`, `XCTSkipIf`, `XCTSkipUnless`),
+  `.disabled(` or `.enabled(if: false)` (Swift Testing, with optional spaces or backticks), and neither does a
+  line inside `#if false` (its `#else` branch counts). These apply to `.swift` files only, so a SwiftUI `.disabled(` modifier or a TS
   line is never mistaken for a skip. `withKnownIssue` stays counted, like JS `.fails(`.
 - The skip check is line by line (`scenarios.go:162`). rules.md says so and recommends Swift Testing,
   `@Test("001/US1-AS2 signs out")`, skipped as `@Test("001/US1-AS2 signs out", .disabled("…"))` on the same
@@ -121,9 +125,9 @@ readers (the iOS targets, `affected.sh:79`, which today sends an asset catalog's
 unscoped web run). The suppression forms (`swiftlint:disable`, `swift-format-ignore`) arrive with the linters.
 
 **D9. The skeleton is small and dependency-free.** Phase 1: `apps/ios/Package.swift` (platforms iOS and
-macOS, so `swift test` runs without a simulator), one source file in `Sources/AppCore/`, one test in
+macOS, so `swift test` runs without a simulator), one source file in `Sources/AppCore/`, two tests in
 `Tests/AppCoreTests/`, and an `apps/ios/AGENTS.md` (with its `CLAUDE.md`, `docs-links`). No remote Swift
-packages, so its `Package.resolved` holds nothing for Trivy to report. Module names are neutral (`AppCore`),
+packages, so it has no `Package.resolved` yet. Module names are neutral (`AppCore`),
 so `make rename` has nothing to rewrite there. Phase 2 adds the app target as an XcodeGen `project.yml`.
 
 ## Touchpoints
@@ -141,8 +145,9 @@ learn a new one. By phase:
   file patterns and help text in the `Makefile` (about line 413).
 - Supply chain: `trivy.sh` (`Package.resolved` in `has_packages` and in the fail-closed check).
 - Repo: `.gitignore` (`DerivedData/`, `.build/`, `.swiftpm/`, `xcuserdata/`, `*.xcuserstate`).
-- Adoption: README (a) (adopters without iOS delete `apps/ios` and drop `ios`), README (b) and the adoption
-  probe's `drop_sets` (an ios set), `scripts/templates/adoption-probe/` if a fixture needs a rewrite.
+- Adoption: README (a) (adopters without iOS delete `apps/ios` and drop `ios`). README (b) step 3 never copies
+  `apps/ios`, so neither (b) nor the adoption probe's `drop_sets` needs an ios set; the fixtures write their
+  Swift under the probe's own `PRODUCT_GLOBS`.
 - Docs: rules.md `harness-layout-valid` and `specs-scenarios-tested`; README's `STACK` paragraphs; nfr.md
   NFR-R3 wording if needed; a new ADR amending ADR 0033 (the group, D4, Q8, the skeleton).
 - Fixtures: `specs-swift-test-skipped` (`.disabled(` on the same line names nothing),
@@ -151,6 +156,18 @@ learn a new one. By phase:
   rejection, not a pass.
 
 **Phase 2 (macOS job: Xcode pin, lint, format, `swift test`, the app target, the `test-writer`)**
+- From the phase 1 architecture review, to settle at phase 2's start:
+  - `ios` in `STACK` must need an iOS app: a non-empty `IOS_DIR` with a git-known `Package.swift` or
+    `project.yml`, with a fixture (ADR 0033's "both ways" is half done for ios: a Go-only adopter who deletes
+    `apps/ios` but keeps `ios` gets no warning).
+  - `swift test` in `make check` needs an `unchanged.sh` gate on Swift inputs to hold NFR-H3, and the
+    command-line tools' `-F`/`-rpath` flags when `xcode-select -p` is the command-line tools.
+  - The selftest's "full stack" is now `go:db:web:ios`, so every product that drops `ios` loses NFR-R3's
+    "a skip fails" once iOS-only targets exist: decide whether full means "every group the product declares".
+  - XcodeGen's `project.yml` marks an iOS app for D4 and decides Xcode test folders by target, which a path
+    cannot (a `*Tests` subfolder of an Xcode app folder counts today).
+  - Re-point the literal `apps/ios` in `test-writer.md`, `apps/ios/AGENTS.md` and the `layout.env` comment to
+    `IOS_DIR`.
 - CI: the macOS job (Q7), the setup action's `":ios:"` steps, `REQUIRED_CHECKS` and `docs/harness/ci.md`, the
   workflow in `protected-paths.txt` and `CODEOWNERS`; the Ubuntu jobs set `SELFTEST_SKIP_XCODE=1`.
 - `Makefile`: `IOS_TARGETS`, `HOST_OFF` (D3), a `##@ iOS sensors` section, `check-ios` (D7), `test-ios`
@@ -181,7 +198,7 @@ learn a new one. By phase:
 
 | # | Phase | Exit criterion | State |
 |---|-------|----------------|-------|
-| 1 | `ios` group and skeleton, no Xcode: D1, D4, D5, D9, Trivy, `.gitignore`, adoption, rules.md, the amending ADR | `make check`, `make check-all` and `HARNESS_SCOPE=full make harness-selftest` green on Ubuntu; `adoption-probe` green; the three Phase 1 fixtures rejected; `swift test` on the skeleton green on this Mac; a product with `STACK=go:db:web:ios` and Swift tests under `apps/ios/Tests/…Tests/` passes `layout-check` and `specs-tested` | next |
+| 1 | `ios` group and skeleton, no Xcode: D1, D4, D5, D9, Trivy, `.gitignore`, adoption, rules.md, ADR 0041 | `make check`, `make check-all` and `HARNESS_SCOPE=full make harness-selftest` green on Ubuntu; `adoption-probe` green; the three Phase 1 fixtures rejected; `swift test` on the skeleton green on this Mac; a product with `STACK=go:db:web:ios` and Swift tests under `apps/ios/Tests/…Tests/` passes `layout-check` and `specs-tested` | in review |
 | 2 | macOS job, D2, D3, D6, D7, D8, Xcode pin check, SwiftLint, swift-format, `swift test` in `make check` on macOS, the app target | the macOS job green and required; each new rule rejects its fixture there; Ubuntu jobs skip iOS only by name | after 1 |
 | 3 | Generated Swift client | `make gen` regenerates it; `gen-check` fails on a hand edit (fixture); the `x-extensible-enum` rule documented | after 2 |
 | 4 | Simulator UI tests, layer rule | `ios-e2e` in `check-ios` within its budget; the layer rule rejects its fixture | after 3 |

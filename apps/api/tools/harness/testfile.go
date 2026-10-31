@@ -15,10 +15,13 @@ var (
 	testFileRE = regexp.MustCompile(`(_test\.go|\.(test|spec|e2e)\.[cm]?[jt]sx?)$`)
 	// swiftTestRE matches a whole path: Swift has no build rule like _test.go, and Xcode compiles any file in an
 	// app target's folder, so a Swift test also needs a directory named *Tests (SwiftPM's Tests/<X>Tests/,
-	// Xcode's <App>Tests/ and <App>UITests/; ADR 0041).
-	swiftTestRE = regexp.MustCompile(`(^|/)[^/]*Tests/([^/]+/)*[^/]*Tests\.swift$`)
+	// Xcode's <App>Tests/ and <App>UITests/; a bare Tests/ is in no target; ADR 0041).
+	swiftTestRE = regexp.MustCompile(`(^|/)[^/]+Tests/([^/]+/)*[^/]*Tests\.swift$`)
+	// swiftSourcesRE: SwiftPM compiles everything under Sources/<Target>/, a *Tests subfolder too, so a file
+	// there ships in the app whatever its folder is named.
+	swiftSourcesRE = regexp.MustCompile(`(^|/)Sources/`)
 	// testFileForms says in words what testFileRE and swiftTestRE match; TestTestFileForms holds them together.
-	testFileForms = "*_test.go, or *.test.*, *.spec.* or *.e2e.* ending in .js, .ts, .jsx or .tsx (also .mjs, .cjs, .mts, .cts), or *Tests.swift under a *Tests directory"
+	testFileForms = "*_test.go, or *.test.*, *.spec.* or *.e2e.* ending in .js, .ts, .jsx or .tsx (also .mjs, .cjs, .mts, .cts), or *Tests.swift under a *Tests directory, not under Sources/"
 	// testFilePathspecs selects, by name alone, every file the two can match (`*` also matches `/`): git's
 	// prefilter for specs-tested, never the decision.
 	testFilePathspecs = []string{"*_test.go", "*.test.*", "*.spec.*", "*.e2e.*", "*Tests.swift"}
@@ -79,7 +82,7 @@ func loadProductTests(root string) (productTests, error) {
 // why returns "" when rel (repo-relative, `/`-separated) is a product test file, else why it is not.
 func (pt productTests) why(rel string) string {
 	switch {
-	case !testFileRE.MatchString(path.Base(rel)) && !swiftTestRE.MatchString(rel):
+	case !testFileRE.MatchString(path.Base(rel)) && (!swiftTestRE.MatchString(rel) || swiftSourcesRE.MatchString(rel)):
 		return "is not a test file (" + testFileForms + ")"
 	case skippedPath.MatchString(strings.ToLower(rel)):
 		return "is under node_modules/ or fixtures/"

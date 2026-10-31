@@ -136,10 +136,23 @@ func TestScenariosTested(t *testing.T) {
 			"apps/ios/AppUITests/Flows/PayUITests.swift": {"// spec: 001/US1-AS2", "func testPay() throws {}"},
 		}, nil},
 		{"a skipped Swift test names nothing; .disabled( is a skip in Swift only", map[string][]string{
-			"specs/001-demo/spec.md":                     spec(story("User Story 1 - Pay", g1, g2)),
-			"apps/ios/Tests/AppCoreTests/PayTests.swift": {`@Test("001/US1-AS1 pays", .disabled("later")) func pays() {}`, `try XCTSkipIf(true) // 001/US1-AS2`, `throw XCTSkip("001/US1-AS2")`},
-			"apps/web/src/c.test.ts":                     {"it('001/US1-AS2', () => expect(b.disabled()).toBe(true))"},
-		}, []string{g1Untested}},
+			"specs/001-demo/spec.md": spec(story("User Story 1 - Pay", g1, g2, "3. **Given** c", "4. **Given** d")),
+			"apps/ios/Tests/AppCoreTests/PayTests.swift": {
+				`@Test("001/US1-AS1 pays", .disabled("later")) func pays() {}`,
+				`try XCTSkipIf(true) // 001/US1-AS3`, `throw XCTSkip("001/US1-AS3")`,
+				`@Test("001/US1-AS4 refunds", .enabled(if: false)) func refunds() {}`,
+			},
+			"apps/web/src/c.test.ts": {"it('001/US1-AS2', () => expect(b.disabled()).toBe(true))"},
+		}, []string{g1Untested, untestedAt(13, "001/US1-AS3", "**Given** c"), untestedAt(14, "001/US1-AS4", "**Given** d")}},
+		{"a Swift test inside #if false names nothing; its #else branch does; .disabled may be spelled loosely", map[string][]string{
+			"specs/001-demo/spec.md": spec(story("User Story 1 - Pay", g1, g2, "3. **Given** c", "4. **Given** d")),
+			"apps/ios/Tests/AppCoreTests/PayTests.swift": {
+				"#if false", `@Test("001/US1-AS1 pays") func pays() {}`, "#if os(iOS)", `// spec: 001/US1-AS1`, "#endif",
+				"#else", `@Test("001/US1-AS2 refunds") func refunds() {}`, "#endif",
+				`@Test("001/US1-AS3 voids", .disabled ("later")) func voids() {}`,
+				"@Test(\"001/US1-AS4 splits\", .`disabled`(\"later\")) func splits() {}",
+			},
+		}, []string{g1Untested, untestedAt(13, "001/US1-AS3", "**Given** c"), untestedAt(14, "001/US1-AS4", "**Given** d")}},
 		{"a Swift test outside a *Tests directory is not a test file", map[string][]string{
 			"specs/001-demo/spec.md":                    spec(story("User Story 1 - Pay", g1)),
 			"apps/ios/Sources/AppCore/PayTests.swift":   {"// spec: 001/US1-AS1"},

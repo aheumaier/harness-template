@@ -248,7 +248,13 @@ func TestLayoutStackHides(t *testing.T) {
 		{"an Xcode project is ios code", "go", "-", map[string][]string{
 			"apps/mobile/App.xcodeproj/project.pbxproj": {""},
 		}, []string{hides(layoutFile+":12: STACK=go", "ios", "apps/mobile/App.xcodeproj/project.pbxproj")}},
-		{"Swift outside PRODUCT_GLOBS is not product code", "go", "-", map[string][]string{
+		{"Swift in a fixtures/ folder of the app is still the app", "go", "-", map[string][]string{
+			"apps/ios/Sources/App/fixtures/Main.swift": {""},
+		}, []string{hides(layoutFile+":12: STACK=go", "ios", "apps/ios/Sources/App/fixtures/Main.swift")}},
+		{"Swift in a WEB_GLOBS workspace counts, as its tests do", "go", "-", map[string][]string{
+			"packages/ios-core/Sources/Core/Core.swift": {""},
+		}, []string{hides(layoutFile+":12: STACK=go", "ios", "packages/ios-core/Sources/Core/Core.swift")}},
+		{"Swift outside PRODUCT_GLOBS and WEB_GLOBS is not product code", "go", "-", map[string][]string{
 			"tools/gen/Main.swift": {""},
 		}, nil},
 		{"HARNESS_STACK narrows a full tree", "go:db:web:ios", "go", map[string][]string{
@@ -279,6 +285,29 @@ func TestLayoutStackHides(t *testing.T) {
 			}
 			if err != nil || bad != (len(tt.want) > 0) || out.String() != want {
 				t.Errorf("bad=%v err=%v, output:\n%s\nwant:\n%s", bad, err, out.String(), want)
+			}
+		})
+	}
+}
+
+// TestLayoutHidesSwiftWhateverTheProductGlobs: a PRODUCT_GLOBS entry is a pathspec with or without a trailing
+// `*` (productTests reads both), so the Swift under it is found either way.
+func TestLayoutHidesSwiftWhateverTheProductGlobs(t *testing.T) {
+	noHarnessStack(t)
+	for _, globs := range []string{"apps/ios:api/*", "apps:api"} {
+		t.Run(globs, func(t *testing.T) {
+			root := linkRepo(t, map[string][]string{
+				"apps/api/go.mod":                         {"module example.com/api"},
+				"apps/api/internal/health/api/h.go":       {"package api"},
+				"api/openapi.yaml":                        {"openapi: 3.1.0"},
+				"apps/ios/Sources/AppCore/Greeting.swift": {""},
+				layoutFile: append([]string{"# layout", ""}, withLayout("STACK", "go", "PRODUCT_GLOBS", globs)...),
+			})
+			gitT(t, root, "add", "-A")
+			var out bytes.Buffer
+			bad, err := layoutCheck(root, &out)
+			if err != nil || !bad || !strings.Contains(out.String(), "leaves out ios, but apps/ios/Sources/AppCore/Greeting.swift exists") {
+				t.Errorf("bad=%v err=%v, output:\n%s", bad, err, out.String())
 			}
 		})
 	}
