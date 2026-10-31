@@ -98,7 +98,7 @@ matches the ios line only.
   `testdata/test-files.txt` gets rows for both.
 - A Swift test line names nothing when it has `XCTSkip` (`throw XCTSkip(…)`, `XCTSkipIf`, `XCTSkipUnless`),
   `.disabled(` or `.enabled(` with any condition (Swift Testing, with optional spaces or backticks), and neither
-  does a line inside a bare `#if false` (its `#else` branch counts; other ways to compile code out: TD-149). These apply to `.swift` files only, so a SwiftUI `.disabled(` modifier or a TS
+  does a line inside a bare `#if false` (its `#else` branch counts; other ways to compile code out: TD-150). These apply to `.swift` files only, so a SwiftUI `.disabled(` modifier or a TS
   line is never mistaken for a skip. `withKnownIssue` stays counted, like JS `.fails(`.
 - The skip check is line by line (`scenarios.go:162`). rules.md says so and recommends Swift Testing,
   `@Test("001/US1-AS2 signs out")`, skipped as `@Test("001/US1-AS2 signs out", .disabled("…"))` on the same

@@ -21,7 +21,7 @@ package main
 // in a title, a string or a `// spec: <id>` comment; test syntax is not parsed. A line that also skips or
 // defers its test (`.todo(`, `.skip(`, `.fixme(`, `xit(`, `xtest(`, `xdescribe(`, `t.Skip`; in a .swift file also
 // `XCTSkip` and Swift Testing's `.disabled(` or `.enabled(` (any condition), and every line inside a bare
-// `#if false`) names nothing. Other ways to compile code out are not read (tech-debt TD-149). The check is per line: a skip on another line than
+// `#if false`) names nothing. Other ways to compile code out are not read (tech-debt TD-150). The check is per line: a skip on another line than
 // the id (an XCTSkip in the test body under a `// spec:` comment) is not seen.
 // Whether a test really checks its scenario is review's call (ADR 0019).
 //
