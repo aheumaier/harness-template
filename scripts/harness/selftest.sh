@@ -144,6 +144,7 @@ for name in "${names[@]}"; do
   fi
 
   g checkout -qf -B main "$base" && g clean -fdq
+  rm -rf "$work/.tmp" # git-ignored, so clean keeps it: a fixture's clone there would leak into the next
   g branch -qD fixture 2>/dev/null || true
   start=$SECONDS
   out="$tmp/$name.out"
