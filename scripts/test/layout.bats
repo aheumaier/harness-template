@@ -93,7 +93,7 @@ load_layout() {
   HARNESS_STACK=db,db,ui run -2 --separate-stderr "$SANDBOX/scripts/harness/layout.sh" --print
   [ -z "$output" ]
   grep -qF "HARNESS_STACK=db,db,ui: db named twice [harness-layout-valid]" <<<"$stderr"
-  grep -qF "HARNESS_STACK=db,db,ui: unknown group ui (known: go db web)" <<<"$stderr"
+  grep -qF "HARNESS_STACK=db,db,ui: unknown group ui (known: go db web ios)" <<<"$stderr"
   grep -qF "HARNESS_STACK=db,db,ui: no go (every stack" <<<"$stderr"
   HARNESS_STACK='' run -2 "$SANDBOX/scripts/harness/layout.sh" --print
   has "HARNESS_STACK=: not a list of groups"

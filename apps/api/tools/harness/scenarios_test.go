@@ -130,6 +130,21 @@ func TestScenariosTested(t *testing.T) {
 			"apps/web/src/b.test.ts": {"xdescribe('001/US1-AS2', () => {})", "test.fixme('001/US1-AS1', () => {})", "xtest('001/US1-AS2')"},
 			"apps/api/a_test.go":     {`t.Run("001/US1-AS1", func(t *testing.T) { t.Skip("later") })`, `t.Run("001/US1-AS2", func(t *testing.T) { t.Skipf("%d", 1) })`},
 		}, []string{g1Untested, untestedAt(12, "001/US1-AS2", strings.TrimPrefix(g2, "2. "))}},
+		{"a Swift test under a *Tests directory names its scenario (Swift Testing title or // spec: comment)", map[string][]string{
+			"specs/001-demo/spec.md":                     spec(story("User Story 1 - Pay", g1, g2)),
+			"apps/ios/Tests/AppCoreTests/PayTests.swift": {`@Test("001/US1-AS1 pays") func pays() {}`},
+			"apps/ios/AppUITests/Flows/PayUITests.swift": {"// spec: 001/US1-AS2", "func testPay() throws {}"},
+		}, nil},
+		{"a skipped Swift test names nothing; .disabled( is a skip in Swift only", map[string][]string{
+			"specs/001-demo/spec.md":                     spec(story("User Story 1 - Pay", g1, g2)),
+			"apps/ios/Tests/AppCoreTests/PayTests.swift": {`@Test("001/US1-AS1 pays", .disabled("later")) func pays() {}`, `try XCTSkipIf(true) // 001/US1-AS2`, `throw XCTSkip("001/US1-AS2")`},
+			"apps/web/src/c.test.ts":                     {"it('001/US1-AS2', () => expect(b.disabled()).toBe(true))"},
+		}, []string{g1Untested}},
+		{"a Swift test outside a *Tests directory is not a test file", map[string][]string{
+			"specs/001-demo/spec.md":                    spec(story("User Story 1 - Pay", g1)),
+			"apps/ios/Sources/AppCore/PayTests.swift":   {"// spec: 001/US1-AS1"},
+			"apps/ios/Tests/AppCoreTests/Helpers.swift": {"// spec: 001/US1-AS1"},
+		}, []string{g1Untested}},
 		{"only product and web test files count: not the api client, generated code, harness tests, fixtures or other files", map[string][]string{
 			"specs/001-demo/spec.md":                              spec(story("User Story 1 - Pay", g1)),
 			"packages/api-client/src/client.test.ts":              {"// 001/US1-AS1"},

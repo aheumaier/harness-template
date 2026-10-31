@@ -192,6 +192,19 @@ func TestTestFileForms(t *testing.T) {
 			t.Errorf("%s: testFileRE matches a near miss", f)
 		}
 	}
+	if !strings.Contains(testFileForms, "*Tests.swift under a *Tests directory") {
+		t.Errorf("testFileForms does not name the Swift form")
+	}
+	for _, f := range []string{"Tests/AppCoreTests/PayTests.swift", "apps/ios/AppUITests/PayUITests.swift", "apps/ios/AppTests/Flows/PayTests.swift"} {
+		if !swiftTestRE.MatchString(f) {
+			t.Errorf("%s: testFileForms names it, swiftTestRE does not match it", f)
+		}
+	}
+	for _, f := range []string{"PayTests.swift", "apps/ios/Sources/AppCore/PayTests.swift", "apps/ios/Tests/AppCoreTests/Helpers.swift", "apps/ios/AppTests/PayTests.swift.orig", "apps/ios/Tests/PayTest.swift", "apps/ios/MyTests.swift"} {
+		if swiftTestRE.MatchString(f) {
+			t.Errorf("%s: swiftTestRE matches a near miss", f)
+		}
+	}
 }
 
 // TestLoadProductTestsFailsClosed: without harness entries, or with a pattern pathspecMatch cannot read as git

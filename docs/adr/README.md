@@ -46,3 +46,4 @@ only through a new ADR. Architectural PRs link an ADR in the PR template.
 | [0038](0038-readme-brownfield-adoption-is-probed.md) | README (b) brownfield adoption is probed by a required check (amends 0009, 0026) | accepted |
 | [0039](0039-tests-are-written-apart-from-the-implementation.md) | Tests are written apart from the implementation, from the spec (amends 0019) | accepted |
 | [0040](0040-ci-agents-may-use-a-subscription-token.md) | CI agents may authenticate with a Claude subscription token (amends 0019) | accepted |
+| [0041](0041-ios-stack-group.md) | An `ios` stack group, with a Swift skeleton in the template (amends 0033, 0036, 0039) | accepted |

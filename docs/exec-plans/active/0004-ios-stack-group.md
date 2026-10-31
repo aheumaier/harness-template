@@ -1,6 +1,6 @@
 # 0004 — iOS stack group
 
-Status: decided, Phase 1 not started · Owner: @aheumaier · Started: 2026-10-31
+Status: phase 1 in review (branch feat/ios-stack-phase1) · Owner: @aheumaier · Started: 2026-10-31
 
 ## Goal
 
@@ -52,8 +52,12 @@ only in the iOS app. That ADR requires this template to:
 | Q7 | macOS CI and merge rules | The macOS job always starts and passes with a notice when nothing iOS changed (the `adoption-probe` pattern), so it can be a required check. |
 | Q8 | What counts as iOS code | Any Swift under a `PRODUCT_GLOBS` entry, hybrid app shells and server-side Swift included. |
 
-This Mac (2026-10-31) has the Swift command-line tools (Swift 6.2.4) but no Xcode: `swift test` runs on a
-package here; an Xcode project, `xcodebuild` and the simulator need the macOS CI job (or a Mac with Xcode).
+This Mac (2026-10-31) has Apple's command-line tools (Swift 6.2.4) but no Xcode. Plain `swift test` fails
+there with `no such module 'Testing'` (and `'XCTest'`): the tools ship Swift Testing in
+`/Library/Developer/CommandLineTools/Library/Developer/Frameworks`, which `swift test` finds only when passed
+`-Xswiftc -F -Xswiftc <dir> -Xlinker -rpath -Xlinker <dir>`; then the skeleton's tests pass. Phase 2's
+`swift test` target must add those flags when `xcode-select -p` is the command-line tools. An Xcode project,
+`xcodebuild` and the simulator need Xcode (the macOS CI job, or a Mac with Xcode).
 
 ## Design
 
@@ -141,9 +145,10 @@ learn a new one. By phase:
   probe's `drop_sets` (an ios set), `scripts/templates/adoption-probe/` if a fixture needs a rewrite.
 - Docs: rules.md `harness-layout-valid` and `specs-scenarios-tested`; README's `STACK` paragraphs; nfr.md
   NFR-R3 wording if needed; a new ADR amending ADR 0033 (the group, D4, Q8, the skeleton).
-- Fixtures: `specs-swift-test-counts` (a Swift Testing test naming a scenario counts),
-  `specs-swift-test-skipped` (`.disabled(` on the same line does not), `specs-swift-test-outside-tests`
-  (`apps/ios/Sources/AppCore/LoginTests.swift` naming a scenario does not count), `harness-stack-hides-ios`.
+- Fixtures: `specs-swift-test-skipped` (`.disabled(` on the same line names nothing),
+  `specs-swift-test-outside-tests` (a `*Tests.swift` in an app source folder is no test file),
+  `harness-stack-hides-ios`. That a Swift test does count is a case in `scenarios_test.go`: a fixture proves a
+  rejection, not a pass.
 
 **Phase 2 (macOS job: Xcode pin, lint, format, `swift test`, the app target, the `test-writer`)**
 - CI: the macOS job (Q7), the setup action's `":ios:"` steps, `REQUIRED_CHECKS` and `docs/harness/ci.md`, the
@@ -176,7 +181,7 @@ learn a new one. By phase:
 
 | # | Phase | Exit criterion | State |
 |---|-------|----------------|-------|
-| 1 | `ios` group and skeleton, no Xcode: D1, D4, D5, D9, Trivy, `.gitignore`, adoption, rules.md, the amending ADR | `make check`, `make check-all` and `HARNESS_SCOPE=full make harness-selftest` green on Ubuntu; `adoption-probe` green; the four Phase 1 fixtures rejected; `swift test` on the skeleton green on this Mac; a product with `STACK=go:db:web:ios` and Swift tests under `apps/ios/Tests/…Tests/` passes `layout-check` and `specs-tested` | next |
+| 1 | `ios` group and skeleton, no Xcode: D1, D4, D5, D9, Trivy, `.gitignore`, adoption, rules.md, the amending ADR | `make check`, `make check-all` and `HARNESS_SCOPE=full make harness-selftest` green on Ubuntu; `adoption-probe` green; the three Phase 1 fixtures rejected; `swift test` on the skeleton green on this Mac; a product with `STACK=go:db:web:ios` and Swift tests under `apps/ios/Tests/…Tests/` passes `layout-check` and `specs-tested` | next |
 | 2 | macOS job, D2, D3, D6, D7, D8, Xcode pin check, SwiftLint, swift-format, `swift test` in `make check` on macOS, the app target | the macOS job green and required; each new rule rejects its fixture there; Ubuntu jobs skip iOS only by name | after 1 |
 | 3 | Generated Swift client | `make gen` regenerates it; `gen-check` fails on a hand edit (fixture); the `x-extensible-enum` rule documented | after 2 |
 | 4 | Simulator UI tests, layer rule | `ios-e2e` in `check-ios` within its budget; the layer rule rejects its fixture | after 3 |
@@ -207,4 +212,4 @@ the `test-writer` and `swift test` into Phase 2. Each phase is its own branch an
 ## Log
 
 - 2026-10-31: drafted from the adopter's request and an inventory of the harness; architecture review folded
-  in; the owner decided Q1–Q8.
+  in; the owner decided Q1–Q8. Phase 1 built on `feat/ios-stack-phase1` (ADR 0041).

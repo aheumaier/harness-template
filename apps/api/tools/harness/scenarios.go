@@ -14,12 +14,14 @@ package main
 // story without a scenario list, and an Acceptance Scenarios paragraph outside a story.
 //
 // Tests: the git-known files productTests allows (testfile.go, the predicate `harness test-file` guards the
-// test-writer's writes with): Go and JS/TS test files (testFileRE) under PRODUCT_GLOBS and WEB_GLOBS of
+// test-writer's writes with): Go, JS/TS and Swift test files (testFileRE, swiftTestRE) under PRODUCT_GLOBS and WEB_GLOBS of
 // scripts/harness/layout.env, minus node_modules/, fixtures/, API_CLIENT_DIR, GENERATED_GLOBS and the harness
 // files of protected-paths.txt, so the harness's own tests and fixtures cannot satisfy an id. A test
 // names an id when the id appears in it as a whole token (no letter, digit, `_`, `/`, `.` or `-` next to it),
 // in a title, a string or a `// spec: <id>` comment; test syntax is not parsed. A line that also skips or
-// defers its test (`.todo(`, `.skip(`, `.fixme(`, `xit(`, `xtest(`, `xdescribe(`, `t.Skip`) names nothing.
+// defers its test (`.todo(`, `.skip(`, `.fixme(`, `xit(`, `xtest(`, `xdescribe(`, `t.Skip`; in a .swift file also
+// `XCTSkip` and Swift Testing's `.disabled(`) names nothing. The check is per line: a skip on another line than
+// the id (an XCTSkip in the test body under a `// spec:` comment) is not seen.
 // Whether a test really checks its scenario is review's call (ADR 0019).
 //
 // A scenario passes when a test names its id or its text ends with `(untested: <reason>)` (the reason may hold
@@ -48,6 +50,7 @@ var (
 	specDirRE       = regexp.MustCompile(`^specs/([0-9]{3,})-[a-z0-9]+(-[a-z0-9]+)*/spec\.md$`)
 	scenarioIDRE    = regexp.MustCompile(`[0-9]{3,}/US[0-9]+-AS[0-9]+`)
 	skippedTestRE   = regexp.MustCompile(`\.(todo|skip|fixme)\(|\bx(it|test|describe)\(|\bt\.Skip`)
+	swiftSkippedRE  = regexp.MustCompile(`\bXCTSkip|\.disabled\(`) // in .swift files only, so no JS/TS line is affected
 	storyRE         = regexp.MustCompile(`(?i)^user story\b`)
 	storyNumberRE   = regexp.MustCompile(`(?i)^user story[ \t]+([0-9]+)\b`)
 	scenariosRE     = regexp.MustCompile(`(?i)^acceptance scenarios\b`)
@@ -158,8 +161,9 @@ func testedIDs(root string, pt productTests) (map[string]bool, error) {
 		if err != nil {
 			return nil, err
 		}
+		swift := strings.HasSuffix(f, ".swift")
 		for _, line := range bytes.Split(b, []byte("\n")) {
-			if skippedTestRE.Match(line) {
+			if skippedTestRE.Match(line) || swift && swiftSkippedRE.Match(line) {
 				continue // a skipped or placeholder test checks nothing
 			}
 			for _, id := range scenarioIDs(line) {

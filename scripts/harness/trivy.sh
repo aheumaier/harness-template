@@ -5,7 +5,8 @@
 #   scripts/harness/trivy.sh secret --staged
 #                                     the same scan of the staged files as they are in the index, not in the
 #                                     working tree (the pre-commit git hook, exec plan 0003 Q2)
-#   scripts/harness/trivy.sh vuln    deps-no-known-vulns: every go.mod and pnpm-lock.yaml against the vuln DB,
+#   scripts/harness/trivy.sh vuln    deps-no-known-vulns: every go.mod, pnpm-lock.yaml and Package.resolved
+#                                     (Swift, ADR 0041) against the vuln DB,
 #                                     fetched into .cache/trivy (make check-all, CI, drift.yml)
 #
 # Trivy walks the filesystem, not git, so both scan a temp copy of the git-known files (tracked plus untracked,
@@ -95,9 +96,10 @@ verdict() { # trivy's exit status → status: 0 clean, 3 findings (→ 1); anyth
       ;;
   esac
 }
-has_packages() { # a go.mod with a require directive, or a pnpm-lock.yaml with a non-empty packages: section
+has_packages() { # a go.mod with a require directive, a Package.resolved with a pin, or a pnpm-lock.yaml with a non-empty packages: section
   case "$1" in
     *go.mod) grep -Eq '^require[[:space:](]' "$1" ;;
+    *Package.resolved) grep -q '"identity"' "$1" ;;
     *) awk '/^packages:/ { p = 1; next } p && /^[^[:space:]]/ { exit } p && /^[[:space:]]+[^[:space:]]/ { f = 1; exit }
       END { exit !f }' "$1" ;;
   esac
@@ -129,7 +131,7 @@ else
   while IFS= read -r -d '' f; do
     case "$f" in
       scripts/harness/fixtures/*) ;;
-      pnpm-lock.yaml | go.mod | */go.mod)
+      pnpm-lock.yaml | go.mod | */go.mod | Package.resolved | */Package.resolved)
         if [[ -e "$f" ]] && has_packages "$f" && ! grep -qxF "$f" <<<"$targets"; then
           echo "$f:1: Trivy found no packages in it (unsupported format?) [deps-no-known-vulns]"
           status=1
