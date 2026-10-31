@@ -143,7 +143,12 @@ for name in "${names[@]}"; do
     continue
   fi
 
-  g checkout -qf -B main "$base" && g clean -fdq
+  # .tmp/ is gitignored, so clean keeps it: drop it too, or one fixture's scratch (harness-behind-upstream's
+  # clone in .tmp/upstream) is linted and scanned by every later fixture under HARNESS_SCOPE=full. One command
+  # per line: set -e ignores a failure inside an && list.
+  g checkout -qf -B main "$base"
+  g clean -fdq
+  rm -rf "$work/.tmp"
   g branch -qD fixture 2>/dev/null || true
   start=$SECONDS
   out="$tmp/$name.out"
