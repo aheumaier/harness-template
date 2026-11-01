@@ -35,9 +35,9 @@ you re-measure.
 | NFR-H7 | `make check-all` in CI | ≤ 10 min | not measured | job duration | alert |
 | NFR-R1 | Deterministic: same tree, same verdict and same findings | 0 differences | 0 (`make harness-determinism`, scope full; since step 8 tsc and vitest run uncached, `turbo --force`; 342 s, load avg 11–17, 2026-10-28) | nightly double run | **fail** (nightly) + alert |
 | NFR-R2 | Fail closed: a sensor that cannot run (missing tool, base ref, parse error) exits non-zero | 0 silent passes | merge-base, affected.sh, gen-check stamp, integrity-check (shebang and mode changes count), every hook on a missing or failing binary (2026-10-28); no fixtures with a broken environment yet | fixtures with a broken environment | **fail** |
-| NFR-R3 | Detection: every rule with a fixture rejects it ([ADR 0009](../adr/0009-harness-selftest.md)); measured on the full stack, where a skipped fixture fails ([ADR 0033](../adr/0033-stack-profiles.md)) | 100 % | 100 % (selftest 44/44, 2026-10-28, gate of Phase 0) | `make harness-selftest` | **fail** |
+| NFR-R3 | Detection: every rule with a fixture rejects it ([ADR 0009](../adr/0009-harness-selftest.md)); measured on the full stack (every group `layout.env` declares), where a skipped fixture fails ([ADR 0033](../adr/0033-stack-profiles.md), [ADR 0042](../adr/0042-swift-unit-tests-in-make-check.md)) | 100 % | 100 % (selftest 44/44, 2026-10-28, gate of Phase 0) | `make harness-selftest` | **fail** |
 | NFR-R4 | Actionable: every sensor failure through `run.sh` names its rule id and remediation; every hook block names its reason | 100 % | 100 % | `run.bats`, selftest, hook bats tests | **fail** |
-| NFR-R5 | Portable: same verdict on macOS and Linux | 0 differences | Linux only in CI | selftest on a macOS runner (weekly) | **fail** (weekly) + alert |
+| NFR-R5 | Portable: same verdict on macOS and Linux, except the targets in `HOST_OFF` ([ADR 0042](../adr/0042-swift-unit-tests-in-make-check.md)) | 0 differences | Linux only in CI | selftest on a macOS runner (weekly) | **fail** (weekly) + alert |
 
 ## Plan 0003: latency, behaviour and observability
 

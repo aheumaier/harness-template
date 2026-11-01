@@ -11,7 +11,7 @@
 # Everything runs (exit 1) in any scope but `changed` (make check-all, CI), when a harness file, go.mod, go.sum,
 # a package.json, the lockfile or the workspace config changed, on a changed non-Go file under API_DIR (an
 # embedded file, a migration; with API_DIR=. any non-Go file), a changed .go file outside a current package (deleted or tagged out), a changed
-# JS/TS/JSON file outside a workspace, and on any error (no merge base, `go list` or `turbo` failing).
+# JS/TS/JSON file outside a workspace (but not in an asset catalog of IOS_DIR, the iOS app), and on any error (no merge base, `go list` or `turbo` failing).
 set -uo pipefail
 
 [[ $# == 1 && ("$1" == go || "$1" == web) ]] || {
@@ -70,6 +70,9 @@ web_workspaces() {
   [[ -n "$all" ]] || exit 1
   while read -r f; do
     [[ -n "$f" && ("$API_DIR" == . || "$f" != "$API_PREFIX"*) ]] || continue
+    # The iOS app's asset catalogs (*.xcassets/**/Contents.json) are no web code; its other JSON, JS or TS still is,
+    # as for `eslint .`. Only with ios in STACK: layout-check checks IOS_DIR only then.
+    if harness_stack_has ios && [[ -n "$IOS_DIR" && "$f" == "$IOS_DIR"/*.xcassets/*.json ]]; then continue; fi
     for ws in $all; do
       if [[ "$f" == "$ws"/* ]]; then
         [[ " ${hit[*]-} " == *" $ws "* ]] || hit+=("$ws")

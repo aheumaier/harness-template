@@ -78,7 +78,10 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - run: make setup
+      # Ubuntu is not macOS: test-ios cannot run here, so the NEEDS_SWIFT fixtures are skipped (ADR 0042).
       - run: make harness-selftest
+        env:
+          SELFTEST_SKIP_SWIFT: "1"
 
   generator-probe:
     # The domain generator must keep producing code that passes every fast sensor, with a passing service,

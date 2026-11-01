@@ -30,3 +30,11 @@ setup() {
   run -0 git -C "$SANDBOX" ls-files -s scripts/harness/merge-base.sh
   has '100755 '
 }
+
+@test "host makes uname -s name that host and leaves the other uname calls alone" {
+  host Linux
+  run -0 uname -s
+  [[ "$output" == Linux ]] || false
+  run -0 uname -m
+  [[ "$output" == "$(/usr/bin/uname -m)" ]]
+}

@@ -1,6 +1,6 @@
 # 0004 — iOS stack group
 
-Status: phase 1 merged (PR #12, 04bdb73; ADR 0041 accepted 2026-11-01); phase 2 next · Owner: @aheumaier · Started: 2026-10-31
+Status: phase 1 merged (PR #12); phase 2a merged (PR #14); phase 2b in review (PR #15) · Owner: @aheumaier · Started: 2026-10-31
 
 ## Goal
 
@@ -61,7 +61,8 @@ there with `no such module 'Testing'` (and `'XCTest'`): the tools ship Swift Tes
 
 ## Design
 
-**D1. "Full stack" keeps its meaning.** With the skeleton (Q1), the template's `STACK` has every known group,
+**D1. "Full stack" keeps its meaning.** Superseded on 2026-11-01: full means every group `layout.env` declares
+(ruling (b), [ADR 0042](../../adr/0042-swift-unit-tests-in-make-check.md)). With the skeleton (Q1), the template's `STACK` has every known group,
 so `selftest.sh:40-41` (a run is full when every group in `HARNESS_STACK_GROUPS` is in `STACK`; under a full
 stack a skipped fixture fails, NFR-R3) needs no change. `HARNESS_STACK_DEFAULT` stays `go:db:web`: it is the
 default for a `layout.env` without `STACK`, and ADR 0033 keeps that the old behaviour.
@@ -110,7 +111,7 @@ matches the ios line only.
 `specs-tested` reads and what the `test-writer` may write (ADR 0039), so D5 widens both at once. Its brief
 (`.claude/agents/test-writer.md`) adds unit tests in the logic package's `Tests/` beside Go `model`/`service`
 and `packages/domain`; UI tests stay out, as `apps/web` does today. It confirms red with `make check`, which
-runs `swift test` on macOS (Q5). On Linux it cannot confirm a Swift test and says so instead of writing one.
+runs `swift test` on macOS (Q5). On Linux it writes the Swift test and says it could not confirm it red (ADR 0042).
 
 **D7. Xcode runs on macOS only and never in `make check`; the macOS job does not run `check-all`.** Hosted
 macOS runners have no Docker, so the template's `make setup` (Postgres), `test-integration`, `test-obs` and
@@ -160,15 +161,15 @@ learn a new one. By phase:
 - From the phase 1 architecture review, to settle at phase 2's start:
   - `ios` in `STACK` must need an iOS app: a non-empty `IOS_DIR` with a git-known `Package.swift` or
     `project.yml`, with a fixture (ADR 0033's "both ways" is half done for ios: a Go-only adopter who deletes
-    `apps/ios` but keeps `ios` gets no warning).
+    `apps/ios` but keeps `ios` gets no warning). Done in 2a: `IOS_DIR` and fixture `harness-stack-ios-without-app`.
   - `swift test` in `make check` needs an `unchanged.sh` gate on Swift inputs to hold NFR-H3, and the
-    command-line tools' `-F`/`-rpath` flags when `xcode-select -p` is the command-line tools.
+    command-line tools' `-F`/`-rpath` flags when `xcode-select -p` is the command-line tools. Done in 2a.
   - The selftest's "full stack" is now `go:db:web:ios`, so every product that drops `ios` loses NFR-R3's
-    "a skip fails" once iOS-only targets exist: decide whether full means "every group the product declares".
+    "a skip fails" once iOS-only targets exist: decide whether full means "every group the product declares". Decided 2026-11-01: yes (ADR 0042).
   - XcodeGen's `project.yml` marks an iOS app for D4 and decides Xcode test folders by target, which a path
     cannot (a `*Tests` subfolder of an Xcode app folder counts today).
   - Re-point the literal `apps/ios` in `test-writer.md`, `apps/ios/AGENTS.md` and the `layout.env` comment to
-    `IOS_DIR`.
+    `IOS_DIR`. Done in 2a.
 - CI: the macOS job (Q7), the setup action's `":ios:"` steps, `REQUIRED_CHECKS` and `docs/harness/ci.md`, the
   workflow in `protected-paths.txt` and `CODEOWNERS`; the Ubuntu jobs set `SELFTEST_SKIP_XCODE=1`.
 - `Makefile`: `IOS_TARGETS`, `HOST_OFF` (D3), a `##@ iOS sensors` section, `check-ios` (D7), `test-ios`
@@ -199,8 +200,8 @@ learn a new one. By phase:
 
 | # | Phase | Exit criterion | State |
 |---|-------|----------------|-------|
-| 1 | `ios` group and skeleton, no Xcode: D1, D4, D5, D9, Trivy, `.gitignore`, adoption, rules.md, ADR 0041 | `make check`, `make check-all` and `HARNESS_SCOPE=full make harness-selftest` green on Ubuntu; `adoption-probe` green; the three Phase 1 fixtures rejected; `swift test` on the skeleton green on this Mac; a product with `STACK=go:db:web:ios` and Swift tests under `apps/ios/Tests/…Tests/` passes `layout-check` and `specs-tested` | done (04bdb73) |
-| 2 | macOS job, D2, D3, D6, D7, D8, Xcode pin check, SwiftLint, swift-format, `swift test` in `make check` on macOS, the app target | the macOS job green and required; each new rule rejects its fixture there; Ubuntu jobs skip iOS only by name | next |
+| 1 | `ios` group and skeleton, no Xcode: D1, D4, D5, D9, Trivy, `.gitignore`, adoption, rules.md, ADR 0041 | `make check`, `make check-all` and `HARNESS_SCOPE=full make harness-selftest` green on Ubuntu; `adoption-probe` green; the three Phase 1 fixtures rejected; `swift test` on the skeleton green on this Mac; a product with `STACK=go:db:web:ios` and Swift tests under `apps/ios/Tests/…Tests/` passes `layout-check` and `specs-tested` | merged (PR #12) |
+| 2 | macOS job, D2, D3, D6, D7, D8, Xcode pin check, SwiftLint, swift-format, `swift test` in `make check` on macOS, the app target | the macOS job green and required; each new rule rejects its fixture there; Ubuntu jobs skip iOS only by name | 2a (`IOS_DIR`, `HOST_OFF`, `test-ios`, `NEEDS_SWIFT`, the `test-writer`; ADR 0042) merged (PR #14); 2b (SwiftLint, swift-format, the Xcode pin, `IOS_SWIFT_TARGETS`/`IOS_XCODE_TARGETS`, `NEEDS_XCODE`, the Swift kind in the per-file sensors; ADR 0043) in review (PR #15); 2c (macOS job, app target, XcodeGen, the `Package.resolved` check) pending |
 | 3 | Generated Swift client | `make gen` regenerates it; `gen-check` fails on a hand edit (fixture); the `x-extensible-enum` rule documented | after 2 |
 | 4 | Simulator UI tests, layer rule | `ios-e2e` in `check-ios` within its budget; the layer rule rejects its fixture | after 3 |
 
@@ -231,4 +232,13 @@ the `test-writer` and `swift test` into Phase 2. Each phase is its own branch an
 
 - 2026-10-31: drafted from the adopter's request and an inventory of the harness; architecture review folded
   in; the owner decided Q1–Q8. Phase 1 built on `feat/ios-stack-phase1` (ADR 0041).
-- 2026-11-01: phase 1 merged (PR #12) after the obs-e2e flake fix (PR #11); ADR 0041 accepted.
+- 2026-11-01: phase 1 merged (PR #12) after the obs-e2e flake fix (PR #11); ADR 0041 accepted. Phase 2 split
+  into three PRs: 2a `swift test` in `make check`, 2b lint,
+  format and the Xcode pin, 2c the macOS job and the app target. Built 2a on `feat/ios-swift-test`
+  ([ADR 0042](../../adr/0042-swift-unit-tests-in-make-check.md)); ruled the selftest's full stack to be every
+  group `layout.env` declares (option (b)), recorded there. For 2b, from 2a's architecture review: the Xcode
+  pin check is an ios target that needs Xcode, so `IOS_TARGETS` splits into what `make check` runs (Swift only)
+  and what `check-ios` runs (Xcode), the bad-`fixture.conf` rule becomes "`NEEDS_SWIFT` or `NEEDS_XCODE`", and
+  a Mac with only the command-line tools is a third host class beside `HOST_OFF`'s "not macOS". In 2c, the
+  `layout_test.go` trees that use `apps/ios/project.yml` as a neutral file need another once `project.yml`
+  marks an iOS app (D4).

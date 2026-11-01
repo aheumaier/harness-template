@@ -2,7 +2,8 @@
 
 Status: accepted · 2026-11-01 · amends [ADR 0033](0033-stack-profiles.md),
 [ADR 0036](0036-acceptance-scenarios-are-traced-to-tests.md),
-[ADR 0039](0039-tests-are-written-apart-from-the-implementation.md)
+[ADR 0039](0039-tests-are-written-apart-from-the-implementation.md) · amended 2026-11-01 by
+[ADR 0042](0042-swift-unit-tests-in-make-check.md) (selftest full stack, `test-writer` and Swift)
 
 ## Context
 The template's clients are the web app only. The first product built from it decided on a native iOS app, and

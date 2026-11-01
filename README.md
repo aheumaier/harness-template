@@ -40,7 +40,9 @@ Steps that need a human are marked **(human)**.
 
 `STACK` in [scripts/harness/layout.env](scripts/harness/layout.env) lists the sensor groups the product has,
 `go:db:web:ios` here; `HARNESS_STACK=go,db` overrides it for one run
-([ADR 0033](docs/adr/0033-stack-profiles.md), [ADR 0041](docs/adr/0041-ios-stack-group.md)).
+([ADR 0033](docs/adr/0033-stack-profiles.md), [ADR 0041](docs/adr/0041-ios-stack-group.md)). The `ios`
+sensors need macOS (Xcode or Apple's command-line tools): on another host `make check` leaves them out and says
+so ([ADR 0042](docs/adr/0042-swift-unit-tests-in-make-check.md)).
 
 Never install a tool globally. `make setup` puts every pinned, checksum-verified tool into `.bin/`.
 
@@ -286,8 +288,9 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      module (`API_DIR`, `.` for the repo root), the contract, migrations, queries, generated client, JS
      workspaces, generated code and product code live, the domain layers' path (`LAYER_GLOB`), and which sensor groups
      the product has (`STACK`: `go`, plus `db` for Postgres migrations and queries, `web` for the JS
-     workspaces, `ios` for a Swift app; [ADR 0033](docs/adr/0033-stack-profiles.md),
-     [ADR 0041](docs/adr/0041-ios-stack-group.md)). If the product vendors another repo's spec, list
+     workspaces, `ios` for a Swift app in `IOS_DIR`, under a `PRODUCT_GLOBS` or `WEB_GLOBS` entry (a product that
+     adopted `ios` before ADR 0042 adds `IOS_DIR` when it syncs); [ADR 0033](docs/adr/0033-stack-profiles.md),
+     [ADR 0041](docs/adr/0041-ios-stack-group.md), [ADR 0042](docs/adr/0042-swift-unit-tests-in-make-check.md)). If the product vendors another repo's spec, list
      it in `UPSTREAM_SPECS` with its source and revision; if other repos vendor this contract, name them in
      `CONTRACT_CONSUMERS` ([ADR 0037](docs/adr/0037-upstream-spec-drift-is-a-drift-report.md)). The scripts
      in `scripts/harness/`, the Makefile, `.bin/harness`, the domainiso analyzer and the CI workflows read it
@@ -350,10 +353,12 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      | web | `web-*` (7) | `WEB_TARGETS`: `lint-web`, `arch-web`, `typecheck-web`, `test-web`, `knip`, `clones-web`, `e2e`, `gen-api-client` | eslint, dependency-cruiser, turbo, knip, jscpd, typescript from `package.json` |
      | db | `db-*` (5) | `DB_TARGETS`: `schema-doc-fresh`, `lint-migrations`, `squawk`, `migrations-append-only`, `test-integration`, `test-obs`, `e2e`, `gen-sqlc`, `gen-atlas-sum` | atlas, sqlc, squawk |
      | api | `api-*` (6) | `lint-api`, `contract-check`, `gen-oapi` | oasdiff, oapi-codegen, spectral |
+     | ios | `ios-*` (1) | `IOS_TARGETS`: `test-ios` (macOS only) | Swift from Xcode or Apple's command-line tools (XCTest needs Xcode selected) |
 
-     The ios group has no rules or targets of its own yet ([exec plan 0004](docs/exec-plans/active/0004-ios-stack-group.md)):
-     it only counts Swift tests for [specs-scenarios-tested](docs/harness/rules.md#specs-scenarios-tested),
-     and without it any Swift under `PRODUCT_GLOBS` fails `layout-check`.
+     The ios set grows with [exec plan 0004](docs/exec-plans/active/0004-ios-stack-group.md); it also counts
+     Swift tests for [specs-scenarios-tested](docs/harness/rules.md#specs-scenarios-tested), and without it
+     any Swift under a `PRODUCT_GLOBS` or `WEB_GLOBS` entry fails `layout-check`. A product that runs `make harness-selftest` on
+     Linux with `ios` in `STACK` sets `SELFTEST_SKIP_SWIFT=1` there.
      The web and db sets are `STACK` groups ([ADR 0033](docs/adr/0033-stack-profiles.md)), and their targets are
      the [Makefile](Makefile)'s `WEB_TARGETS` and `DB_TARGETS` as listed; `e2e` is in both: it needs both
      groups, and leaving out db or web drops it. A group drops whole targets: without db, `test-integration` and `test-obs` go entirely, so
