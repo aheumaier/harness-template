@@ -28,18 +28,17 @@ load helpers
   run -0 "$REPO/.claude/hooks/fast-check.sh" scripts/harness/fixtures/sh-unquoted-variable/files/scripts/clean.sh
 }
 
-# fake <tool> <VAR>: logs its arguments to $BATS_TEST_TMPDIR/calls and exits with $FAKE_<VAR>_EXIT (default 0).
+# fake <tool> <VAR>: logs its arguments to $BATS_TEST_TMPDIR/calls, prints $FAKE_<VAR>_OUT and exits with
+# $FAKE_<VAR>_EXIT (default 0).
 fake() {
-  printf '#!/usr/bin/env bash\necho "%s $*" >>"%s"\nexit "${FAKE_%s_EXIT:-0}"\n' \
-    "$1" "$BATS_TEST_TMPDIR/calls" "$2" >"$BATS_TEST_TMPDIR/bin/$1"
-  chmod +x "$BATS_TEST_TMPDIR/bin/$1"
+  stub "$1" "echo \"$1 \$*\" >>'$BATS_TEST_TMPDIR/calls'; printf '%s' \"\${FAKE_$2_OUT:-}\"; exit \"\${FAKE_$2_EXIT:-0}\""
 }
 
 # Sandboxed: the hook puts the sandbox's (absent) .bin and node_modules/.bin first, so these fakes run.
 web_sandbox() {
   sandbox .claude/hooks/fast-check.sh scripts/harness/run.sh scripts/harness/timing.sh scripts/tool-versions.env \
     docs/harness/rules.md
-  mkdir -p "$SANDBOX/apps/web/src" "$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$SANDBOX/apps/web/src"
   echo '{}' >"$SANDBOX/apps/web/tsconfig.json"
   echo 'export const n: number = "x";' >"$SANDBOX/apps/web/src/a.ts"
   fake eslint ESLINT
@@ -70,4 +69,60 @@ web_sandbox() {
   run -2 "$SANDBOX/.claude/hooks/fast-check.sh" docs/a.md
   has 'docs/a.md: broken link (gone.md): docs/gone.md does not exist [docs-links-resolve]'
   has 'remediation:'
+}
+
+# Sandboxed Swift tools on a Mac: fakes in the sandbox's .bin, which the hook puts first on PATH and tests for.
+swift_sandbox() {
+  sandbox .claude/hooks/fast-check.sh scripts/harness/run.sh scripts/harness/timing.sh scripts/tool-versions.env \
+    scripts/harness/file-sensors.sh scripts/harness/swiftlint.sh scripts/harness/swift-format.sh docs/harness/rules.md
+  mkdir -p "$SANDBOX/apps/ios/Sources" "$SANDBOX/tools" "$SANDBOX/.bin"
+  echo 'let a = 1' | tee "$SANDBOX/apps/ios/Sources/A.swift" >"$SANDBOX/tools/T.swift"
+  fake swiftlint SWIFTLINT
+  fake swift-format SWIFT_FORMAT
+  mv "$BATS_TEST_TMPDIR/bin/"* "$SANDBOX/.bin/"
+  host Darwin
+}
+
+@test "lints and format-checks an edited Swift file on its own, with the repo-root configs (ADR 0043)" {
+  swift_sandbox
+  run -0 "$SANDBOX/.claude/hooks/fast-check.sh" apps/ios/Sources/A.swift
+  [ -z "$output" ]
+  run -0 cat "$BATS_TEST_TMPDIR/calls"
+  [[ "$output" == "swiftlint lint --strict --quiet --no-cache --reporter relative-path --config .swiftlint.yml apps/ios/Sources/A.swift
+swift-format lint --strict --follow-symlinks --configuration .swift-format apps/ios/Sources/A.swift" ]]
+  FAKE_SWIFT_FORMAT_EXIT=1 FAKE_SWIFT_FORMAT_OUT='apps/ios/Sources/A.swift:1:1: error: [Indentation] indent by 4 spaces' \
+    run -2 "$SANDBOX/.claude/hooks/fast-check.sh" apps/ios/Sources/A.swift
+  has 'rule:        ios-format'
+  has 'remediation:'
+  FAKE_SWIFT_FORMAT_EXIT=1 run -2 "$SANDBOX/.claude/hooks/fast-check.sh" apps/ios/Sources/A.swift
+  has "sensor 'swift-format' failed (exit 2)"
+  FAKE_SWIFTLINT_EXIT=134 run -2 "$SANDBOX/.claude/hooks/fast-check.sh" apps/ios/Sources/A.swift
+  has "sensor 'swiftlint' failed (exit 2)"
+}
+
+@test "leaves Swift alone outside PRODUCT_GLOBS and WEB_GLOBS, without ios in STACK, or off macOS" {
+  swift_sandbox
+  FAKE_SWIFTLINT_EXIT=1 run -0 "$SANDBOX/.claude/hooks/fast-check.sh" tools/T.swift
+  FAKE_SWIFTLINT_EXIT=1 HARNESS_STACK=go:db:web run -0 "$SANDBOX/.claude/hooks/fast-check.sh" apps/ios/Sources/A.swift
+  host Linux
+  FAKE_SWIFTLINT_EXIT=1 run -0 "$SANDBOX/.claude/hooks/fast-check.sh" apps/ios/Sources/A.swift
+  [ ! -e "$BATS_TEST_TMPDIR/calls" ]
+}
+
+@test "blocks a Swift edit on a Mac when a Swift tool is missing, rather than pass it unchecked" {
+  swift_sandbox
+  rm "$SANDBOX/.bin/swift-format"
+  run -2 "$SANDBOX/.claude/hooks/fast-check.sh" apps/ios/Sources/A.swift
+  has 'fast-check: SwiftLint or swift-format is missing from .bin: run `make setup` (ADR 0043).'
+  [ ! -e "$BATS_TEST_TMPDIR/calls" ]
+}
+
+@test "refuses an edit to a generated Swift file (layout.env's GENERATED_GLOBS), with or without ios in STACK" {
+  swift_sandbox
+  edit scripts/harness/layout.env 's|^GENERATED_GLOBS=|GENERATED_GLOBS=apps/ios/Generated/*:|'
+  mkdir -p "$SANDBOX/apps/ios/Generated" && echo 'let g = 1' >"$SANDBOX/apps/ios/Generated/Client.swift"
+  run -2 "$SANDBOX/.claude/hooks/fast-check.sh" apps/ios/Generated/Client.swift
+  has 'fast-check: apps/ios/Generated/Client.swift is generated'
+  HARNESS_STACK=go:db:web run -2 "$SANDBOX/.claude/hooks/fast-check.sh" apps/ios/Generated/Client.swift
+  [ ! -e "$BATS_TEST_TMPDIR/calls" ]
 }

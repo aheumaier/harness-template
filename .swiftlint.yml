@@ -1,0 +1,27 @@
+# Harness file (protected). SwiftLint for the ios group, always passed with --config (make lint-ios, the
+# fast-check hook), so a nested .swiftlint.yml never applies. docs/harness/rules.md#ios-lint, ADR 0043.
+# A suppression is `// swiftlint:disable:next <rule> - reason: … (rule: <id>)` (rule: harness-suppression-reason).
+
+# No style rules beyond the formatter (core belief 3, ADR 0024): off are SwiftLint 0.65.1's default rules of kind
+# `style` (`swiftlint rules`), which swift-format owns or which are naming style, and the naming rules of kind
+# `idiomatic` (generic_type_name, type_name). A SwiftLint bump turns off each new default rule of kind style.
+disabled_rules: [
+  attribute_name_spacing, closing_brace, closure_parameter_position, colon, comma, computed_accessors_order,
+  control_statement, empty_enum_arguments, empty_parameters, empty_parentheses_with_trailing_closure,
+  function_name_whitespace, generic_type_name, identifier_name, implicit_getter, implicit_optional_initialization,
+  inclusive_language, leading_whitespace, multiple_closures_with_trailing_closure, no_space_in_method_call,
+  opening_brace, protocol_property_accessors_order, redundant_discardable_let, return_arrow_whitespace,
+  shorthand_operator, statement_position, switch_case_alignment, trailing_comma, trailing_newline,
+  trailing_whitespace, type_name, unused_optional_binding, vertical_parameter_alignment, vertical_whitespace,
+  void_return,
+]
+
+# The size rules (docs/harness/rules.md#code-function-length) at SwiftLint 0.65.1's documented warning
+# defaults, set here so a SwiftLint bump cannot move them; --strict makes a warning fail. Tests are not exempt.
+function_body_length: 50
+cyclomatic_complexity: 10
+function_parameter_count: 5
+file_length: 400
+# Also the default: swift-format wraps code at 100 (.swift-format lineLength); this catches what it cannot wrap
+# (comments, long literals), at the 120 columns the repo's comments use.
+line_length: 120

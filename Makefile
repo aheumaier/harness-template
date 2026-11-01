@@ -13,7 +13,7 @@ include scripts/tool-versions.env
 # The keys are set with `override`, and so are STACK_OFF and HOST_OFF below, so neither a command-line variable nor one from
 # the environment under make -e (CI's setup action exports the keys) can beat layout.env and silently drop the
 # db and web sensors past layout-check's guard (it reads only HARNESS_STACK). A command-line STACK, STACK_OFF,
-# HOST_OFF or group target list (DB_TARGETS, WEB_TARGETS, IOS_TARGETS, which feed the last two) is refused outright, since the one asking for it expects it to win; $(origin) of a command-line variable is
+# HOST_OFF or group target list (DB_TARGETS, WEB_TARGETS, IOS_TARGETS and its IOS_SWIFT_TARGETS and IOS_XCODE_TARGETS, which feed the last two) is refused outright, since the one asking for it expects it to win; $(origin) of a command-line variable is
 # two words, which @ joins, so make -e's `environment override` passes here and override beats it below.
 from_command_line = $(filter command@line override,$(subst $() ,@,$(origin $(1))))
 ifneq ($(call from_command_line,STACK),)
@@ -25,7 +25,7 @@ endif
 ifneq ($(call from_command_line,HOST_OFF),)
 $(error HOST_OFF follows the host's OS (the iOS sensors need macOS); for one run use HARNESS_STACK=… [harness-layout-valid])
 endif
-$(foreach v,DB_TARGETS WEB_TARGETS IOS_TARGETS,$(if $(call from_command_line,$(v)),$(error $(v) is the Makefile's list of a sensor group's targets; for one run use HARNESS_STACK=… [harness-layout-valid])))
+$(foreach v,DB_TARGETS WEB_TARGETS IOS_TARGETS IOS_SWIFT_TARGETS IOS_XCODE_TARGETS,$(if $(call from_command_line,$(v)),$(error $(v) is the Makefile's list of a sensor group's targets; for one run use HARNESS_STACK=… [harness-layout-valid])))
 LAYOUT :=$(shell $(if $(filter command line,$(origin HARNESS_STACK)),HARNESS_STACK='$(HARNESS_STACK)') scripts/harness/layout.sh --print)
 ifeq ($(LAYOUT),)
 $(error scripts/harness/layout.env or HARNESS_STACK is missing or invalid (see above): fix it, then run make layout-check [harness-layout-valid])
@@ -34,11 +34,14 @@ $(foreach kv,$(LAYOUT),$(eval override $(kv)))
 # The sensor groups (ADR 0033): go is every target not listed here and always runs; a db or web target leaves
 # check, check-all, gen and make harness-selftest when STACK lacks its group. e2e needs both (make dev starts
 # Postgres and the web app). An ios target also needs a macOS host (Swift with Apple's SDKs): elsewhere it is in
-# HOST_OFF and leaves them by name (ADR 0042). `$(call stack_has,<group>)` is non-empty when STACK names it;
+# HOST_OFF and leaves them by name (ADR 0042). The ios targets that need only Swift (the command-line tools are
+# enough) run in check; those that need Xcode itself only in check-ios (ADR 0043). `$(call stack_has,<group>)` is non-empty when STACK names it;
 # `$(call stacked,<targets>)` drops the targets STACK or the host leaves out; check says once on stderr which ones.
 DB_TARGETS  := schema-doc-fresh lint-migrations squawk migrations-append-only test-integration test-obs e2e gen-sqlc gen-atlas-sum
 WEB_TARGETS := lint-web arch-web typecheck-web test-web knip clones-web e2e gen-api-client
-IOS_TARGETS := test-ios
+IOS_SWIFT_TARGETS := test-ios lint-ios fmt-check-ios
+IOS_XCODE_TARGETS := xcode-pinned
+IOS_TARGETS := $(IOS_SWIFT_TARGETS) $(IOS_XCODE_TARGETS)
 override stack_has = $(filter $(1),$(subst :, ,$(STACK)))
 override STACK_OFF := $(strip $(if $(call stack_has,db),,$(DB_TARGETS)) $(if $(call stack_has,web),,$(WEB_TARGETS)) $(if $(call stack_has,ios),,$(IOS_TARGETS)))
 override HOST_OFF  := $(if $(filter Darwin,$(shell uname -s)),,$(IOS_TARGETS))
@@ -68,7 +71,7 @@ DOMAINS_DIR := $(patsubst ./%,%,$(API_DIR)/$(patsubst %/*/*,%,$(LAYER_GLOB)))
 scoped = scope="$$(scripts/harness/affected.sh $(1))" || scope="$(2)"; [[ -n "$$scope" ]] || \
 	{ echo "$@: skipped, nothing it checks is affected (make check-all runs it)"; exit 0; };
 GCL  := .bin/golangci-lint-custom
-# ADR 0024's size and complexity limits, one rule id per measure, checked by lint-go and lint-web. The linters'
+# ADR 0024's size and complexity limits, one rule id per measure, checked by lint-go, lint-web and lint-ios. The linters'
 # messages cannot carry the id: run.sh maps each finding to its id, so only that measure's split recipe prints.
 SIZE_RULES := code-function-length,code-complexity,code-parameters,code-file-length
 ANALYZERS_SRC := $(shell find $(API_DIR)/tools/analyzers -name '*.go' -o -name 'go.mod' -o -name 'go.sum')
@@ -125,7 +128,7 @@ db-reset: ## Drop this worktree's database volume (and the obs stack), recreate,
 check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=60s any: NFR-H3/H4): format, lint, arch, unit tests, secrets, gen-check
 	@$(if $(STACK_OFF),echo "STACK=$(STACK) leaves out: $(sort $(STACK_OFF)) (ADR 0033)" >&2,true)
 	@$(if $(and $(call stack_has,ios),$(HOST_OFF)),echo "this host (not macOS) leaves out: $(HOST_OFF) (ADR 0042)" >&2,true)
-	@$(MAKE) -k -j4 $(call stacked,layout-check lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned fixture-claims rule-lists approved-check specs-tested lint-web arch-web typecheck-web test-web test-ios)
+	@$(MAKE) -k -j4 $(call stacked,layout-check lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned fixture-claims rule-lists approved-check specs-tested lint-web arch-web typecheck-web test-web $(IOS_SWIFT_TARGETS))
 	@$(MAKE) gen-check
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
@@ -236,7 +239,7 @@ tools: ## Install pinned CLI tools into .bin
 deps: ## Install JS dependencies from the lockfile (make e2e installs its browser itself); none without web in STACK
 	@$(if $(call stack_has,web),pnpm install --frozen-lockfile --silent,true)
 
-$(TOOLS_STAMP): scripts/tool-versions.env scripts/install-tools.sh
+$(TOOLS_STAMP): scripts/tool-versions.env scripts/install-tools.sh $(wildcard scripts/swift-format/Package.resolved)
 	@scripts/install-tools.sh
 	@touch $@
 
@@ -253,9 +256,10 @@ $(HARNESS): $(HARNESS_SRC) scripts/tool-versions.env
 
 ##@ Go sensors
 .PHONY: fmt lint-go arch-go test-go test-analyzers test-harness vuln-go deadcode-go
-fmt: $(GCL) ## Auto-format Go and shell code
+fmt: $(GCL) ## Auto-format Go, shell and (ios in STACK, on macOS) Swift code
 	@cd $(API_DIR) && $(CURDIR)/$(GCL) fmt ./...
 	@shfmt -w $(SH_FILES)
+	@$(if $(call stacked,fmt-check-ios),export HARNESS_SCOPE=full; $(call swift_files) swift-format format -i --follow-symlinks --configuration .swift-format "$${files[@]}",true)
 
 lint-go: $(GCL)
 	@$(call scoped,go,./...) $(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-test-helpers-only-in-tests,go-domain-isolation,go-structured-logging,go-sec,go-format,$(SIZE_RULES),repo-no-clones --dir $(API_DIR) -- $(CURDIR)/$(GCL) run $$scope
@@ -306,8 +310,11 @@ knip: ## Unused files, exports and dependencies in the JS workspace
 clones-web: ## Copy-pasted code in the JS workspaces (jscpd)
 	@$(RUN) jscpd repo-no-clones -- bash -c 'root="$$(pwd -P)"; out="$$(jscpd --config "$$root/scripts/harness/jscpd.json" --reporters xcode --absolute --exit-code 1 --fail-on-empty --no-colors --no-tips $(foreach d,$(WEB_DIRS),"$$root/$(d)"))" && s=0 || s=$$?; echo "$${out//"$$root"\//}"; ((s == 0)) || { ((s == 1)) && grep -Eq ": warning: Found [0-9]+ lines " <<<"$$out" && s=1 || s=2; }; exit $$s'
 
-##@ iOS sensors (the Swift package in IOS_DIR, macOS only: ADR 0042)
-.PHONY: test-ios
+##@ iOS sensors (the Swift package in IOS_DIR, macOS only: ADR 0042; the Swift linters and Xcode: ADR 0043)
+.PHONY: check-ios test-ios lint-ios fmt-check-ios xcode-pinned
+check-ios: ## Every iOS sensor, those needing Xcode too (the macOS CI job)
+	@$(if $(call stacked,$(IOS_TARGETS)),$(MAKE) -k $(call stacked,$(IOS_TARGETS)),echo "$@: skipped, $(if $(call stack_has,ios),this host is not macOS (ADR 0042),STACK=$(STACK) has no ios (ADR 0033))")
+
 # With only the command-line tools selected (xcode-select -p is .../CommandLineTools), swift test finds Swift
 # Testing only through the tools' frameworks directory, passed as -F and -rpath; XCTest needs Xcode selected. An app without
 # a Swift package (only an XcodeGen project.yml) and without Swift tests in Tests/ has nothing for swift test, which
@@ -324,6 +331,41 @@ test-ios: ## Swift unit tests of the package in IOS_DIR (swift test)
 	if [[ "$$dev" == */CommandLineTools ]]; then \
 	  fw=(-Xswiftc -F -Xswiftc "$$dev/Library/Developer/Frameworks" -Xlinker -rpath -Xlinker "$$dev/Library/Developer/Frameworks"); fi; \
 	$(RUN) swift-test ios-tests-pass --dir "$(IOS_DIR)" -- swift test $${fw[@]+"$${fw[@]}"}
+
+# `$(call swift_files) <command on "$${files[@]}">`: the Swift files the linters read (owner decision Q8 of exec
+# plan 0004), each git-known *.swift under PRODUCT_GLOBS or WEB_GLOBS (layout.env) and not under GENERATED_GLOBS.
+# Skips the target by name when there is none, or in make check when no Swift file changed (their configs are
+# harness files, which unchanged.sh always counts). The configs are named, so a nested one never applies. -z: git
+# quotes a name with a non-ASCII byte, `"`, `\` or a tab, which would drop out (a newline in a name still splits it).
+# SwiftPM compiles the Swift behind a link to a directory, which git lists as one file: those files are added, but
+# none under a hidden directory (.build, .swiftpm: dependency checkouts and build output, which git ignores).
+swift_files = set -o pipefail; \
+	if scripts/harness/unchanged.sh '*.swift'; then echo "$@: skipped, no Swift file changed (make check-all runs it)"; exit 0; fi; \
+	list="$$(git ls-files -z -co --exclude-standard -- $(foreach g,$(sort $(subst :, ,$(PRODUCT_GLOBS) $(WEB_GLOBS))),'$(g)') \
+	  $(foreach g,$(subst :, ,$(GENERATED_GLOBS)),':(exclude)$(g)') | tr '\0' '\n')" || exit 2; files=(); \
+	while IFS= read -r f; do \
+	  if [[ -L "$$f" && -d "$$f" ]]; then linked="$$(find -L "$$f" -mindepth 1 -name '.*' -prune -o -name '*.swift' -type f -print)" || exit 2; \
+	    while IFS= read -r g; do [[ -z "$$g" ]] || files+=("$$g"); done <<<"$$linked"; \
+	  elif [[ "$$f" == *.swift && -f "$$f" ]]; then files+=("$$f"); fi; \
+	done <<<"$$list"; \
+	(($${\#files[@]})) || { echo "$@: skipped, no Swift file under PRODUCT_GLOBS or WEB_GLOBS"; exit 0; };
+
+# $(TOOLS_STAMP): after a bump, the tools are installed (swift-format's build takes minutes) before they run.
+# The wrappers (swiftlint.sh, swift-format.sh) exit 1 only for a finding, 2 for a broken tool or config.
+lint-ios: $(TOOLS_STAMP) ## SwiftLint on the Swift files (rules.md#ios-lint, the size rules)
+	@$(call swift_files) $(RUN) swiftlint ios-lint,$(SIZE_RULES) -- scripts/harness/swiftlint.sh "$${files[@]}"
+
+fmt-check-ios: $(TOOLS_STAMP) ## swift-format lint on the Swift files (rules.md#ios-format; make fmt fixes)
+	@$(call swift_files) $(RUN) swift-format ios-format -- scripts/harness/swift-format.sh "$${files[@]}"
+
+# rules.md#ios-xcode-pinned: xcodebuild -version's first line is "Xcode <version>". With only the command-line
+# tools selected, xcodebuild fails: there is no Xcode to compare (the third host class, ADR 0043), skipped by name.
+xcode-pinned: ## The selected Xcode is XCODE_VERSION (tool-versions.env)
+	@dev="$$(xcode-select -p)" || { echo "$@: no Xcode or command-line tools: run xcode-select --install [ios-xcode-pinned]" >&2; exit 2; }; \
+	if [[ "$$dev" == */CommandLineTools ]] && ! xcodebuild -version >/dev/null 2>&1; then \
+	  echo "$@: skipped, only the command-line tools are selected, no Xcode (ADR 0043)"; exit 0; fi; \
+	$(RUN) xcode-pinned ios-xcode-pinned -- bash -c 'set -o pipefail; v="$$(xcodebuild -version | sed -n "1s/^Xcode //p")" || exit 2; [[ -n "$$v" ]] || exit 2; \
+	  [[ "$$v" == "$(XCODE_VERSION)" ]] || { echo "the selected Xcode is $$v, scripts/tool-versions.env pins XCODE_VERSION=$(XCODE_VERSION)"; exit 1; }'
 
 ##@ Contract (SPEC)
 .PHONY: lint-api contract-check upstream-drift approve approved-check
@@ -402,7 +444,7 @@ test-sh: $(HARNESS) ## bats tests for scripts/ and .claude/hooks/ (scripts/test)
 secrets: $(TOOLS_STAMP) ## Offline secret scan of the git-known files (in make check, only the changed ones)
 	@$(RUN) repo-no-secrets repo-no-secrets -- scripts/harness/trivy.sh secret
 
-vuln-deps: $(TOOLS_STAMP) ## Known vulns in pnpm-lock.yaml and every go.mod (fetches the Trivy DB into .cache/trivy)
+vuln-deps: $(TOOLS_STAMP) ## Known vulns in pnpm-lock.yaml, every go.mod and Package.resolved (fetches the Trivy DB into .cache/trivy)
 	@$(RUN) trivy-vuln deps-no-known-vulns -- scripts/harness/trivy.sh vuln
 
 ##@ CI and harness integrity (.github/, protected harness files)

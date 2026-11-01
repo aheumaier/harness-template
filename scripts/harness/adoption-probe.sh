@@ -179,8 +179,9 @@ hand_edit() {
 # --- what README (b) names ----------------------------------------------------------------------------------
 # Step 3, as README writes the paths: each copied or merged by copy_step3...
 step3_copy=(docs/harness/ docs/adr/ docs/exec-plans/ scripts/harness/ scripts/git-hooks/ scripts/test/
-  scripts/install-tools.sh scripts/setup-worktree.sh scripts/github-branch-protection.sh .github/CODEOWNERS
-  .github/pull_request_template.md trivy.yaml .shellcheckrc .editorconfig ARCHITECTURE.md docs/design-docs/
+  scripts/install-tools.sh scripts/swift-format/Package.resolved scripts/setup-worktree.sh scripts/github-branch-protection.sh
+  .github/CODEOWNERS .github/pull_request_template.md trivy.yaml .shellcheckrc .editorconfig .swiftlint.yml
+  .swift-format ARCHITECTURE.md docs/design-docs/
   docs/QUALITY.md docs/SECURITY.md docs/RELIABILITY.md docs/generated/ docs/references/ AGENTS.md CLAUDE.md
   apps/api/internal/ .spectral.yaml apps/api/.golangci.yml apps/api/.custom-gcl.yml apps/api/.go-arch-lint.yml
   apps/api/tools/analyzers/ .claude/ .specify/ .gitignore)

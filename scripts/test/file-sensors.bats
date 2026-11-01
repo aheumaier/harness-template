@@ -27,6 +27,9 @@ apps/api/db/migrations/20260101000000_x.sql migration
 apps/api/db/queries/x.sql sql
 api/openapi.yaml openapi
 apps/web/src/main.tsx web
+apps/ios/Sources/AppCore/Greeting.swift swift
+packages/kit/Sources/K.swift swift
+scripts/tools/x.swift -
 scripts/harness/run.sh sh
 scripts/test/run.bats sh
 scripts/git-hooks/pre-commit sh

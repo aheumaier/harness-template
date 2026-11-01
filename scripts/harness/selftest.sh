@@ -15,13 +15,15 @@
 #                 the fixture needs beyond its TARGET's, e.g. an apply.sh that edits apps/web),
 #                 TEMPLATE_ONLY=1 (optional: skipped in a product, i.e. when scripts/tool-versions.env sets
 #                 HARNESS_UPSTREAM (ADR 0026), as its template-only sensor is, ADR 0038), NEEDS_SWIFT=1 (required
-#                 when TARGET is an ios target, which needs Swift on macOS: ADR 0042)
+#                 when TARGET is an ios target, which needs Swift on macOS: ADR 0042), NEEDS_XCODE=1 (required
+#                 instead when TARGET is one of the Makefile's IOS_XCODE_TARGETS, which need Xcode itself: ADR 0043)
 # and asserts `make TARGET` fails, its output matches EXPECT, and run.sh printed RULE's remediation.
 # A fixture whose TARGET is in the Makefile's STACK_OFF (sensors of the groups STACK leaves out) or whose STACK
 # names such a group is skipped (ADR 0033); a STACK naming an unknown group is a bad fixture.conf. Under the full
 # stack, every group layout.env's own STACK declares (ADR 0042), a skip for a declared group is a failure.
-# A NEEDS_SWIFT fixture on a host without Swift, or whose TARGET is in the Makefile's HOST_OFF (not macOS), fails
-# unless SELFTEST_SKIP_SWIFT=1 skips it, as NEEDS_DOCKER and SELFTEST_SKIP_DOCKER do.
+# A NEEDS_SWIFT or NEEDS_XCODE fixture on a host without Swift, or whose TARGET is in the Makefile's HOST_OFF (not
+# macOS), fails unless SELFTEST_SKIP_SWIFT=1 skips it, as NEEDS_DOCKER and SELFTEST_SKIP_DOCKER do. A NEEDS_XCODE
+# fixture on a Mac without Xcode selected (only the command-line tools) fails unless SELFTEST_SKIP_XCODE=1 skips it.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -33,19 +35,21 @@ source scripts/tool-versions.env
 source scripts/harness/layout.sh || exit 2
 export GOTOOLCHAIN="$GO_TOOLCHAIN" PATH="$ROOT/.bin:$ROOT/node_modules/.bin:$PATH"
 # From the Makefile itself (make 3.81 has no --eval: a second makefile on stdin), one line each: the targets STACK
-# leaves out, those the host leaves out, then `<group> <targets>` for each group but go.
+# leaves out, those the host leaves out, the ios targets that need Xcode, then `<group> <targets>` for each group
+# but go.
 offs="$({
   printf 'selftest-stack-off:\n'
-  printf '\t@echo %s\n' '$(STACK_OFF)' '$(HOST_OFF)'
+  printf '\t@echo %s\n' '$(STACK_OFF)' '$(HOST_OFF)' '$(IOS_XCODE_TARGETS)'
   for group in $HARNESS_STACK_GROUPS; do
     [[ "$group" == go ]] || printf '\t@echo %s $(%s_TARGETS)\n' "$group" "$(tr '[:lower:]' '[:upper:]' <<<"$group")"
   done
 } | make -s --no-print-directory -C "$ROOT" -f Makefile -f - selftest-stack-off)" || {
-  echo "harness-selftest: could not read STACK_OFF, HOST_OFF and the group targets from the Makefile" >&2
+  echo "harness-selftest: could not read STACK_OFF, HOST_OFF, IOS_XCODE_TARGETS and the group targets from the Makefile" >&2
   exit 2
 }
 STACK_OFF="$(sed -n 1p <<<"$offs")"
 HOST_OFF="$(sed -n 2p <<<"$offs")"
+xcode_targets="$(sed -n 3p <<<"$offs")"
 # The groups layout.env declares, validated and without HARNESS_STACK (sourcing layout.sh replaced STACK with it),
 # and the undeclared groups with their targets: under the full stack only these may be skipped.
 declared="$(env -u HARNESS_STACK scripts/harness/layout.sh --print | sed -n 's/^STACK=//p')" || exit 2
@@ -56,7 +60,7 @@ undeclared='' ios_targets=''
 while read -r group targets; do
   [[ "$declared" == *":$group:"* ]] || undeclared+=" $group $targets"
   [[ "$group" != ios ]] || ios_targets="$targets"
-done < <(tail -n +3 <<<"$offs")
+done < <(tail -n +4 <<<"$offs")
 # Empty in the template, the template's URL in a product (ADR 0026); from the file, as adoption-probe.sh reads it.
 upstream="$(sed -n 's/^HARNESS_UPSTREAM=//p' scripts/tool-versions.env | tail -n 1)"
 
@@ -109,6 +113,20 @@ commit() { # message: rehash migrations if touched, then commit (must change som
 
 docker_ok() { command -v docker >/dev/null && docker info >/dev/null 2>&1; }
 swift_ok() { swift --version >/dev/null 2>&1 && [[ " $HOST_OFF " != *" $1 "* ]]; } # target
+# As make xcode-pinned: a working xcodebuild, whatever its path.
+xcode_ok() { xcodebuild -version >/dev/null 2>&1; }
+# host_lacks <SWIFT|XCODE|DOCKER> <why skipped> <what is needed>: the fixture's host lacks something; skipped with
+# SELFTEST_SKIP_<X>=1, a failure otherwise.
+host_lacks() {
+  local opt="SELFTEST_SKIP_$1"
+  if [[ "${!opt:-0}" == 1 ]]; then
+    echo "- $name: skipped ($2)"
+    skip=$((skip + 1))
+  else
+    echo "✗ $name: needs $3 (or $opt=1)" >&2
+    fail=$((fail + 1))
+  fi
+}
 
 pass=0 fail=0 skip=0
 for name in "${names[@]}"; do
@@ -118,7 +136,7 @@ for name in "${names[@]}"; do
     fail=$((fail + 1))
     continue
   }
-  RULE='' TARGET='' EXPECT='' NEEDS_DOCKER=0 NEEDS_SWIFT=0 SCOPE='' STACK_NEEDS='' TEMPLATE_ONLY=0
+  RULE='' TARGET='' EXPECT='' NEEDS_DOCKER=0 NEEDS_SWIFT=0 NEEDS_XCODE=0 SCOPE='' STACK_NEEDS='' TEMPLATE_ONLY=0
   # Parsed, not sourced: only these keys, values optionally single- or double-quoted.
   while IFS='=' read -r key val; do
     val="${val#[\'\"]}"
@@ -129,15 +147,23 @@ for name in "${names[@]}"; do
       EXPECT) EXPECT="$val" ;;
       NEEDS_DOCKER) NEEDS_DOCKER="$val" ;;
       NEEDS_SWIFT) NEEDS_SWIFT="$val" ;;
+      NEEDS_XCODE) NEEDS_XCODE="$val" ;;
       SCOPE) SCOPE="$val" ;;
       STACK) STACK_NEEDS="$val" ;;
       TEMPLATE_ONLY) TEMPLATE_ONLY="$val" ;;
     esac
-  done < <(grep -E '^(RULE|TARGET|EXPECT|NEEDS_DOCKER|NEEDS_SWIFT|SCOPE|STACK|TEMPLATE_ONLY)=' "$dir/fixture.conf")
+  done < <(grep -E '^(RULE|TARGET|EXPECT|NEEDS_DOCKER|NEEDS_SWIFT|NEEDS_XCODE|SCOPE|STACK|TEMPLATE_ONLY)=' "$dir/fixture.conf")
   bad=''
   [[ "$TARGET" =~ ^[a-z0-9-]+$ && -n "$RULE" && -n "$EXPECT" && "$SCOPE" =~ ^(changed|full)?$ &&
-    "$STACK_NEEDS" =~ ^([a-z]+(:[a-z]+)*)?$ && "$TEMPLATE_ONLY" =~ ^[01]$ && "$NEEDS_SWIFT" =~ ^[01]$ ]] || bad=' '
-  [[ " $ios_targets " != *" $TARGET "* || "$NEEDS_SWIFT" == 1 ]] || bad=" (TARGET $TARGET needs Swift on macOS: set NEEDS_SWIFT=1)"
+    "$STACK_NEEDS" =~ ^([a-z]+(:[a-z]+)*)?$ && "$TEMPLATE_ONLY" =~ ^[01]$ && "$NEEDS_SWIFT" =~ ^[01]$ && "$NEEDS_XCODE" =~ ^[01]$ ]] || bad=' '
+  if [[ " $xcode_targets " == *" $TARGET "* ]]; then
+    [[ "$NEEDS_XCODE" == 1 ]] || bad=" (TARGET $TARGET needs Xcode on macOS: set NEEDS_XCODE=1)"
+  elif [[ " $ios_targets " == *" $TARGET "* ]]; then
+    [[ "$NEEDS_SWIFT" == 1 ]] || bad=" (TARGET $TARGET needs Swift on macOS: set NEEDS_SWIFT=1)"
+    [[ "$NEEDS_XCODE" != 1 ]] || bad=" (TARGET $TARGET needs no Xcode: drop NEEDS_XCODE, which SELFTEST_SKIP_XCODE skips)"
+  elif [[ "$NEEDS_SWIFT" == 1 || "$NEEDS_XCODE" == 1 ]]; then
+    bad=" (TARGET $TARGET is no ios target: drop NEEDS_SWIFT and NEEDS_XCODE, which skip it off macOS)"
+  fi
   for group in ${STACK_NEEDS//:/ }; do
     [[ " $HARNESS_STACK_GROUPS " == *" $group "* ]] || bad=" (STACK: unknown group $group; known: $HARNESS_STACK_GROUPS)"
   done
@@ -163,24 +189,16 @@ for name in "${names[@]}"; do
     skip=$((skip + 1))
     continue
   fi
-  if [[ "$NEEDS_SWIFT" == 1 ]] && ! swift_ok "$TARGET"; then
-    if [[ "${SELFTEST_SKIP_SWIFT:-0}" == 1 ]]; then
-      echo "- $name: skipped (no Swift on macOS here)"
-      skip=$((skip + 1))
-      continue
-    fi
-    echo "✗ $name: needs Swift on macOS (or SELFTEST_SKIP_SWIFT=1)" >&2
-    fail=$((fail + 1))
+  if [[ "$NEEDS_SWIFT" == 1 || "$NEEDS_XCODE" == 1 ]] && ! swift_ok "$TARGET"; then
+    host_lacks SWIFT 'no Swift on macOS here' 'Swift on macOS'
+    continue
+  fi
+  if [[ "$NEEDS_XCODE" == 1 ]] && ! xcode_ok; then
+    host_lacks XCODE 'no Xcode selected here' 'Xcode selected on macOS'
     continue
   fi
   if [[ "$NEEDS_DOCKER" == 1 ]] && ! docker_ok; then
-    if [[ "${SELFTEST_SKIP_DOCKER:-0}" == 1 ]]; then
-      echo "- $name: skipped (no Docker)"
-      skip=$((skip + 1))
-      continue
-    fi
-    echo "✗ $name: needs Docker (or SELFTEST_SKIP_DOCKER=1)" >&2
-    fail=$((fail + 1))
+    host_lacks DOCKER 'no Docker' Docker
     continue
   fi
 
