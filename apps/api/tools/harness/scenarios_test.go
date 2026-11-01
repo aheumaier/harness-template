@@ -130,6 +130,43 @@ func TestScenariosTested(t *testing.T) {
 			"apps/web/src/b.test.ts": {"xdescribe('001/US1-AS2', () => {})", "test.fixme('001/US1-AS1', () => {})", "xtest('001/US1-AS2')"},
 			"apps/api/a_test.go":     {`t.Run("001/US1-AS1", func(t *testing.T) { t.Skip("later") })`, `t.Run("001/US1-AS2", func(t *testing.T) { t.Skipf("%d", 1) })`},
 		}, []string{g1Untested, untestedAt(12, "001/US1-AS2", strings.TrimPrefix(g2, "2. "))}},
+		{"a Swift test under a *Tests directory names its scenario (Swift Testing title or // spec: comment)", map[string][]string{
+			"specs/001-demo/spec.md":                     spec(story("User Story 1 - Pay", g1, g2)),
+			"apps/ios/Tests/AppCoreTests/PayTests.swift": {`@Test("001/US1-AS1 pays") func pays() {}`},
+			"apps/ios/AppUITests/Flows/PayUITests.swift": {"// spec: 001/US1-AS2", "func testPay() throws {}"},
+		}, nil},
+		{"a skipped Swift test names nothing; .disabled( is a skip in Swift only", map[string][]string{
+			"specs/001-demo/spec.md": spec(story("User Story 1 - Pay", g1, g2, "3. **Given** c", "4. **Given** d")),
+			"apps/ios/Tests/AppCoreTests/PayTests.swift": {
+				`@Test("001/US1-AS1 pays", .disabled("later")) func pays() {}`,
+				`try XCTSkipIf(true) // 001/US1-AS3`, `throw XCTSkip("001/US1-AS3")`,
+				`@Test("001/US1-AS4 refunds", .enabled(if : !isCI)) func refunds() {}`,
+			},
+			"apps/web/src/c.test.ts": {"it('001/US1-AS2', () => expect(b.disabled()).toBe(true))"},
+		}, []string{g1Untested, untestedAt(13, "001/US1-AS3", "**Given** c"), untestedAt(14, "001/US1-AS4", "**Given** d")}},
+		{"a Swift test inside #if false names nothing; its #else branch does; .disabled may be spelled loosely", map[string][]string{
+			"specs/001-demo/spec.md": spec(story("User Story 1 - Pay", g1, g2, "3. **Given** c", "4. **Given** d")),
+			"apps/ios/Tests/AppCoreTests/PayTests.swift": {
+				"#if false", `@Test("001/US1-AS1 pays") func pays() {}`, "#if os(iOS)", `// spec: 001/US1-AS1`, "#endif",
+				"#else", `@Test("001/US1-AS2 refunds") func refunds() {}`, "#endif",
+				`@Test("001/US1-AS3 voids", .disabled ("later")) func voids() {}`,
+				"@Test(\"001/US1-AS4 splits\", .`disabled`(\"later\")) func splits() {}",
+			},
+		}, []string{g1Untested, untestedAt(13, "001/US1-AS3", "**Given** c"), untestedAt(14, "001/US1-AS4", "**Given** d")}},
+		{"#if false nests: an inner #else stays compiled out, the outer #elseif is compiled, a compound condition compiles", map[string][]string{
+			"specs/001-demo/spec.md": spec(story("User Story 1 - Pay", "1. **Given** a", "2. **Given** b", "3. **Given** c", "4. **Given** d", "5. **Given** e")),
+			"apps/ios/Tests/AppCoreTests/PayTests.swift": {
+				"#if false", "#if os(iOS)", "#else", "// spec: 001/US1-AS1", "#endif", "#endif",
+				"#if false", "#if os(iOS)", "#endif", "// spec: 001/US1-AS2", "#endif",
+				"#if false", "// spec: 001/US1-AS3", "#elseif os(iOS)", "// spec: 001/US1-AS4", "#endif",
+				"#if false || os(iOS)", "// spec: 001/US1-AS5", "#endif",
+			},
+		}, []string{untestedAt(11, "001/US1-AS1", "**Given** a"), untestedAt(12, "001/US1-AS2", "**Given** b"), untestedAt(13, "001/US1-AS3", "**Given** c")}},
+		{"a Swift test outside a *Tests directory is not a test file", map[string][]string{
+			"specs/001-demo/spec.md":                    spec(story("User Story 1 - Pay", g1)),
+			"apps/ios/Sources/AppCore/PayTests.swift":   {"// spec: 001/US1-AS1"},
+			"apps/ios/Tests/AppCoreTests/Helpers.swift": {"// spec: 001/US1-AS1"},
+		}, []string{g1Untested}},
 		{"only product and web test files count: not the api client, generated code, harness tests, fixtures or other files", map[string][]string{
 			"specs/001-demo/spec.md":                              spec(story("User Story 1 - Pay", g1)),
 			"packages/api-client/src/client.test.ts":              {"// 001/US1-AS1"},

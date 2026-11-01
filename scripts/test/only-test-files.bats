@@ -17,7 +17,8 @@ write() {
 # at <template path>: the same path in this repo's layout. A leading apps/api/internal/ becomes DOMAINS_DIR,
 # apps/api/ API_PREFIX, packages/api-client/ API_CLIENT_DIR (a case variant of it upper-cases the client's
 # last directory), apps/web/ and packages/domain/ a web/ and domain/ directory in the first and last WEB_GLOBS
-# entry; any other path is the same in every layout. In the template, every path stays as it is.
+# entry, apps/ios/ an ios/ directory in the first PRODUCT_GLOBS entry; any other path is the same in every
+# layout. In the template, every path stays as it is.
 at() {
   local p="$1" lc client="$API_CLIENT_DIR"
   lc=$(tr '[:upper:]' '[:lower:]' <<<"$p")
@@ -30,6 +31,7 @@ at() {
       printf '%s\n' "${client#./}/${p:20}"
       ;;
     apps/web/*) printf '%s\n' "${WEB_DIRS[0]}/web/${p#apps/web/}" ;;
+    apps/ios/*) printf '%s\n' "${PRODUCT_GLOBS[0]%/\*}/ios/${p#apps/ios/}" ;;
     packages/domain/*) printf '%s\n' "${WEB_DIRS[${#WEB_DIRS[@]} - 1]}/domain/${p#packages/domain/}" ;;
     *) printf '%s\n' "$p" ;;
   esac

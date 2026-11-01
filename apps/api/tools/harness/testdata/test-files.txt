@@ -16,6 +16,12 @@ apps/web/src/cart.test.tsx allow
 apps/web/src/cart.test.mjs allow
 apps/web/src/cart.spec.ts allow
 apps/web/e2e/checkout.e2e.ts allow
+apps/ios/Tests/AppCoreTests/PayTests.swift allow
+apps/ios/AppUITests/PayUITests.swift allow
+apps/ios/Sources/AppCore/PayTests.swift reject
+apps/ios/Tests/AppCoreTests/Helpers.swift reject
+apps/ios/Tests/PayTests.swift reject
+apps/ios/Sources/AppCore/MockTests/PayTests.swift reject
 apps/api/internal/cart/model/cart.go reject
 apps/api/internal/cart/model/cart_test.go.orig reject
 packages/domain/src/money.ts reject

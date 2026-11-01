@@ -192,6 +192,25 @@ func TestTestFileForms(t *testing.T) {
 			t.Errorf("%s: testFileRE matches a near miss", f)
 		}
 	}
+	if !strings.Contains(testFileForms, "*Tests.swift under a *Tests directory, not under Sources/") {
+		t.Errorf("testFileForms does not name the Swift form")
+	}
+	for _, f := range []string{"Tests/AppCoreTests/PayTests.swift", "apps/ios/AppUITests/PayUITests.swift", "apps/ios/AppTests/Flows/PayTests.swift"} {
+		if !swiftTestRE.MatchString(f) {
+			t.Errorf("%s: testFileForms names it, swiftTestRE does not match it", f)
+		}
+	}
+	for _, f := range []string{"PayTests.swift", "apps/ios/Tests/PayTests.swift", "apps/ios/Sources/AppCore/PayTests.swift", "apps/ios/Tests/AppCoreTests/Helpers.swift", "apps/ios/AppTests/PayTests.swift.orig", "apps/ios/Tests/PayTest.swift", "apps/ios/MyTests.swift"} {
+		if swiftTestRE.MatchString(f) {
+			t.Errorf("%s: swiftTestRE matches a near miss", f)
+		}
+	}
+	pt := productTests{include: []string{"apps/*"}}
+	for _, f := range []string{"apps/ios/Sources/AppCore/MockTests/PayTests.swift", "apps/ios/Sources/AppCoreTests/PayTests.swift", "apps/ios/src/AppCore/MockTests/PayTests.swift", "apps/ios/Source/AppCore/MockTests/PayTests.swift", "apps/watch/sources/App/HelperTests/PayTests.swift"} {
+		if pt.why(f) == "" {
+			t.Errorf("%s: a *Tests folder under a SwiftPM source folder ships by default, but why allows it", f)
+		}
+	}
 }
 
 // TestLoadProductTestsFailsClosed: without harness entries, or with a pattern pathspecMatch cannot read as git

@@ -1,8 +1,8 @@
 # harness-template
 
 A template for products built by coding agents. It has a Go HTTP API (`apps/api`), a React web app (`apps/web`),
-a shared OpenAPI contract (`api/openapi.yaml`) and Postgres. There are no business domains yet. What the
-template really offers is the **harness**:
+an iOS app's Swift package (`apps/ios`), a shared OpenAPI contract (`api/openapi.yaml`) and Postgres. There are
+no business domains yet. What the template really offers is the **harness**:
 
 - **Guides** say what good looks like: [AGENTS.md](AGENTS.md), [ARCHITECTURE.md](ARCHITECTURE.md) and
   [docs/](docs/).
@@ -39,8 +39,8 @@ Steps that need a human are marked **(human)**.
 - `git`, `make` (macOS make 3.81 is fine), `curl`, `tar`, `shasum` or `sha256sum`, `lsof`.
 
 `STACK` in [scripts/harness/layout.env](scripts/harness/layout.env) lists the sensor groups the product has,
-`go:db:web` here; `HARNESS_STACK=go,db` overrides it for one run
-([ADR 0033](docs/adr/0033-stack-profiles.md)).
+`go:db:web:ios` here; `HARNESS_STACK=go,db` overrides it for one run
+([ADR 0033](docs/adr/0033-stack-profiles.md), [ADR 0041](docs/adr/0041-ios-stack-group.md)).
 
 Never install a tool globally. `make setup` puts every pinned, checksum-verified tool into `.bin/`.
 
@@ -63,7 +63,9 @@ Claude Code hooks fail closed.
    the commit you copied, so replace it. Make the first commit before step 2: the web layer sensor
    (dependency-cruiser) fails in a repo without `HEAD`. Until `make setup` has built `.bin/harness`, the
    Claude Code hooks block every shell command except a bare `make setup` (`cd <repo> && make setup` is
-   blocked too).
+   blocked too). Without an iOS app, delete `apps/ios` and drop `ios` from `STACK` in
+   `scripts/harness/layout.env` in the same commit ([ADR 0041](docs/adr/0041-ios-stack-group.md)):
+   `make layout-check` fails while Swift stays and `ios` is gone.
 2. **Set up and prove green:**
    ```sh
    make setup
@@ -284,7 +286,8 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      module (`API_DIR`, `.` for the repo root), the contract, migrations, queries, generated client, JS
      workspaces, generated code and product code live, the domain layers' path (`LAYER_GLOB`), and which sensor groups
      the product has (`STACK`: `go`, plus `db` for Postgres migrations and queries, `web` for the JS
-     workspaces; [ADR 0033](docs/adr/0033-stack-profiles.md)). If the product vendors another repo's spec, list
+     workspaces, `ios` for a Swift app; [ADR 0033](docs/adr/0033-stack-profiles.md),
+     [ADR 0041](docs/adr/0041-ios-stack-group.md)). If the product vendors another repo's spec, list
      it in `UPSTREAM_SPECS` with its source and revision; if other repos vendor this contract, name them in
      `CONTRACT_CONSUMERS` ([ADR 0037](docs/adr/0037-upstream-spec-drift-is-a-drift-report.md)). The scripts
      in `scripts/harness/`, the Makefile, `.bin/harness`, the domainiso analyzer and the CI workflows read it
@@ -348,6 +351,9 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      | db | `db-*` (5) | `DB_TARGETS`: `schema-doc-fresh`, `lint-migrations`, `squawk`, `migrations-append-only`, `test-integration`, `test-obs`, `e2e`, `gen-sqlc`, `gen-atlas-sum` | atlas, sqlc, squawk |
      | api | `api-*` (6) | `lint-api`, `contract-check`, `gen-oapi` | oasdiff, oapi-codegen, spectral |
 
+     The ios group has no rules or targets of its own yet ([exec plan 0004](docs/exec-plans/active/0004-ios-stack-group.md)):
+     it only counts Swift tests for [specs-scenarios-tested](docs/harness/rules.md#specs-scenarios-tested),
+     and without it any Swift under `PRODUCT_GLOBS` fails `layout-check`.
      The web and db sets are `STACK` groups ([ADR 0033](docs/adr/0033-stack-profiles.md)), and their targets are
      the [Makefile](Makefile)'s `WEB_TARGETS` and `DB_TARGETS` as listed; `e2e` is in both: it needs both
      groups, and leaving out db or web drops it. A group drops whole targets: without db, `test-integration` and `test-obs` go entirely, so
