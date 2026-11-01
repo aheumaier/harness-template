@@ -1,7 +1,7 @@
 # Per-worktree Postgres, and an opt-in observability stack (profile obs, `make obs-up`, ADR 0017). Project
 # name, ports and POSTGRES_IMAGE come from .env.local (scripts/setup-worktree.sh), OBS_IMAGE from
 # scripts/tool-versions.env (make and setup-worktree.sh export it), so every worktree gets its own containers,
-# volume and ports. Local development only.
+# volume and ports. Local development and CI only, never production.
 services:
   db:
     image: ${POSTGRES_IMAGE:?run make setup}
@@ -29,6 +29,14 @@ services:
       - "127.0.0.1:${PROMETHEUS_PORT:?run make setup}:9090"
       - "127.0.0.1:${TEMPO_PORT:?run make setup}:3200"
       - "127.0.0.1:${GRAFANA_PORT:?run make setup}:3000"
+    # Loki refuses every log push (HTTP 503, "Ingester is shutting down") while the disk Docker keeps containers
+    # on (on macOS, Docker Desktop's virtual disk) is at least 90 % full, checked every 10 s from its start:
+    # make logs then finds nothing, while traces and metrics still arrive. A developer's Docker disk or the CI
+    # runner (99 % full, 2026-10-31) can be past that. The telemetry is disposable (no volume) and a dev or CI
+    # run writes little, so 0 turns the throttle off. otel-lgtm's run-loki.sh adds LOKI_EXTRA_ARGS to Loki's
+    # flags: recheck that on an OBS_IMAGE bump, or this setting is dropped without an error.
+    environment:
+      LOKI_EXTRA_ARGS: -ingester.wal-disk-full-threshold=0
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/ready"]
       interval: 1s
