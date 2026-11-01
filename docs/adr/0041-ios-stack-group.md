@@ -1,6 +1,6 @@
 # ADR 0041: An `ios` stack group, with a Swift skeleton in the template (amends 0033, 0036, 0039)
 
-Status: proposed · 2026-10-31 · amends [ADR 0033](0033-stack-profiles.md),
+Status: accepted · 2026-11-01 · amends [ADR 0033](0033-stack-profiles.md),
 [ADR 0036](0036-acceptance-scenarios-are-traced-to-tests.md),
 [ADR 0039](0039-tests-are-written-apart-from-the-implementation.md)
 

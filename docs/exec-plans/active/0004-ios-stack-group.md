@@ -1,6 +1,6 @@
 # 0004 — iOS stack group
 
-Status: phase 1 in review (branch feat/ios-stack-phase1) · Owner: @aheumaier · Started: 2026-10-31
+Status: phase 1 merged (PR #12, 04bdb73; ADR 0041 accepted 2026-11-01); phase 2 next · Owner: @aheumaier · Started: 2026-10-31
 
 ## Goal
 
@@ -199,8 +199,8 @@ learn a new one. By phase:
 
 | # | Phase | Exit criterion | State |
 |---|-------|----------------|-------|
-| 1 | `ios` group and skeleton, no Xcode: D1, D4, D5, D9, Trivy, `.gitignore`, adoption, rules.md, ADR 0041 | `make check`, `make check-all` and `HARNESS_SCOPE=full make harness-selftest` green on Ubuntu; `adoption-probe` green; the three Phase 1 fixtures rejected; `swift test` on the skeleton green on this Mac; a product with `STACK=go:db:web:ios` and Swift tests under `apps/ios/Tests/…Tests/` passes `layout-check` and `specs-tested` | in review |
-| 2 | macOS job, D2, D3, D6, D7, D8, Xcode pin check, SwiftLint, swift-format, `swift test` in `make check` on macOS, the app target | the macOS job green and required; each new rule rejects its fixture there; Ubuntu jobs skip iOS only by name | after 1 |
+| 1 | `ios` group and skeleton, no Xcode: D1, D4, D5, D9, Trivy, `.gitignore`, adoption, rules.md, ADR 0041 | `make check`, `make check-all` and `HARNESS_SCOPE=full make harness-selftest` green on Ubuntu; `adoption-probe` green; the three Phase 1 fixtures rejected; `swift test` on the skeleton green on this Mac; a product with `STACK=go:db:web:ios` and Swift tests under `apps/ios/Tests/…Tests/` passes `layout-check` and `specs-tested` | done (04bdb73) |
+| 2 | macOS job, D2, D3, D6, D7, D8, Xcode pin check, SwiftLint, swift-format, `swift test` in `make check` on macOS, the app target | the macOS job green and required; each new rule rejects its fixture there; Ubuntu jobs skip iOS only by name | next |
 | 3 | Generated Swift client | `make gen` regenerates it; `gen-check` fails on a hand edit (fixture); the `x-extensible-enum` rule documented | after 2 |
 | 4 | Simulator UI tests, layer rule | `ios-e2e` in `check-ios` within its budget; the layer rule rejects its fixture | after 3 |
 
@@ -231,3 +231,4 @@ the `test-writer` and `swift test` into Phase 2. Each phase is its own branch an
 
 - 2026-10-31: drafted from the adopter's request and an inventory of the harness; architecture review folded
   in; the owner decided Q1–Q8. Phase 1 built on `feat/ios-stack-phase1` (ADR 0041).
+- 2026-11-01: phase 1 merged (PR #12) after the obs-e2e flake fix (PR #11); ADR 0041 accepted.
