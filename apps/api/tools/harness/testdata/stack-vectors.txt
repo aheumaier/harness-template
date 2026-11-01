@@ -5,12 +5,17 @@ go accept
 go:db accept
 go:web accept
 go:db:web accept
+go:ios accept
+go:db:web:ios accept
+ios:web:go accept
 web:db:go accept
 db reject
 web reject
 db:web reject
 go:go reject
 go:db:db reject
+ios reject
+go:ios:ios reject
 go:ui reject
 Go reject
 go,db reject

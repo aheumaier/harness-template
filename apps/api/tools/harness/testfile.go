@@ -13,11 +13,19 @@ import (
 
 var (
 	testFileRE = regexp.MustCompile(`(_test\.go|\.(test|spec|e2e)\.[cm]?[jt]sx?)$`)
-	// testFileForms says in words what testFileRE matches; TestTestFileForms holds the two together.
-	testFileForms = "*_test.go, or *.test.*, *.spec.* or *.e2e.* ending in .js, .ts, .jsx or .tsx (also .mjs, .cjs, .mts, .cts)"
-	// testFilePathspecs selects, by name alone, every file testFileRE can match (`*` also matches `/`): git's
+	// swiftTestRE matches a whole path: Swift has no build rule like _test.go, and Xcode compiles any file in an
+	// app target's folder, so a Swift test also needs a directory named *Tests (SwiftPM's Tests/<X>Tests/,
+	// Xcode's <App>Tests/ and <App>UITests/; a bare Tests/ is in no target; ADR 0041).
+	swiftTestRE = regexp.MustCompile(`(^|/)[^/]+Tests/([^/]+/)*[^/]*Tests\.swift$`)
+	// swiftSourcesRE: SwiftPM compiles everything under a source target's folder (Sources/, Source/, src/ or
+	// srcs/ by default), a *Tests subfolder too, so a file there ships unless Package.swift says otherwise; a
+	// test target placed there is refused as well (fails closed: move it to Tests/).
+	swiftSourcesRE = regexp.MustCompile(`(?i)(^|/)(sources?|srcs?)/`) // any case: macOS disks fold it, as matchesAnyFold says
+	// testFileForms says in words what testFileRE and swiftTestRE match; TestTestFileForms holds them together.
+	testFileForms = "*_test.go, or *.test.*, *.spec.* or *.e2e.* ending in .js, .ts, .jsx or .tsx (also .mjs, .cjs, .mts, .cts), or *Tests.swift under a *Tests directory, not under Sources/"
+	// testFilePathspecs selects, by name alone, every file the two can match (`*` also matches `/`): git's
 	// prefilter for specs-tested, never the decision.
-	testFilePathspecs = []string{"*_test.go", "*.test.*", "*.spec.*", "*.e2e.*"}
+	testFilePathspecs = []string{"*_test.go", "*.test.*", "*.spec.*", "*.e2e.*", "*Tests.swift"}
 )
 
 // productTests is the one predicate for a product test file: specs-tested reads only the files it allows (ADR
@@ -75,7 +83,7 @@ func loadProductTests(root string) (productTests, error) {
 // why returns "" when rel (repo-relative, `/`-separated) is a product test file, else why it is not.
 func (pt productTests) why(rel string) string {
 	switch {
-	case !testFileRE.MatchString(path.Base(rel)):
+	case !testFileRE.MatchString(path.Base(rel)) && (!swiftTestRE.MatchString(rel) || swiftSourcesRE.MatchString(rel)):
 		return "is not a test file (" + testFileForms + ")"
 	case skippedPath.MatchString(strings.ToLower(rel)):
 		return "is under node_modules/ or fixtures/"

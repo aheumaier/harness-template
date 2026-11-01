@@ -408,8 +408,8 @@ specs: ## spec-kit specs/ are well formed; feat changes to PRODUCT_GLOBS (layout
 	@$(RUN) specs specs-structure,specs-required-for-features -- env BASE_REF="$(BASE_REF)" scripts/harness/check-specs.sh
 
 # In make check, runs only when specs/, a test file or another harness file changed (rules.md#harness-scope).
-specs-tested: $(HARNESS) ## Every acceptance scenario in specs/ is named by a Go or TS test, or marked (untested: <reason>)
-	@if scripts/harness/unchanged.sh 'specs/*' '*_test.go' '*.test.*' '*.spec.*' '*.e2e.*'; then \
+specs-tested: $(HARNESS) ## Every acceptance scenario in specs/ is named by a Go, TS or Swift test, or marked (untested: <reason>)
+	@if scripts/harness/unchanged.sh 'specs/*' '*_test.go' '*.test.*' '*.spec.*' '*.e2e.*' '*Tests.swift'; then \
 	  echo "$@: skipped, neither specs/ nor a test file changed (make check-all runs it)"; \
 	else $(RUN) specs-tested specs-scenarios-tested -- $(HARNESS) specs-tested .; fi
 

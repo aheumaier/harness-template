@@ -35,7 +35,7 @@ fixture() {
 @test "a fixture.conf STACK naming an unknown group is a bad fixture.conf" {
   fixture typo layout-check wbe
   run -1 --separate-stderr "$SANDBOX/scripts/harness/selftest.sh" typo
-  grep -qF "✗ typo: bad fixture.conf (STACK: unknown group wbe; known: go db web)" <<<"$stderr"
+  grep -qF "✗ typo: bad fixture.conf (STACK: unknown group wbe; known: go db web ios)" <<<"$stderr"
   has "harness-selftest: 0 passed, 1 failed, 0 skipped"
 }
 

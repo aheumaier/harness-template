@@ -9,9 +9,10 @@
 #   scripts/harness/layout.sh --print [<file>]     # validated KEY=value lines (Makefile, CI's $GITHUB_ENV)
 #
 # STACK, the sensor groups this product has (ADR 0033), is optional: a layout.env without it (one written before
-# the key existed, such as a base branch's copy that migrations-append-only.sh reads) has all three, go:db:web.
+# the key existed, such as a base branch's copy that migrations-append-only.sh reads) has go:db:web, the groups
+# that existed then (ios came later, ADR 0041).
 # The environment may override it for one run: HARNESS_STACK=go,db (`,` or `:` separated) replaces it in both
-# forms. Either way it must name each of go, db and web at most once, and go always; harness_stack_has <group>
+# forms. Either way it must name each of go, db, web and ios at most once, and go always; harness_stack_has <group>
 # tests it.
 #
 # UPSTREAM_SPECS and CONTRACT_CONSUMERS (cross-repo contracts, ADR 0037) are optional too, and the only keys whose
@@ -31,7 +32,7 @@
 HARNESS_LAYOUT_KEYS='API_DIR SPEC MIGRATIONS_DIR QUERIES_DIR API_CLIENT_DIR WEB_GLOBS GENERATED_GLOBS PRODUCT_GLOBS LAYER_GLOB STACK UPSTREAM_SPECS CONTRACT_CONSUMERS'
 # Optional lists, empty when unset (never inherited from the environment, where CI's setup action exports them).
 HARNESS_LAYOUT_EMPTY_OK='UPSTREAM_SPECS CONTRACT_CONSUMERS'
-HARNESS_STACK_GROUPS='go db web'
+HARNESS_STACK_GROUPS='go db web ios'
 HARNESS_STACK_DEFAULT='go:db:web'
 
 # harness_layout_parse sets each key as a plain string; nothing else.
@@ -102,7 +103,7 @@ harness_stack_apply() { # <where>
   }
 }
 
-# harness_stack_has <group>: STACK names group (db, web; go always).
+# harness_stack_has <group>: STACK names group (db, web, ios; go always).
 harness_stack_has() { [[ ":$STACK:" == *":$1:"* ]]; }
 
 # harness_layout_load parses, then splits the lists and derives the prefixes.

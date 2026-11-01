@@ -120,19 +120,26 @@ STUB
   grep -A1 -xF -- --exit-code "$SANDBOX/.bin/trivy.args" | sed -n 2p | grep -qx 3 || return 1
 }
 
-@test "vuln: a go.mod with requires or a lockfile with packages that Trivy reports nothing for fails closed" {
+@test "vuln: a go.mod with requires or a lockfile or Package.resolved with packages that Trivy reports nothing for fails closed" {
   mkdir -p "$SANDBOX/m"
   printf 'module m\n\nrequire example.com/x v1.0.0\n' >"$SANDBOX/m/go.mod"
   printf "lockfileVersion: '9.0'\n\npackages:\n\n  x@1.0.0:\n    resolution: {integrity: sha512-x}\n" >"$SANDBOX/pnpm-lock.yaml"
+  mkdir -p "$SANDBOX/apps/ios"
+  printf '{ "pins": [ { "identity": "x", "location": "https://example.com/x.git" } ], "version": 3 }\n' >"$SANDBOX/apps/ios/Package.resolved"
+  mkdir -p "$SANDBOX/apps/old"
+  printf '{ "object": { "pins": [ { "package": "x", "repositoryURL": "https://example.com/x.git" } ] }, "version": 1 }\n' >"$SANDBOX/apps/old/Package.resolved"
   run -1 "$T" vuln
   has "m/go.mod:1: Trivy found no packages in it (unsupported format?) [deps-no-known-vulns]"
   has "pnpm-lock.yaml:1: Trivy found no packages in it (unsupported format?) [deps-no-known-vulns]"
+  has "apps/ios/Package.resolved:1: Trivy found no packages in it (unsupported format?) [deps-no-known-vulns]"
+  has "apps/old/Package.resolved:1: Trivy found no packages in it (unsupported format?) [deps-no-known-vulns]"
 }
 
-@test "vuln: a go.mod without requires and a lockfile without packages pass (nothing to scan)" {
+@test "vuln: a go.mod without requires and a lockfile or Package.resolved without packages pass (nothing to scan)" {
   mkdir -p "$SANDBOX/m"
   printf 'module m\n\ngo 1.27\n' >"$SANDBOX/m/go.mod"
   printf "lockfileVersion: '9.0'\n\nimporters:\n\n  .: {}\n\npackages: {}\n" >"$SANDBOX/pnpm-lock.yaml"
+  printf '{ "pins": [], "version": 3 }\n' >"$SANDBOX/Package.resolved"
   run -0 "$T" vuln
   [[ "$output" != *"found no packages"* ]] || return 1
 }

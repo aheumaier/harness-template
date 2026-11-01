@@ -19,7 +19,7 @@ var templateLayout = []string{
 	"GENERATED_GLOBS=*.gen.go:apps/api/internal/*/store/*:packages/api-client/src/gen/*:docs/generated/*",
 	"PRODUCT_GLOBS=apps/*:api/*",
 	"LAYER_GLOB=internal/*/*",
-	"STACK=go:db:web",
+	"STACK=go:db:web:ios",
 }
 
 // noHarnessStack keeps the environment's HARNESS_STACK (a run of make check with a smaller stack) out of a test.
@@ -112,7 +112,7 @@ func TestLayoutCheck(t *testing.T) {
 		}},
 		{"a STACK without go, with a repeated and an unknown group", withLayout("STACK", "db:db:ui"), []string{
 			at + "12: STACK=db:db:ui: db named twice [harness-layout-valid]",
-			at + "12: STACK=db:db:ui: unknown group ui (known: go db web) [harness-layout-valid]",
+			at + "12: STACK=db:db:ui: unknown group ui (known: go db web ios) [harness-layout-valid]",
 			at + "12: STACK=db:db:ui: no go (every stack has the Go API and the harness) [harness-layout-valid]",
 		}},
 		{"empty cross-repo lists pass", append(withLayout(), "UPSTREAM_SPECS=", "CONTRACT_CONSUMERS="), nil},
@@ -218,6 +218,7 @@ func TestLayoutStackHides(t *testing.T) {
 		"packages/README.md":                {"# packages"},
 		// Fixtures are not the product's code.
 		"scripts/harness/fixtures/x/files/apps/api/db/migrations/1.sql": {""},
+		"scripts/harness/fixtures/y/files/apps/ios/Sources/A/A.swift":   {""},
 	}
 	for _, tt := range []struct {
 		name  string
@@ -241,13 +242,30 @@ func TestLayoutStackHides(t *testing.T) {
 		{"API_CLIENT_DIR without a package.json is web code", "go:db", "-", map[string][]string{
 			"packages/api-client/src/index.ts": {""},
 		}, []string{hides(layoutFile+":12: STACK=go:db", "web", "packages/api-client")}},
-		{"HARNESS_STACK narrows a full tree", "go:db:web", "go", map[string][]string{
+		{"Swift under STACK=go", "go", "-", map[string][]string{
+			"apps/ios/Sources/AppCore/Greeting.swift": {""},
+		}, []string{hides(layoutFile+":12: STACK=go", "ios", "apps/ios/Sources/AppCore/Greeting.swift")}},
+		{"an Xcode project is ios code", "go", "-", map[string][]string{
+			"apps/mobile/App.xcodeproj/project.pbxproj": {""},
+		}, []string{hides(layoutFile+":12: STACK=go", "ios", "apps/mobile/App.xcodeproj/project.pbxproj")}},
+		{"Swift in a fixtures/ folder of the app is still the app", "go", "-", map[string][]string{
+			"apps/ios/Sources/App/fixtures/Main.swift": {""},
+		}, []string{hides(layoutFile+":12: STACK=go", "ios", "apps/ios/Sources/App/fixtures/Main.swift")}},
+		{"Swift in a WEB_GLOBS workspace counts, as its tests do", "go", "-", map[string][]string{
+			"packages/ios-core/Sources/Core/Core.swift": {""},
+		}, []string{hides(layoutFile+":12: STACK=go", "ios", "packages/ios-core/Sources/Core/Core.swift")}},
+		{"Swift outside PRODUCT_GLOBS and WEB_GLOBS is not product code", "go", "-", map[string][]string{
+			"tools/gen/Main.swift": {""},
+		}, nil},
+		{"HARNESS_STACK narrows a full tree", "go:db:web:ios", "go", map[string][]string{
 			"apps/api/db/migrations/1_init.sql": {""},
 			"apps/web/package.json":             {"{}"},
 			"packages/api-client/package.json":  {"{}"},
+			"apps/ios/Package.swift":            {"// swift-tools-version:6.0"},
 		}, []string{
 			hides("HARNESS_STACK=go", "db", "apps/api/db/migrations/1_init.sql"),
 			hides("HARNESS_STACK=go", "web", "apps/web/package.json"),
+			hides("HARNESS_STACK=go", "ios", "apps/ios/Package.swift"),
 		}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -267,6 +285,29 @@ func TestLayoutStackHides(t *testing.T) {
 			}
 			if err != nil || bad != (len(tt.want) > 0) || out.String() != want {
 				t.Errorf("bad=%v err=%v, output:\n%s\nwant:\n%s", bad, err, out.String(), want)
+			}
+		})
+	}
+}
+
+// TestLayoutHidesSwiftWhateverTheProductGlobs: a PRODUCT_GLOBS entry is a pathspec with or without a trailing
+// `*` (productTests reads both), so the Swift under it is found either way.
+func TestLayoutHidesSwiftWhateverTheProductGlobs(t *testing.T) {
+	noHarnessStack(t)
+	for _, globs := range []string{"apps/ios:api/*", "apps:api"} {
+		t.Run(globs, func(t *testing.T) {
+			root := linkRepo(t, map[string][]string{
+				"apps/api/go.mod":                         {"module example.com/api"},
+				"apps/api/internal/health/api/h.go":       {"package api"},
+				"api/openapi.yaml":                        {"openapi: 3.1.0"},
+				"apps/ios/Sources/AppCore/Greeting.swift": {""},
+				layoutFile: append([]string{"# layout", ""}, withLayout("STACK", "go", "PRODUCT_GLOBS", globs)...),
+			})
+			gitT(t, root, "add", "-A")
+			var out bytes.Buffer
+			bad, err := layoutCheck(root, &out)
+			if err != nil || !bad || !strings.Contains(out.String(), "leaves out ios, but apps/ios/Sources/AppCore/Greeting.swift exists") {
+				t.Errorf("bad=%v err=%v, output:\n%s", bad, err, out.String())
 			}
 		})
 	}

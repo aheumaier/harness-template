@@ -27,15 +27,17 @@ to skip, weaken or write outside test files.
 
 ## Scope
 
-The hook allows more than you write: any product test file (`*_test.go`, `*.test.*`, `*.spec.*`, `*.e2e.*`
-under `PRODUCT_GLOBS` or `WEB_GLOBS` of `scripts/harness/layout.env`, outside generated code, the generated
-API client and the harness).
+The hook allows more than you write: any product test file (`*_test.go`, `*.test.*`, `*.spec.*`, `*.e2e.*`,
+`*Tests.swift` under a `*Tests` directory, under `PRODUCT_GLOBS` or `WEB_GLOBS` of
+`scripts/harness/layout.env`, outside generated code, the generated API client and the harness).
 You write a narrower set, only unit tests that `make check` runs: `*_test.go` in a Go domain's `model` or
 `service` package (no build tag) and `*.test.ts` in `packages/domain`. Not yours, though the hook allows
 them, they stay with the implementer:
 
 - browser journeys (`*.e2e.ts`) and anything in `apps/web`; never a `*.spec.ts(x)` file (Vitest collects it,
   [apps/web/AGENTS.md](../../apps/web/AGENTS.md));
+- Swift tests in `apps/ios`, until `make check` runs them (exec plan 0004, phase 2;
+  [ADR 0041](../../docs/adr/0041-ios-stack-group.md));
 - `integration`-tagged tests and anything that needs Postgres;
 - handler tests with `approvaltest`: their approved files come from the implementation's output and
   `make approve` ([ADR 0022](../../docs/adr/0022-approved-api-responses.md));

@@ -7,11 +7,11 @@ package main
 //
 // STACK, the sensor groups the product has (ADR 0033), is optional (go:db:web without it, as in a layout.env
 // written before the key existed) and replaced by the environment's HARNESS_STACK when that is set (`,` read as
-// `:`); it names each of go, db and web at most once, and go always. Without db, layout-check leaves
-// MIGRATIONS_DIR and QUERIES_DIR unchecked; without web, API_CLIENT_DIR and WEB_GLOBS. A stack must match the
-// tree: a group left out while its git-known files exist (a *.sql in MIGRATIONS_DIR or a file in QUERIES_DIR; a
-// package.json in a WEB_GLOBS workspace or an API_CLIENT_DIR) is a finding, so a narrowed stack never silently
-// drops sensors whose code is still there.
+// `:`); it names each of go, db, web and ios (ADR 0041) at most once, and go always. Without db, layout-check
+// leaves MIGRATIONS_DIR and QUERIES_DIR unchecked; without web, API_CLIENT_DIR and WEB_GLOBS. A stack must match
+// the tree: a group left out while its git-known files exist (a *.sql in MIGRATIONS_DIR or a file in QUERIES_DIR;
+// a package.json in a WEB_GLOBS workspace or an API_CLIENT_DIR; a *.swift or an Xcode project under a
+// PRODUCT_GLOBS or WEB_GLOBS entry) is a finding, so a narrowed stack never silently drops sensors whose code is still there.
 //
 // UPSTREAM_SPECS and CONTRACT_CONSUMERS (cross-repo contracts, ADR 0037) are optional and the only keys that may be
 // empty. Each UPSTREAM_SPECS entry is `<vendored spec>@<source repo>@<spec path in the source>@<revision>`, read
@@ -54,7 +54,7 @@ var (
 	layoutKeys   = []string{"API_DIR", "SPEC", "MIGRATIONS_DIR", "QUERIES_DIR", "API_CLIENT_DIR", "WEB_GLOBS", "GENERATED_GLOBS", "PRODUCT_GLOBS", "LAYER_GLOB", "STACK", "UPSTREAM_SPECS", "CONTRACT_CONSUMERS"}
 	optionalKeys = []string{"STACK", "UPSTREAM_SPECS", "CONTRACT_CONSUMERS"} // absent: the default stack, no entries
 	emptyKeys    = []string{"UPSTREAM_SPECS", "CONTRACT_CONSUMERS"}          // the only values that may be empty
-	stackGroups  = []string{"go", "db", "web"}
+	stackGroups  = []string{"go", "db", "web", "ios"}
 	defaultStack = "go:db:web" // a layout.env without STACK
 	stackRE      = regexp.MustCompile(`^[a-z]+(?::[a-z]+)*$`)
 	layoutLineRE = regexp.MustCompile(`^([A-Z_]+)=((?:[A-Za-z0-9_./*@+-]+(?::[A-Za-z0-9_./*@+-]+)*)?)$`)
@@ -308,6 +308,19 @@ func (l layout) hiddenGroups(root string, isDir func(string) bool) ([]string, er
 			hide("web", files[0])
 		case isDir(l.get("API_CLIENT_DIR")):
 			hide("web", l.get("API_CLIENT_DIR"))
+		}
+	}
+	if !l.has("ios") { // any Swift counts, hybrid shells and server Swift too (ADR 0041)
+		files, err := gitKnown(root, "*.swift", "*.xcodeproj/project.pbxproj") // not gitFiles: a fixtures/ folder in the app is still the app
+		if err != nil {
+			return nil, err
+		}
+		scope := append(l.list("PRODUCT_GLOBS"), l.list("WEB_GLOBS")...) // where productTests counts Swift tests
+		for _, f := range files {
+			if matchesAny(scope, f) {
+				hide("ios", f)
+				break
+			}
 		}
 	}
 	return out, nil
