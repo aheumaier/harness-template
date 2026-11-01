@@ -15,23 +15,23 @@
 # forms. Either way it must name each of go, db, web and ios at most once, and go always; harness_stack_has <group>
 # tests it.
 #
-# UPSTREAM_SPECS and CONTRACT_CONSUMERS (cross-repo contracts, ADR 0037) are optional too, and the only keys whose
-# value may be empty: a layout.env without them, or with `KEY=`, has none.
+# UPSTREAM_SPECS and CONTRACT_CONSUMERS (cross-repo contracts, ADR 0037) and IOS_DIR (the iOS app, ADR 0042) are
+# optional too, and the only keys whose value may be empty: a layout.env without them, or with `KEY=`, has none.
 #
-# Sourced, it sets API_DIR, SPEC, MIGRATIONS_DIR, QUERIES_DIR, API_CLIENT_DIR, LAYER_GLOB and STACK as strings;
+# Sourced, it sets API_DIR, SPEC, MIGRATIONS_DIR, QUERIES_DIR, API_CLIENT_DIR, LAYER_GLOB, STACK and IOS_DIR as strings;
 # WEB_GLOBS, GENERATED_GLOBS, PRODUCT_GLOBS, UPSTREAM_SPECS and CONTRACT_CONSUMERS as arrays (the `:`-separated
 # entries; the last two may be empty); WEB_DIRS (each WEB_GLOBS
 # entry without its `/*`); API_PREFIX, the prefix of a repo path inside API_DIR ("" for API_DIR=., else
 # "$API_DIR/"); and DOMAINS_DIR, the repo path of the domains' parent (API_PREFIX + LAYER_GLOB without `/*/*`).
 # Both forms fail closed (return 1, exit 2) with `<file>:<line>: <message> [harness-layout-valid]` on stderr
 # when the file is missing, a line is not KEY=value, a key is unknown, repeated or missing (the optional ones
-# aside), or a value is empty (the two above aside),
+# aside), or a value is empty (the three above aside),
 # holds a character outside [A-Za-z0-9_./*@+-] or an empty list entry, or when STACK (after HARNESS_STACK) is
 # not a valid stack.
 
-HARNESS_LAYOUT_KEYS='API_DIR SPEC MIGRATIONS_DIR QUERIES_DIR API_CLIENT_DIR WEB_GLOBS GENERATED_GLOBS PRODUCT_GLOBS LAYER_GLOB STACK UPSTREAM_SPECS CONTRACT_CONSUMERS'
-# Optional lists, empty when unset (never inherited from the environment, where CI's setup action exports them).
-HARNESS_LAYOUT_EMPTY_OK='UPSTREAM_SPECS CONTRACT_CONSUMERS'
+HARNESS_LAYOUT_KEYS='API_DIR SPEC MIGRATIONS_DIR QUERIES_DIR API_CLIENT_DIR WEB_GLOBS GENERATED_GLOBS PRODUCT_GLOBS LAYER_GLOB STACK UPSTREAM_SPECS CONTRACT_CONSUMERS IOS_DIR'
+# Optional, empty when unset (never inherited from the environment, where CI's setup action exports them).
+HARNESS_LAYOUT_EMPTY_OK='UPSTREAM_SPECS CONTRACT_CONSUMERS IOS_DIR'
 HARNESS_STACK_GROUPS='go db web ios'
 HARNESS_STACK_DEFAULT='go:db:web'
 

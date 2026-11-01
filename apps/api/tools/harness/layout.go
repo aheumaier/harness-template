@@ -13,9 +13,10 @@ package main
 // a package.json in a WEB_GLOBS workspace or an API_CLIENT_DIR; a *.swift or an Xcode project under a
 // PRODUCT_GLOBS or WEB_GLOBS entry) is a finding, so a narrowed stack never silently drops sensors whose code is still there.
 //
-// UPSTREAM_SPECS and CONTRACT_CONSUMERS (cross-repo contracts, ADR 0037) are optional and the only keys that may be
-// empty. Each UPSTREAM_SPECS entry is `<vendored spec>@<source repo>@<spec path in the source>@<revision>`, read
-// by scripts/harness/upstream-drift.sh, which repeats these checks at run time (drift.yml runs it without make
+// IOS_DIR (the iOS app's directory, ADR 0042), UPSTREAM_SPECS and CONTRACT_CONSUMERS (cross-repo contracts, ADR
+// 0037) are optional and the only keys that may be empty. With ios in STACK, IOS_DIR must hold a git-known
+// Package.swift or project.yml, so the iOS sensors never run on nothing. Each UPSTREAM_SPECS entry is
+// `<vendored spec>@<source repo>@<spec path in the source>@<revision>`, read by scripts/harness/upstream-drift.sh, which repeats these checks at run time (drift.yml runs it without make
 // check): the shape; a vendored spec inside this repo (not absolute, no `..`) that is a file; a source that is a
 // host path (github.com/<owner>/<repo>, fetched over https) or an absolute local path (tests and fixtures only),
 // never starting with `-` and without `..`; a spec path that is plain (not absolute, no `.`, `..` or empty
@@ -27,7 +28,8 @@ package main
 //	scripts/harness/layout.env[:<line>]: <message> [harness-layout-valid]
 //
 // for a malformed line, a missing, unknown or repeated key, an UPSTREAM_SPECS entry that is refused, a STACK that is invalid or leaves out a group the tree has, API_DIR without a go.mod, SPEC that is not a file,
-// MIGRATIONS_DIR or API_CLIENT_DIR that is not a directory (QUERIES_DIR: nor its parent), a WEB_GLOBS entry
+// MIGRATIONS_DIR or API_CLIENT_DIR that is not a directory (QUERIES_DIR: nor its parent), with ios an IOS_DIR
+// without a git-known Package.swift or project.yml, a WEB_GLOBS entry
 // that is not `<existing dir>/*`, and a LAYER_GLOB that is not `<dir>[/<dir>…]/*/*`-shaped (literal segments,
 // then exactly two `*` segments: domain and layer, as the analyzer reads them), matches no `<dir>/*/*`
 // directory with a git-known .go file under API_DIR (fixtures skipped), or has a flat package `<dir>/<pkg>`
@@ -39,6 +41,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"os"
 	"path"
@@ -51,9 +54,9 @@ import (
 const layoutFile = "scripts/harness/layout.env"
 
 var (
-	layoutKeys   = []string{"API_DIR", "SPEC", "MIGRATIONS_DIR", "QUERIES_DIR", "API_CLIENT_DIR", "WEB_GLOBS", "GENERATED_GLOBS", "PRODUCT_GLOBS", "LAYER_GLOB", "STACK", "UPSTREAM_SPECS", "CONTRACT_CONSUMERS"}
-	optionalKeys = []string{"STACK", "UPSTREAM_SPECS", "CONTRACT_CONSUMERS"} // absent: the default stack, no entries
-	emptyKeys    = []string{"UPSTREAM_SPECS", "CONTRACT_CONSUMERS"}          // the only values that may be empty
+	layoutKeys   = []string{"API_DIR", "SPEC", "MIGRATIONS_DIR", "QUERIES_DIR", "API_CLIENT_DIR", "WEB_GLOBS", "GENERATED_GLOBS", "PRODUCT_GLOBS", "LAYER_GLOB", "STACK", "UPSTREAM_SPECS", "CONTRACT_CONSUMERS", "IOS_DIR"}
+	optionalKeys = []string{"STACK", "UPSTREAM_SPECS", "CONTRACT_CONSUMERS", "IOS_DIR"} // absent: the default stack, no entries, no iOS app
+	emptyKeys    = []string{"UPSTREAM_SPECS", "CONTRACT_CONSUMERS", "IOS_DIR"}          // the only values that may be empty
 	stackGroups  = []string{"go", "db", "web", "ios"}
 	defaultStack = "go:db:web" // a layout.env without STACK
 	stackRE      = regexp.MustCompile(`^[a-z]+(?::[a-z]+)*$`)
@@ -230,6 +233,36 @@ func (l layout) problems(root string) ([]string, error) {
 		for _, e := range l.list("WEB_GLOBS") {
 			if dir, ok := strings.CutSuffix(e, "/*"); !ok || !isDir(dir) {
 				report("WEB_GLOBS", "%s is not <existing directory>/*", e)
+			}
+		}
+	}
+	if l.has("ios") {
+		// A clean relative path: git refuses one outside the repo, and affected.sh compares IOS_DIR as text.
+		dir := l.get("IOS_DIR")
+		switch {
+		case l.lines["IOS_DIR"] == 0:
+			out = append(out, layoutFile+": IOS_DIR unset, but STACK has ios (set it to the iOS app's directory)")
+		case dir == "":
+			report("IOS_DIR", "no git-known Package.swift or project.yml there, but STACK has ios (set it to the iOS app's directory)")
+		case dir == "." || !fs.ValidPath(dir): // fs.ValidPath holds for "." (the repo root, no app directory)
+			report("IOS_DIR", "not a clean path inside this repo (no leading /, no ./ or .., no trailing /)")
+		default:
+			want := []string{path.Join(dir, "Package.swift"), path.Join(dir, "project.yml")}
+			apps, err := gitKnown(root, ":(literal)"+want[0], ":(literal)"+want[1])
+			if err != nil {
+				return nil, err
+			}
+			// One of exactly those paths (a literal pathspec also lists the files under a directory of that name),
+			// and a regular file, not a symlink: a link to /dev/null or to any other file is no app.
+			found := slices.ContainsFunc(apps, func(f string) bool {
+				fi, err := os.Lstat(filepath.Join(root, f))
+				return slices.Contains(want, f) && err == nil && fi.Mode().IsRegular()
+			})
+			if !found {
+				report("IOS_DIR", "no git-known Package.swift or project.yml there, but STACK has ios (set it to the iOS app's directory)")
+			} else if !matchesAny(append(l.list("PRODUCT_GLOBS"), l.list("WEB_GLOBS")...), path.Join(dir, "Package.swift")) {
+				// Outside them, specs-tested and the test-writer's write guard (productTests) never see its tests.
+				report("IOS_DIR", "not under a PRODUCT_GLOBS or WEB_GLOBS entry, so its Swift tests would not count")
 			}
 		}
 	}

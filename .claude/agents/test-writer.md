@@ -1,6 +1,6 @@
 ---
 name: test-writer
-description: Writes the failing unit tests for a spec-kit feature's test tasks (Go `model`/`service` packages, `packages/domain`) from spec.md, plan.md and tasks.md alone, before any implementation exists, and may write only test files. Use for the unit-test tasks of a spec'd change; the caller commits its tests before the implementer starts (ADR 0039).
+description: Writes the failing unit tests for a spec-kit feature's test tasks (Go `model`/`service` packages, `packages/domain`, the iOS Swift package) from spec.md, plan.md and tasks.md alone, before any implementation exists, and may write only test files. Use for the unit-test tasks of a spec'd change; the caller commits its tests before the implementer starts (ADR 0039).
 tools: Read, Grep, Glob, Write, Edit, Bash
 hooks:
   PreToolUse:
@@ -31,13 +31,15 @@ The hook allows more than you write: any product test file (`*_test.go`, `*.test
 `*Tests.swift` under a `*Tests` directory, under `PRODUCT_GLOBS` or `WEB_GLOBS` of
 `scripts/harness/layout.env`, outside generated code, the generated API client and the harness).
 You write a narrower set, only unit tests that `make check` runs: `*_test.go` in a Go domain's `model` or
-`service` package (no build tag) and `*.test.ts` in `packages/domain`. Not yours, though the hook allows
-them, they stay with the implementer:
+`service` package (no build tag), `*.test.ts` in `packages/domain`, and Swift Testing tests
+(`Tests/<Target>Tests/*Tests.swift`) in the Swift package at `IOS_DIR` of `scripts/harness/layout.env`, which
+`make check` runs on macOS ([ADR 0042](../../docs/adr/0042-swift-unit-tests-in-make-check.md)). Not yours,
+though the hook allows them, they stay with the implementer:
 
 - browser journeys (`*.e2e.ts`) and anything in `apps/web`; never a `*.spec.ts(x)` file (Vitest collects it,
   [apps/web/AGENTS.md](../../apps/web/AGENTS.md));
-- Swift tests in `apps/ios`, until `make check` runs them (exec plan 0004, phase 2;
-  [ADR 0041](../../docs/adr/0041-ios-stack-group.md));
+- XCTest UI tests and anything else in `IOS_DIR` outside its Swift package's `Tests/`: they need Xcode and a
+  simulator, which `make check` does not run;
 - `integration`-tagged tests and anything that needs Postgres;
 - handler tests with `approvaltest`: their approved files come from the implementation's output and
   `make approve` ([ADR 0022](../../docs/adr/0022-approved-api-responses.md));
@@ -52,7 +54,8 @@ When a cap is hit, stop and list what you did not write.
 
 - `specs/<NNN-slug>/spec.md`, `plan.md`, `tasks.md`: the stories, acceptance scenarios, edge cases, and the
   test tasks with their file paths.
-- `AGENTS.md` and the `AGENTS.md` nearest to each test file (`apps/api/internal/`), for where tests live.
+- `AGENTS.md` and the `AGENTS.md` nearest to each test file (`apps/api/internal/`, `IOS_DIR`), for where
+  tests live.
 - Existing tests next to your target, for conventions and helpers.
 - Not the implementation: a test fitted to the code checks what it does, not what the spec says.
 
@@ -71,7 +74,8 @@ against the implementer's code.
 - Tests that would catch a wrong implementation, not just the happy path: the boundary on both sides of each
   threshold the spec states, rounding in both directions, every named error, and every input shape the spec
   allows (several items, not only one, when it sums or applies a rule per item). Assert exact literal values,
-  never one computed with the code under test, and errors with `errors.Is` (Go) or the parsed error (TS). An
+  never one computed with the code under test, and errors with `errors.Is` (Go), the parsed error (TS) or
+  `#expect(throws: <the error value>)` (Swift). An
   error case asserts the zero result only when spec or plan says what it is.
 - No expectation the spec does not state (which error wins when two inputs are invalid, say). If the spec is
   silent on a case you think matters, list it in your reply as a spec question instead of deciding it.
@@ -81,8 +85,12 @@ against the implementer's code.
 
 Red is expected and not yours to fix when it says only that a pinned name is missing: Go's `undefined: …`
 (from the after-edit fast check or from `make check`'s `go-test` and `lint-go`), Go's missing-package error for
-a new package, or TS's missing module or export. Run `make check` once your files are written. Any other
+a new package, TS's missing module or export, or Swift's `cannot find '…' in scope` and `no such module '…'`
+where the module is the code under test (from `make check`'s `swift-test`); `no such module 'XCTest'` or
+`'Testing'` is a setup error, not red. Run `make check` once your files are written. Any other
 failure (a syntax error, a wrong import, a lint finding in your test file) is yours: fix it and run again.
+`make check` runs Swift tests only on macOS: elsewhere it prints that it leaves out `test-ios`. Then say in
+your reply that you could not confirm your Swift tests red.
 
 ## Reply
 

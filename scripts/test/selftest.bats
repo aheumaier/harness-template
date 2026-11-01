@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# scripts/harness/selftest.sh: its fixture.conf parse and stack skips (ADR 0033). Each fixture's verdict is
-# make harness-selftest itself.
+# scripts/harness/selftest.sh: its fixture.conf parse and stack and host skips (ADR 0033, ADR 0042). Each
+# fixture's verdict is make harness-selftest itself.
 bats_require_minimum_version 1.5.0
 load helpers
 
@@ -65,6 +65,51 @@ fixture() {
   echo TEMPLATE_ONLY=1 >>"$F/probe/fixture.conf"
   edit scripts/tool-versions.env 's|^HARNESS_UPSTREAM=.*|HARNESS_UPSTREAM=|'
   HARNESS_UPSTREAM=https://example.com/template run --separate-stderr "$SANDBOX/scripts/harness/selftest.sh" probe
-  [[ "$output" != *"- probe: skipped"* ]]
+  [[ "$output" != *"- probe: skipped"* ]] || false
   has "harness-selftest: 0 passed, 1 failed, 0 skipped"
+}
+
+@test "a fixture of an ios target needs NEEDS_SWIFT=1, and NEEDS_SWIFT is 0 or 1 (ADR 0042)" {
+  fixture untagged test-ios
+  fixture typo layout-check
+  echo NEEDS_SWIFT=yes >>"$F/typo/fixture.conf"
+  run -1 --separate-stderr "$SANDBOX/scripts/harness/selftest.sh" untagged typo
+  grep -qF "✗ untagged: bad fixture.conf (TARGET test-ios needs Swift on macOS: set NEEDS_SWIFT=1)" <<<"$stderr"
+  grep -qxF "✗ typo: bad fixture.conf" <<<"$stderr"
+  has "harness-selftest: 0 passed, 2 failed, 0 skipped"
+}
+
+@test "a NEEDS_SWIFT fixture on a host that is not macOS fails, unless SELFTEST_SKIP_SWIFT=1 skips it" {
+  fixture swift test-ios
+  echo NEEDS_SWIFT=1 >>"$F/swift/fixture.conf"
+  host Linux
+  # A STACK with ios, whatever the repo's layout.env declares (an adopted product's may be go only).
+  HARNESS_STACK=go,ios SELFTEST_SKIP_SWIFT='' run -1 --separate-stderr "$SANDBOX/scripts/harness/selftest.sh" swift
+  grep -qF "✗ swift: needs Swift on macOS (or SELFTEST_SKIP_SWIFT=1)" <<<"$stderr"
+  HARNESS_STACK=go,ios SELFTEST_SKIP_SWIFT=1 run -0 "$SANDBOX/scripts/harness/selftest.sh" swift
+  has "- swift: skipped (no Swift on macOS here)"
+  has "harness-selftest: 0 passed, 0 failed, 1 skipped"
+}
+
+@test "a NEEDS_SWIFT fixture on macOS whose swift does not run (Apple's stub without the tools) fails" {
+  fixture swift test-ios
+  echo NEEDS_SWIFT=1 >>"$F/swift/fixture.conf"
+  host Darwin
+  printf '#!/bin/sh\nexit 1\n' >"$BATS_TEST_TMPDIR/bin/swift"
+  chmod +x "$BATS_TEST_TMPDIR/bin/swift"
+  HARNESS_STACK=go,ios SELFTEST_SKIP_SWIFT='' run -1 --separate-stderr "$SANDBOX/scripts/harness/selftest.sh" swift
+  grep -qF "✗ swift: needs Swift on macOS (or SELFTEST_SKIP_SWIFT=1)" <<<"$stderr"
+}
+
+@test "the full stack is every group layout.env declares: a skip for an undeclared group passes, for a declared one fails" {
+  fixture swift test-ios
+  echo NEEDS_SWIFT=1 >>"$F/swift/fixture.conf"
+  fixture web-target lint-web
+  edit scripts/harness/layout.env 's/^STACK=.*/STACK=go:db:web/'
+  # A Makefile that leaves out a web sensor although STACK has web: it and selftest.sh disagree.
+  edit Makefile 's/^override STACK_OFF := $(strip /&lint-web /'
+  run -1 --separate-stderr env -u HARNESS_STACK "$SANDBOX/scripts/harness/selftest.sh" swift web-target
+  has "- swift: skipped (STACK=go:db:web leaves out test-ios)"
+  grep -qF "✗ web-target: skipped for lint-web under the full STACK=go:db:web" <<<"$stderr"
+  has "harness-selftest: 0 passed, 1 failed, 1 skipped"
 }

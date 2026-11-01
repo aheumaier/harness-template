@@ -122,6 +122,24 @@ EOF
   TURBO_FAIL=1 run -1 "$A" web
 }
 
+@test "web: an asset catalog of the iOS app (layout.env's IOS_DIR) is no web code, its other JSON or JS still is" {
+  stub_turbo
+  mkdir -p "$SANDBOX/apps/ios/Assets.xcassets"
+  printf '{}\n' >"$SANDBOX/apps/ios/Assets.xcassets/Contents.json"
+  run -0 "$A" web
+  is ""
+  HARNESS_STACK=go,web run -1 "$A" web            # without ios in STACK, IOS_DIR is unchecked and means nothing
+  printf '{}\n' >"$SANDBOX/apps/ios/strings.json" # web code may import it
+  run -1 "$A" web
+  rm "$SANDBOX/apps/ios/strings.json"
+  echo 'var x = 1' >"$SANDBOX/apps/ios/a.js" # eslint . lints it in scope full: changed must run everything too
+  run -1 "$A" web
+  rm "$SANDBOX/apps/ios/a.js"
+  mkdir -p "$SANDBOX/apps/mobile" # outside IOS_DIR: a JSON file in no workspace
+  printf '{}\n' >"$SANDBOX/apps/mobile/Contents.json"
+  run -1 "$A" web
+}
+
 @test "everything on go.mod, a package.json, a harness file, scope full or no merge base" {
   echo >>"$SANDBOX/apps/api/go.mod"
   run -1 "$A" go

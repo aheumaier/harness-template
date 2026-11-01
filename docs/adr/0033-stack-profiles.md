@@ -1,6 +1,6 @@
 # ADR 0033: Stack profiles select the sensor groups a product has (amends 0030, 0009, 0023)
 
-Status: accepted · 2026-10-29
+Status: accepted · 2026-10-29 · amended 2026-11-01 by [ADR 0042](0042-swift-unit-tests-in-make-check.md) (selftest full stack: every group layout.env declares)
 
 ## Context
 Gap G12 of exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`, slice P4.7): the harness assumed
