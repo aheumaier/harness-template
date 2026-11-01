@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"maps"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -20,6 +21,7 @@ var templateLayout = []string{
 	"PRODUCT_GLOBS=apps/*:api/*",
 	"LAYER_GLOB=internal/*/*",
 	"STACK=go:db:web:ios",
+	"IOS_DIR=apps/ios",
 }
 
 // noHarnessStack keeps the environment's HARNESS_STACK (a run of make check with a smaller stack) out of a test.
@@ -58,6 +60,7 @@ func layoutTree(t *testing.T, lines []string) string {
 		"apps/api/db/migrations/atlas.sum":            {"h1:"},
 		"api/openapi.yaml":                            {"openapi: 3.1.0"},
 		"packages/api-client/package.json":            {"{}"},
+		"apps/ios/project.yml":                        {"name: App"}, // not Package.swift: no Swift, so STACK=go still passes
 		"scripts/harness/fixtures/x/files/a/b/c/d.go": {"package d"},
 	})
 	gitT(t, root, "add", "-A")
@@ -75,9 +78,9 @@ func TestLayoutCheck(t *testing.T) {
 		{"the template's layout passes", templateLayout, nil},
 		{"malformed, unknown, repeated and missing keys", append(withLayout("SPEC", ""),
 			`SPEC="api/openapi.yaml"`, "LAYOUT_GLOB=x", "API_DIR=apps/api"), []string{
-			at + "12: not KEY=value (no spaces, quotes, $ or empty list entries) [harness-layout-valid]",
-			at + "13: unknown key LAYOUT_GLOB (known: " + strings.Join(layoutKeys, " ") + ") [harness-layout-valid]",
-			at + "14: API_DIR set twice [harness-layout-valid]",
+			at + "13: not KEY=value (no spaces, quotes, $ or empty list entries) [harness-layout-valid]",
+			at + "14: unknown key LAYOUT_GLOB (known: " + strings.Join(layoutKeys, " ") + ") [harness-layout-valid]",
+			at + "15: API_DIR set twice [harness-layout-valid]",
 			layoutFile + ": missing SPEC [harness-layout-valid]",
 		}},
 		{"a list with an empty entry", withLayout("PRODUCT_GLOBS", "apps/*:"), []string{
@@ -116,14 +119,38 @@ func TestLayoutCheck(t *testing.T) {
 			at + "12: STACK=db:db:ui: no go (every stack has the Go API and the harness) [harness-layout-valid]",
 		}},
 		{"empty cross-repo lists pass", append(withLayout(), "UPSTREAM_SPECS=", "CONTRACT_CONSUMERS="), nil},
-		{"only the cross-repo lists may be empty", append(withLayout("SPEC", ""), "SPEC="), []string{
-			at + "12: not KEY=value (no spaces, quotes, $ or empty list entries) [harness-layout-valid]",
+		{"with ios, IOS_DIR holds the iOS app", withLayout("IOS_DIR", "apps/web"), []string{
+			at + "13: IOS_DIR=apps/web: no git-known Package.swift or project.yml there, but STACK has ios (set it to the iOS app's directory) [harness-layout-valid]",
+		}},
+		{"with ios, an IOS_DIR glob is not expanded", withLayout("IOS_DIR", "apps/*"), []string{
+			at + "13: IOS_DIR=apps/*: no git-known Package.swift or project.yml there, but STACK has ios (set it to the iOS app's directory) [harness-layout-valid]",
+		}},
+		{"with ios, IOS_DIR may not be empty", append(withLayout("IOS_DIR", ""), "IOS_DIR="), []string{
+			at + "13: IOS_DIR=: no git-known Package.swift or project.yml there, but STACK has ios (set it to the iOS app's directory) [harness-layout-valid]",
+		}},
+		{"with ios, IOS_DIR is a clean path inside the repo", withLayout("IOS_DIR", "apps/ios/"), []string{
+			at + "13: IOS_DIR=apps/ios/: not a clean path inside this repo (no leading /, no ./ or .., no trailing /) [harness-layout-valid]",
+		}},
+		{"with ios, IOS_DIR is not the repo root", withLayout("IOS_DIR", "."), []string{
+			at + "13: IOS_DIR=.: not a clean path inside this repo (no leading /, no ./ or .., no trailing /) [harness-layout-valid]",
+		}},
+		{"with ios, an IOS_DIR outside the repo is a finding, not a git error", withLayout("IOS_DIR", "../ios"), []string{
+			at + "13: IOS_DIR=../ios: not a clean path inside this repo (no leading /, no ./ or .., no trailing /) [harness-layout-valid]",
+		}},
+		{"with ios, an absolute IOS_DIR is a finding, not a git error", withLayout("IOS_DIR", "/tmp"), []string{
+			at + "13: IOS_DIR=/tmp: not a clean path inside this repo (no leading /, no ./ or .., no trailing /) [harness-layout-valid]",
+		}},
+		{"with ios, IOS_DIR may not be unset", withLayout("IOS_DIR", ""), []string{
+			layoutFile + ": IOS_DIR unset, but STACK has ios (set it to the iOS app's directory) [harness-layout-valid]",
+		}},
+		{"only the cross-repo lists and IOS_DIR may be empty", append(withLayout("SPEC", ""), "SPEC="), []string{
+			at + "13: not KEY=value (no spaces, quotes, $ or empty list entries) [harness-layout-valid]",
 			layoutFile + ": missing SPEC [harness-layout-valid]",
 		}},
 		{"UPSTREAM_SPECS entries", append(withLayout(), "UPSTREAM_SPECS=api/openapi.yaml@github.com/acme/up@spec/openapi.yaml@0123abc:api/x.yaml@github.com/acme/up@x.yaml@0123abc:api/openapi.yaml@github.com/acme/up@x.yaml@HEAD:a@b", "CONTRACT_CONSUMERS=github.com/acme/web"), []string{
-			at + "13: UPSTREAM_SPECS=api/openapi.yaml@github.com/acme/up@spec/openapi.yaml@0123abc:api/x.yaml@github.com/acme/up@x.yaml@0123abc:api/openapi.yaml@github.com/acme/up@x.yaml@HEAD:a@b: api/x.yaml@github.com/acme/up@x.yaml@0123abc: no such file api/x.yaml (the vendored copy) [harness-layout-valid]",
-			at + "13: UPSTREAM_SPECS=api/openapi.yaml@github.com/acme/up@spec/openapi.yaml@0123abc:api/x.yaml@github.com/acme/up@x.yaml@0123abc:api/openapi.yaml@github.com/acme/up@x.yaml@HEAD:a@b: api/openapi.yaml@github.com/acme/up@x.yaml@HEAD: revision HEAD is not a 7 to 40 digit hex commit [harness-layout-valid]",
-			at + "13: UPSTREAM_SPECS=api/openapi.yaml@github.com/acme/up@spec/openapi.yaml@0123abc:api/x.yaml@github.com/acme/up@x.yaml@0123abc:api/openapi.yaml@github.com/acme/up@x.yaml@HEAD:a@b: a@b: not <vendored spec>@<source repo>@<spec path in the source>@<revision> [harness-layout-valid]",
+			at + "14: UPSTREAM_SPECS=api/openapi.yaml@github.com/acme/up@spec/openapi.yaml@0123abc:api/x.yaml@github.com/acme/up@x.yaml@0123abc:api/openapi.yaml@github.com/acme/up@x.yaml@HEAD:a@b: api/x.yaml@github.com/acme/up@x.yaml@0123abc: no such file api/x.yaml (the vendored copy) [harness-layout-valid]",
+			at + "14: UPSTREAM_SPECS=api/openapi.yaml@github.com/acme/up@spec/openapi.yaml@0123abc:api/x.yaml@github.com/acme/up@x.yaml@0123abc:api/openapi.yaml@github.com/acme/up@x.yaml@HEAD:a@b: api/openapi.yaml@github.com/acme/up@x.yaml@HEAD: revision HEAD is not a 7 to 40 digit hex commit [harness-layout-valid]",
+			at + "14: UPSTREAM_SPECS=api/openapi.yaml@github.com/acme/up@spec/openapi.yaml@0123abc:api/x.yaml@github.com/acme/up@x.yaml@0123abc:api/openapi.yaml@github.com/acme/up@x.yaml@HEAD:a@b: a@b: not <vendored spec>@<source repo>@<spec path in the source>@<revision> [harness-layout-valid]",
 		}},
 	}
 	for _, tt := range tests {
@@ -145,8 +172,8 @@ func TestLayoutCheck(t *testing.T) {
 }
 
 func TestLayoutStack(t *testing.T) {
-	// Paths of the db and web groups that do not exist, as in a product without them.
-	lines := withLayout("MIGRATIONS_DIR", "nope", "API_CLIENT_DIR", "nope", "QUERIES_DIR", "nope/queries", "WEB_GLOBS", "web/*")
+	// Paths of the db, web and ios groups that do not exist, as in a product without them.
+	lines := withLayout("MIGRATIONS_DIR", "nope", "API_CLIENT_DIR", "nope", "QUERIES_DIR", "nope/queries", "WEB_GLOBS", "web/*", "IOS_DIR", "nope")
 	const at = layoutFile + ":"
 	for _, tt := range []struct {
 		env  string
@@ -160,6 +187,9 @@ func TestLayoutStack(t *testing.T) {
 		{"go:web", []string{
 			at + "7: API_CLIENT_DIR=nope: no such directory [harness-layout-valid]",
 			at + "8: WEB_GLOBS=web/*: web/* is not <existing directory>/* [harness-layout-valid]",
+		}},
+		{"go,ios", []string{
+			at + "13: IOS_DIR=nope: no git-known Package.swift or project.yml there, but STACK has ios (set it to the iOS app's directory) [harness-layout-valid]",
 		}},
 		{"", []string{"HARNESS_STACK=: not a list of groups such as go:db:web (HARNESS_STACK may use , instead of :) [harness-layout-valid]"}},
 		{"go,web,go", []string{"HARNESS_STACK=go,web,go: go named twice [harness-layout-valid]"}},
@@ -371,6 +401,7 @@ func TestLayoutRootModule(t *testing.T) {
 		"apps/api/db/queries/q.sql":  {""},
 		"api/openapi.yaml":           {"openapi: 3.1.0"},
 		"packages/api-client/x.json": {"{}"},
+		"apps/ios/project.yml":       {"name: App"},
 	})
 	gitT(t, root, "add", "-A")
 	l, err := loadLayout(root)
@@ -383,6 +414,66 @@ func TestLayoutRootModule(t *testing.T) {
 	var out bytes.Buffer
 	if bad, err := layoutCheck(root, &out); bad || err != nil {
 		t.Errorf("bad=%v err=%v: %s", bad, err, out.String())
+	}
+}
+
+// A Swift package alone marks the iOS app (layoutTree has only a project.yml: a .swift file there would be hidden
+// Swift under STACK=go).
+func TestLayoutCheckIOSPackage(t *testing.T) {
+	noHarnessStack(t)
+	root := layoutTree(t, withLayout("IOS_DIR", "apps/pkg"))
+	writeLines(t, root, "apps/pkg/Package.swift", "// swift-tools-version: 6.0")
+	var out bytes.Buffer
+	if bad, err := layoutCheck(root, &out); err != nil || bad {
+		t.Errorf("bad=%v, err=%v, output:\n%s", bad, err, out.String())
+	}
+}
+
+func TestLayoutCheckIOSPackageIsARegularFile(t *testing.T) {
+	noHarnessStack(t)
+	for name, plant := range map[string]func(t *testing.T, root string){
+		"a directory named Package.swift": func(t *testing.T, root string) {
+			writeLines(t, root, "apps/fake/Package.swift/README", "x")
+		},
+		"a symlink to /dev/null": func(t *testing.T, root string) {
+			if err := os.MkdirAll(filepath.Join(root, "apps/fake"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink("/dev/null", filepath.Join(root, "apps/fake/Package.swift")); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"a symlink to a regular file": func(t *testing.T, root string) {
+			writeLines(t, root, "apps/fake/README", "x")
+			if err := os.Symlink("README", filepath.Join(root, "apps/fake/project.yml")); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"a git-ignored Package.swift": func(t *testing.T, root string) {
+			writeLines(t, root, "apps/fake/Package.swift", "// swift-tools-version: 6.0")
+			writeLines(t, root, "apps/fake/.gitignore", "Package.swift")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := layoutTree(t, withLayout("IOS_DIR", "apps/fake"))
+			plant(t, root)
+			var out bytes.Buffer
+			bad, err := layoutCheck(root, &out)
+			if want := "IOS_DIR=apps/fake: no git-known Package.swift or project.yml there"; err != nil || !bad || !strings.Contains(out.String(), want) {
+				t.Errorf("bad=%v, err=%v, want %q in output:\n%s", bad, err, want, out.String())
+			}
+		})
+	}
+}
+
+func TestLayoutCheckIOSOutsideProductGlobs(t *testing.T) {
+	noHarnessStack(t)
+	root := layoutTree(t, withLayout("IOS_DIR", "ios"))
+	writeLines(t, root, "ios/Package.swift", "// swift-tools-version: 6.0")
+	var out bytes.Buffer
+	bad, err := layoutCheck(root, &out)
+	if want := "IOS_DIR=ios: not under a PRODUCT_GLOBS or WEB_GLOBS entry"; err != nil || !bad || !strings.Contains(out.String(), want) {
+		t.Errorf("bad=%v, err=%v, want %q in output:\n%s", bad, err, want, out.String())
 	}
 }
 
@@ -426,6 +517,7 @@ func TestLayoutCheckPlatformIsNoDomain(t *testing.T) {
 		"apps/api/db/migrations/atlas.sum":   {"h1:"},
 		"api/openapi.yaml":                   {"openapi: 3.1.0"},
 		"packages/api-client/package.json":   {"{}"},
+		"apps/ios/project.yml":               {"name: App"},
 	}
 	for _, tc := range []struct {
 		name string

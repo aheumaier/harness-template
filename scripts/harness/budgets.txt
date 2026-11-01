@@ -13,6 +13,10 @@ only-test-files 50 NFR-H1
 fast-check 1000 NFR-H2
 # The pre-commit git hook on a typical commit, up to 20 staged files (exec plan 0003, NFR-H8). Local only.
 pre-commit 2000 NFR-H8
+# make test-ios, swift test of the IOS_DIR package (ADR 0042), warm .build: 0.4 s with nothing to rebuild, 0.6 s
+# after touching a source and a test file (2026-11-01, Apple Silicon, command-line tools only). A cold .build
+# (a fresh worktree, the selftest copy) compiles first: 17 s.
+swift-test 3000 NFR-H5
 # The full-tree secret scan in make check (exec plan 0003, NFR-H9).
 repo-no-secrets 5000 NFR-H9
 # make harness-determinism runs make check twice: twice the NFR-H4 budget.

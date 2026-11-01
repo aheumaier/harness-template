@@ -10,10 +10,10 @@ include scripts/tool-versions.env
 # with `:`. Read through the validating parser, never included as make syntax: layout.sh prints only its known
 # keys with plain values, one KEY=value word each, or nothing and its findings on stderr. HARNESS_STACK, from the
 # environment or the command line, overrides its STACK (ADR 0033); make 3.81's $(shell) sees only the former.
-# The keys are set with `override`, and so is STACK_OFF below, so neither a command-line variable nor one from
+# The keys are set with `override`, and so are STACK_OFF and HOST_OFF below, so neither a command-line variable nor one from
 # the environment under make -e (CI's setup action exports the keys) can beat layout.env and silently drop the
-# db and web sensors past layout-check's guard (it reads only HARNESS_STACK). A command-line STACK or STACK_OFF
-# is refused outright, since the one asking for it expects it to win; $(origin) of a command-line variable is
+# db and web sensors past layout-check's guard (it reads only HARNESS_STACK). A command-line STACK, STACK_OFF,
+# HOST_OFF or group target list (DB_TARGETS, WEB_TARGETS, IOS_TARGETS, which feed the last two) is refused outright, since the one asking for it expects it to win; $(origin) of a command-line variable is
 # two words, which @ joins, so make -e's `environment override` passes here and override beats it below.
 from_command_line = $(filter command@line override,$(subst $() ,@,$(origin $(1))))
 ifneq ($(call from_command_line,STACK),)
@@ -22,6 +22,10 @@ endif
 ifneq ($(call from_command_line,STACK_OFF),)
 $(error STACK_OFF follows STACK in scripts/harness/layout.env; for one run use HARNESS_STACK=… [harness-layout-valid])
 endif
+ifneq ($(call from_command_line,HOST_OFF),)
+$(error HOST_OFF follows the host's OS (the iOS sensors need macOS); for one run use HARNESS_STACK=… [harness-layout-valid])
+endif
+$(foreach v,DB_TARGETS WEB_TARGETS IOS_TARGETS,$(if $(call from_command_line,$(v)),$(error $(v) is the Makefile's list of a sensor group's targets; for one run use HARNESS_STACK=… [harness-layout-valid])))
 LAYOUT :=$(shell $(if $(filter command line,$(origin HARNESS_STACK)),HARNESS_STACK='$(HARNESS_STACK)') scripts/harness/layout.sh --print)
 ifeq ($(LAYOUT),)
 $(error scripts/harness/layout.env or HARNESS_STACK is missing or invalid (see above): fix it, then run make layout-check [harness-layout-valid])
@@ -29,13 +33,16 @@ endif
 $(foreach kv,$(LAYOUT),$(eval override $(kv)))
 # The sensor groups (ADR 0033): go is every target not listed here and always runs; a db or web target leaves
 # check, check-all, gen and make harness-selftest when STACK lacks its group. e2e needs both (make dev starts
-# Postgres and the web app). `$(call stack_has,<group>)` is non-empty when STACK names it; `$(call
-# stacked,<targets>)` drops the targets STACK leaves out; check says once on stderr which ones.
+# Postgres and the web app). An ios target also needs a macOS host (Swift with Apple's SDKs): elsewhere it is in
+# HOST_OFF and leaves them by name (ADR 0042). `$(call stack_has,<group>)` is non-empty when STACK names it;
+# `$(call stacked,<targets>)` drops the targets STACK or the host leaves out; check says once on stderr which ones.
 DB_TARGETS  := schema-doc-fresh lint-migrations squawk migrations-append-only test-integration test-obs e2e gen-sqlc gen-atlas-sum
 WEB_TARGETS := lint-web arch-web typecheck-web test-web knip clones-web e2e gen-api-client
-stack_has    = $(filter $(1),$(subst :, ,$(STACK)))
-override STACK_OFF := $(strip $(if $(call stack_has,db),,$(DB_TARGETS)) $(if $(call stack_has,web),,$(WEB_TARGETS)))
-stacked      = $(filter-out $(STACK_OFF),$(1))
+IOS_TARGETS := test-ios
+override stack_has = $(filter $(1),$(subst :, ,$(STACK)))
+override STACK_OFF := $(strip $(if $(call stack_has,db),,$(DB_TARGETS)) $(if $(call stack_has,web),,$(WEB_TARGETS)) $(if $(call stack_has,ios),,$(IOS_TARGETS)))
+override HOST_OFF  := $(if $(filter Darwin,$(shell uname -s)),,$(IOS_TARGETS))
+override stacked   = $(filter-out $(STACK_OFF) $(HOST_OFF),$(1))
 export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 export OBS_IMAGE # compose.yaml interpolates the obs service even when its profile is off
 export PATH := $(CURDIR)/.bin:$(CURDIR)/node_modules/.bin:$(PATH)
@@ -117,7 +124,8 @@ db-reset: ## Drop this worktree's database volume (and the obs stack), recreate,
 
 check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=60s any: NFR-H3/H4): format, lint, arch, unit tests, secrets, gen-check
 	@$(if $(STACK_OFF),echo "STACK=$(STACK) leaves out: $(sort $(STACK_OFF)) (ADR 0033)" >&2,true)
-	@$(MAKE) -k -j4 $(call stacked,layout-check lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned fixture-claims rule-lists approved-check specs-tested lint-web arch-web typecheck-web test-web)
+	@$(if $(and $(call stack_has,ios),$(HOST_OFF)),echo "this host (not macOS) leaves out: $(HOST_OFF) (ADR 0042)" >&2,true)
+	@$(MAKE) -k -j4 $(call stacked,layout-check lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned fixture-claims rule-lists approved-check specs-tested lint-web arch-web typecheck-web test-web test-ios)
 	@$(MAKE) gen-check
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
@@ -127,7 +135,8 @@ check-all: check ## Everything: check + integration, contract, migration, securi
 	@$(MAKE) -k -j4 $(call stacked,$(filter-out $(CHECK_ALL_SKIP),vuln-go vuln-deps lint-migrations squawk migrations-append-only lint-api contract-check knip deadcode-go clones-web docs-quality-shape harness-integrity orphans commits specs))
 	@$(if $(call stacked,test-integration test-obs e2e),$(MAKE) -k $(call stacked,test-integration test-obs e2e),true)
 
-# A fixture whose target or STACK= tag STACK leaves out is skipped (selftest.sh asks make for STACK_OFF).
+# A fixture whose target or STACK= tag STACK leaves out is skipped (selftest.sh asks make for STACK_OFF, HOST_OFF and
+# each group's targets).
 harness-selftest: $(HARNESS) ## Every fixture in scripts/harness/fixtures must be rejected by its sensor (FIXTURE=name for one)
 	@scripts/harness/selftest.sh $(FIXTURE)
 
@@ -296,6 +305,25 @@ knip: ## Unused files, exports and dependencies in the JS workspace
 # files: --fail-on-empty) is exit 2, so a broken sensor never reads as a clone (scripts/test/clones-web.bats).
 clones-web: ## Copy-pasted code in the JS workspaces (jscpd)
 	@$(RUN) jscpd repo-no-clones -- bash -c 'root="$$(pwd -P)"; out="$$(jscpd --config "$$root/scripts/harness/jscpd.json" --reporters xcode --absolute --exit-code 1 --fail-on-empty --no-colors --no-tips $(foreach d,$(WEB_DIRS),"$$root/$(d)"))" && s=0 || s=$$?; echo "$${out//"$$root"\//}"; ((s == 0)) || { ((s == 1)) && grep -Eq ": warning: Found [0-9]+ lines " <<<"$$out" && s=1 || s=2; }; exit $$s'
+
+##@ iOS sensors (the Swift package in IOS_DIR, macOS only: ADR 0042)
+.PHONY: test-ios
+# With only the command-line tools selected (xcode-select -p is .../CommandLineTools), swift test finds Swift
+# Testing only through the tools' frameworks directory, passed as -F and -rpath; XCTest needs Xcode selected. An app without
+# a Swift package (only an XcodeGen project.yml) and without Swift tests in Tests/ has nothing for swift test, which
+# would otherwise search the parent folders; with tests there but no package, nothing would run them, so it fails.
+test-ios: ## Swift unit tests of the package in IOS_DIR (swift test)
+	@[[ -n "$(IOS_DIR)" ]] || { echo "$@: skipped, IOS_DIR is empty in scripts/harness/layout.env (no iOS app)"; exit 0; }; \
+	if scripts/harness/unchanged.sh '*.swift' 'Package.resolved' '*/Package.resolved' '$(IOS_DIR)'; then \
+	  echo "$@: skipped, no Swift file or file in IOS_DIR changed (make check-all runs it)"; exit 0; fi; \
+	if [[ ! -f "$(IOS_DIR)/Package.swift" ]]; then \
+	  tests="$$(git ls-files -co --exclude-standard -- '$(IOS_DIR)/Tests/*.swift')" || exit 2; \
+	  if [[ -z "$$tests" ]]; then echo "$@: skipped, no Package.swift and no Swift file in Tests/ in IOS_DIR=$(IOS_DIR) (ADR 0042)"; exit 0; fi; \
+	  $(RUN) swift-test ios-tests-pass -- bash -c 'echo "$@: Swift tests in $(IOS_DIR)/Tests but no Package.swift there, so nothing runs them: restore the package"; exit 1'; exit; fi; \
+	dev="$$(xcode-select -p)" || { echo "$@: no Xcode or command-line tools: run xcode-select --install [ios-tests-pass]" >&2; exit 2; }; fw=(); \
+	if [[ "$$dev" == */CommandLineTools ]]; then \
+	  fw=(-Xswiftc -F -Xswiftc "$$dev/Library/Developer/Frameworks" -Xlinker -rpath -Xlinker "$$dev/Library/Developer/Frameworks"); fi; \
+	$(RUN) swift-test ios-tests-pass --dir "$(IOS_DIR)" -- swift test $${fw[@]+"$${fw[@]}"}
 
 ##@ Contract (SPEC)
 .PHONY: lint-api contract-check upstream-drift approve approved-check

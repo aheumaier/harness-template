@@ -68,12 +68,13 @@ load_layout() {
 
 @test "--print emits exactly the known keys, validated (for the Makefile and CI's GITHUB_ENV)" {
   run -0 --separate-stderr "$SANDBOX/scripts/harness/layout.sh" --print
-  [ "${#lines[@]}" -eq 12 ]
+  [ "${#lines[@]}" -eq 13 ]
   [ "${lines[0]}" = "API_DIR=apps/api" ]
   [ "${lines[8]}" = "LAYER_GLOB=internal/*/*" ]
   [ "${lines[9]}" = "STACK=go:db:web" ]
   [ "${lines[10]}" = "UPSTREAM_SPECS=" ]
   [ "${lines[11]}" = "CONTRACT_CONSUMERS=" ]
+  [ "${lines[12]}" = "IOS_DIR=" ]
   run -1 grep -v '^[A-Z_]*=' <<<"$output" # every line is KEY=value
 }
 
@@ -108,17 +109,21 @@ load_layout() {
 @test "a layout.env without STACK (written before the key) reads as go:db:web (ADR 0033)" {
   edit scripts/harness/layout.env '/^STACK=/d'
   run -0 --separate-stderr "$SANDBOX/scripts/harness/layout.sh" --print
-  [ "${#lines[@]}" -eq 12 ]
+  [ "${#lines[@]}" -eq 13 ]
   [ "${lines[9]}" = "STACK=go:db:web" ]
   [ -z "$stderr" ]
   HARNESS_STACK=go run -0 "$SANDBOX/scripts/harness/layout.sh" --print
   [ "${lines[9]}" = "STACK=go" ]
 }
 
-@test "UPSTREAM_SPECS and CONTRACT_CONSUMERS are optional lists, may be empty, never come from the environment" {
-  UPSTREAM_SPECS=x CONTRACT_CONSUMERS=y run -0 bash -c 'source "$1" || exit 2
-    printf "%s|" "${#UPSTREAM_SPECS[@]}" "${#CONTRACT_CONSUMERS[@]}"' _ "$SANDBOX/scripts/harness/layout.sh"
-  [ "$output" = "0|0|" ]
+@test "UPSTREAM_SPECS, CONTRACT_CONSUMERS and IOS_DIR are optional, may be empty, never come from the environment" {
+  UPSTREAM_SPECS=x CONTRACT_CONSUMERS=y IOS_DIR=z run -0 bash -c 'source "$1" || exit 2
+    printf "%s|" "${#UPSTREAM_SPECS[@]}" "${#CONTRACT_CONSUMERS[@]}" "$IOS_DIR"' _ "$SANDBOX/scripts/harness/layout.sh"
+  [ "$output" = "0|0||" ]
+  echo 'IOS_DIR=apps/ios' >>"$L"
+  run -0 bash -c 'source "$1" || exit 2; echo "$IOS_DIR"' _ "$SANDBOX/scripts/harness/layout.sh"
+  [ "$output" = apps/ios ]
+  edit scripts/harness/layout.env 's|^IOS_DIR=.*|IOS_DIR=|'
   printf '%s\n' 'UPSTREAM_SPECS=' 'CONTRACT_CONSUMERS=github.com/acme/web:github.com/acme/app' >>"$L"
   run -0 bash -c 'source "$1" || exit 2
     printf "%s|" "${#UPSTREAM_SPECS[@]}" "${CONTRACT_CONSUMERS[*]}"' _ "$SANDBOX/scripts/harness/layout.sh"
