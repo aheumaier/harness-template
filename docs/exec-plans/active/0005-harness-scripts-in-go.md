@@ -582,3 +582,26 @@ template's subcommand uncalled; the analyzers plugin already registers from `ini
   - **For slice 2.** `getenv` does not reach a child process's environment: in-process `git` reads the test
     process's own. The "world" value that replaces `getenv` should carry the child-process environment as part of
     the stable surface.
+- 2026-11-02: pilot 2 (`protect-harness`), measured on an Apple Silicon Mac (load avg 7–10).
+  - **Tests (A8).** The bats file took 6.6 s (median of 3). The Go tests take about 1.4 s uncached (0.01 s +
+    0.42–0.46 s + 0.89–0.93 s for the three test functions, 3 runs) and nothing when cached.
+  - **Lines (A8).** Removed 262: bats 129, the hook's heuristic 127, `hook-bootstrap.sh` 6. Added 641: Go 264,
+    Go tests 273, shared test helpers 33, hook 32, `hook-bootstrap.sh` 26 (the duplicate-key check), bats 13.
+  - **`make check` after a one-line edit to `protectharness.go` (A8): 174 s.** The bats suite is 172 s of it.
+  - **Cache trigger (A1),** with `BASE_REF=HEAD` and `make test-harness`. A clean tree runs 13.8 s, then 0.7 s.
+    An edit to `protectharness.go` runs uncached (13.4–13.6 s, each time); a `README.md` edit stays cached
+    (0.7 s). The first run after a `.go` file is restored is uncached once, since tests read the source files.
+  - **Contract (A5).** Each of the 10 bats cases is a row or subtest of the same name in
+    `protectharness_test.go`, plus rows for case folding, symlinks, NotebookEdit, quoting and redirects, an
+    unresolvable path, an empty list, and the wrapper's stale-binary and duplicate-key cases. The old and new
+    hook, run on 51 shell commands and a duplicate-key payload, differ only where the new one blocks more.
+  - **Budget (A6),** median of 9, before → after: Bash 40.1 → 29.8 ms, Edit 36.1 → 29.9 ms, Edit in another
+    worktree 47.8 → 36.0 ms, a blocked Edit 39.3 → 30.2 ms.
+  - **Stale binary (A7).** With the binaries of `b526181` (exit 2 and usage text) and `cc2c9d5` (exit 64) the
+    hook lets `make setup` and `make .bin/harness` through and blocks everything else with "rebuild".
+  - **Fixtures (A3).** `rules.md` names `protectharness_test.go`; no `drop.txt`, README or `adoption-probe.sh`
+    line named the bats file. `make harness-selftest` (88 passed) and `make adoption-probe` are green.
+  - **Review.** Go, shell, code, architecture and reuse reviewers, then one re-run. Fixed: `cp`'s destination
+    before a redirect, `rm AGENTS\.md`, a duplicate, differently cased or `\u`-escaped `command` key passing the
+    `make setup` escape, git's error text in the block. Still open in TD-73: wrapper words, interpreters, a word
+    glued to `>`, an input redirect after the destination, `cp -t`.
