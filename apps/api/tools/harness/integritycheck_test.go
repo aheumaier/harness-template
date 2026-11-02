@@ -19,6 +19,8 @@ const (
 	tsNocheck   = "@ts" + "-nocheck"
 	jscpdIgnore = "jscpd" + ":ignore"
 	jscpdStart  = jscpdIgnore + "-start"
+	swiftlint   = "// swiftlint" + ":disable:next force_cast"
+	swiftFormat = "swift-format" + "-ignore"
 	noReason    = ": suppression without 'reason: … (rule: <id>)' on the same line [harness-suppression-reason]"
 )
 
@@ -29,7 +31,7 @@ func integrityRepo(t *testing.T) string {
 	root := t.TempDir()
 	gitT(t, root, "init", "-q", "-b", "main")
 	for p, lines := range map[string][]string{
-		"docs/harness/rules.md": {"# Rules", "### go-no-root-context", "### sh-shellcheck", "### web-typecheck"},
+		"docs/harness/rules.md": {"# Rules", "### go-no-root-context", "### sh-shellcheck", "### web-typecheck", "### ios-lint"},
 		"scripts/harness/protected-paths.txt": {"# Harness files", "*.squawk.toml config", "*.gitattributes config",
 			"*tsconfig*.json config", "Makefile config", "scripts/harness/* config", "docs/harness/*"},
 		".squawk.toml":           {"# Harness file (protected).", `pg_version = "17.0"`, "# Atlas applies each migration file inside a transaction.", "assume_in_transaction = true"},
@@ -125,6 +127,7 @@ func TestIntegrityCheck(t *testing.T) {
 		{"accepts suppressions with reason and rule id", func(t *testing.T, own string) string {
 			add(t, own, "x.go", "f() "+nolint+" // reason: closing a read-only file (rule: go-no-root-context)")
 			add(t, own, "s.sh", shellcheck+" # reason: word splitting intended (rule: sh-shellcheck)")
+			add(t, own, "S.swift", swiftlint+" - reason: the decoder checked the type (rule: ios-lint)")
 			gitT(t, own, "add", "-A")
 			return ""
 		}, false, nil},
@@ -132,21 +135,33 @@ func TestIntegrityCheck(t *testing.T) {
 			add(t, own, "a.ts", "// "+tsIgnore+" reason: x (rule: web-typecheck)")
 			add(t, own, "b.mts", "// "+tsNocheck+" reason: x (rule: web-typecheck)")
 			add(t, own, "c.tsx", "// "+jscpdStart+" reason: x (rule: web-typecheck)")
+			add(t, own, "d.swift", "// "+swiftFormat+": Indentation", "// "+swiftFormat+"-file reason: x (rule: web-typecheck)")
 			gitT(t, own, "add", "-A")
 			return ""
 		}, false, []string{
 			"a.ts:1: " + tsIgnore + " is never allowed [harness-suppression-reason]",
 			"b.mts:1: " + tsNocheck + " is never allowed [harness-suppression-reason]",
 			"c.tsx:1: " + jscpdIgnore + " is never allowed [harness-suppression-reason]",
+			"d.swift:1: " + swiftFormat + " is never allowed [harness-suppression-reason]",
+			"d.swift:2: " + swiftFormat + " is never allowed [harness-suppression-reason]",
 		}},
-		{"flags SQL, staticcheck, inline eslint and workflow suppressions without a reason", func(t *testing.T, own string) string {
+		{"flags SQL, staticcheck, inline eslint, workflow and SwiftLint suppressions without a reason", func(t *testing.T, own string) string {
 			add(t, own, "m.sql", "-- atlas"+":nolint DS103", "-- squawk"+"-ignore ban-drop-column")
 			add(t, own, "y.go", "//lint"+":ignore SA1019 old api", "//lint"+":file-ignore U1000 generated elsewhere")
 			add(t, own, "c.jsx", "/* eslint"+" no-console: off */")
 			add(t, own, ".github/workflows/w.yml", "      - run: echo $x "+shellcheck)
+			add(t, own, "apps/ios/S.swift", swiftlint, "// swiftlint"+":disable all", "// swiftlint"+": disable force_cast",
+				"// swiftlint"+":\u00a0disable:next force_cast", "// swiftlint"+":\vdisable:next force_cast",
+				"// swiftlint"+":\u0085disable:next force_cast", "// swiftlint"+":\u200bdisable:next force_cast",
+				"// swiftlint"+":\u2028disable:next force_cast", "// swiftlint"+":\u2029disable:next force_cast",
+				"// swiftlint"+":enable force_cast")
 			return ""
-		}, false, []string{".github/workflows/w.yml:1" + noReason, "c.jsx:1" + noReason, "m.sql:1" + noReason,
-			"m.sql:2" + noReason, "y.go:1" + noReason, "y.go:2" + noReason}},
+		}, false, []string{".github/workflows/w.yml:1" + noReason, "apps/ios/S.swift:1" + noReason,
+			"apps/ios/S.swift:2" + noReason, "apps/ios/S.swift:3" + noReason,
+			"apps/ios/S.swift:4" + noReason, "apps/ios/S.swift:5" + noReason, "apps/ios/S.swift:6" + noReason,
+			"apps/ios/S.swift:7" + noReason, "apps/ios/S.swift:8" + noReason, "apps/ios/S.swift:9" + noReason,
+			"c.jsx:1" + noReason, "m.sql:1" + noReason, "m.sql:2" + noReason,
+			"y.go:1" + noReason, "y.go:2" + noReason}},
 		{"flags a reason that names no rule in rules.md", func(t *testing.T, own string) string {
 			add(t, own, "x.go", "f() "+nolint+" // reason: trust me (rule: go-lint)")
 			return ""
@@ -257,6 +272,65 @@ func TestIntegrityCheck(t *testing.T) {
 			}
 			return ""
 		}, false, []string{"scripts/harness/run.sh: file mode changed from 100644 to 100755 [harness-config-not-loosened]"}},
+		{"a # line with another line break in it is a config line (YAML and swift-format read past it)", func(t *testing.T, own string) string {
+			add(t, own, ".squawk.toml", "# ok", "#\rexcluded_rules = []", "#\u2028x", "# crlf\r", "#\vv", "#\ff", "#\u0085n", "#\u2029p")
+			return ""
+		}, false, []string{
+			".squawk.toml:6: added harness config line: #\rexcluded_rules = [] [harness-config-not-loosened]",
+			".squawk.toml:7: added harness config line: #\u2028x [harness-config-not-loosened]",
+			".squawk.toml:9: added harness config line: #\vv [harness-config-not-loosened]",
+			".squawk.toml:10: added harness config line: #\ff [harness-config-not-loosened]",
+			".squawk.toml:11: added harness config line: #\u0085n [harness-config-not-loosened]",
+			".squawk.toml:12: added harness config line: #\u2029p [harness-config-not-loosened]",
+		}},
+		{"a # line ending in a backslash is a config line (make comments the next line out)", func(t *testing.T, own string) string {
+			add(t, own, "Makefile", `# ok \ `, "#", `# hides the next line \`, "# with a CR \\\r")
+			return ""
+		}, false, []string{
+			`Makefile:5: added harness config line: # hides the next line \ [harness-config-not-loosened]`,
+			"Makefile:6: added harness config line: # with a CR \\\r [harness-config-not-loosened]",
+		}},
+		{"a config path matches in any case (macOS's file system does)", func(t *testing.T, own string) string {
+			add(t, own, "apps/.SQUAWK.TOML", "assume_in_transaction = false")
+			return ""
+		}, false, []string{"apps/.SQUAWK.TOML:1: added harness config line: assume_in_transaction = false [harness-config-not-loosened]"}},
+		{"an added symlink as a config is reported, though its target's name looks like a comment", func(t *testing.T, own string) string {
+			add(t, own, "apps/#notes", "assume_in_transaction = false")
+			if err := os.Symlink("#notes", filepath.Join(own, "apps/.squawk.toml")); err != nil {
+				t.Fatal(err)
+			}
+			gitT(t, own, "add", "-A")
+			return ""
+		}, false, []string{"apps/.squawk.toml: file mode changed from 000000 to 120000 [harness-config-not-loosened]"}},
+		{"an untracked symlink as a config is reported, though its target holds only comments", func(t *testing.T, own string) string {
+			add(t, own, "apps/#c", "# nothing")
+			commitAll(t, own, "comment")
+			if err := os.Symlink("#c", filepath.Join(own, "apps/.squawk.toml")); err != nil {
+				t.Fatal(err)
+			}
+			return ""
+		}, false, []string{"apps/.squawk.toml: file mode changed from 000000 to 120000 [harness-config-not-loosened]"}},
+		{"a config symlink retargeted or deleted is reported, though both targets' names look like comments", func(t *testing.T, own string) string {
+			add(t, own, "apps/#strict", "assume_in_transaction = true")
+			add(t, own, "apps/#loose", "assume_in_transaction = false")
+			for _, l := range []string{"apps/.squawk.toml", "apps/x.squawk.toml"} {
+				if err := os.Symlink("#strict", filepath.Join(own, l)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			commitAll(t, own, "links")
+			if err := os.Remove(filepath.Join(own, "apps/.squawk.toml")); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink("#loose", filepath.Join(own, "apps/.squawk.toml")); err != nil {
+				t.Fatal(err)
+			}
+			gitT(t, own, "rm", "-q", "apps/x.squawk.toml")
+			return ""
+		}, false, []string{
+			"apps/.squawk.toml: symlink target changed [harness-config-not-loosened]",
+			"apps/x.squawk.toml: file mode changed from 120000 to 000000 [harness-config-not-loosened]",
+		}},
 		{"removing a suppression is not a finding", func(t *testing.T, own string) string {
 			add(t, own, "x.go", "f() "+nolint)
 			commitAll(t, own, "suppressed")

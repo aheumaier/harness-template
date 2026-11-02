@@ -95,10 +95,47 @@ fixture() {
   fixture swift test-ios
   echo NEEDS_SWIFT=1 >>"$F/swift/fixture.conf"
   host Darwin
-  printf '#!/bin/sh\nexit 1\n' >"$BATS_TEST_TMPDIR/bin/swift"
-  chmod +x "$BATS_TEST_TMPDIR/bin/swift"
+  stub swift 'exit 1'
   HARNESS_STACK=go,ios SELFTEST_SKIP_SWIFT='' run -1 --separate-stderr "$SANDBOX/scripts/harness/selftest.sh" swift
   grep -qF "✗ swift: needs Swift on macOS (or SELFTEST_SKIP_SWIFT=1)" <<<"$stderr"
+}
+
+@test "a fixture of an ios target that needs Xcode needs NEEDS_XCODE=1, NEEDS_SWIFT is not enough (ADR 0043)" {
+  fixture swift-only xcode-pinned
+  echo NEEDS_SWIFT=1 >>"$F/swift-only/fixture.conf"
+  fixture typo layout-check
+  echo NEEDS_XCODE=yes >>"$F/typo/fixture.conf"
+  run -1 --separate-stderr "$SANDBOX/scripts/harness/selftest.sh" swift-only typo
+  grep -qF "✗ swift-only: bad fixture.conf (TARGET xcode-pinned needs Xcode on macOS: set NEEDS_XCODE=1)" <<<"$stderr"
+  grep -qxF "✗ typo: bad fixture.conf" <<<"$stderr"
+  has "harness-selftest: 0 passed, 2 failed, 0 skipped"
+}
+
+@test "NEEDS_XCODE or NEEDS_SWIFT on a fixture that needs neither is a bad fixture.conf: it would only skip it" {
+  fixture xcode-flag lint-ios
+  printf 'NEEDS_SWIFT=1\nNEEDS_XCODE=1\n' >>"$F/xcode-flag/fixture.conf"
+  fixture go-flag layout-check
+  echo NEEDS_SWIFT=1 >>"$F/go-flag/fixture.conf"
+  run -1 --separate-stderr "$SANDBOX/scripts/harness/selftest.sh" xcode-flag go-flag
+  grep -qF "✗ xcode-flag: bad fixture.conf (TARGET lint-ios needs no Xcode: drop NEEDS_XCODE, which SELFTEST_SKIP_XCODE skips)" <<<"$stderr"
+  grep -qF "✗ go-flag: bad fixture.conf (TARGET layout-check is no ios target: drop NEEDS_SWIFT and NEEDS_XCODE, which skip it off macOS)" <<<"$stderr"
+  has "harness-selftest: 0 passed, 2 failed, 0 skipped"
+}
+
+@test "a NEEDS_XCODE fixture: SELFTEST_SKIP_SWIFT=1 skips it off macOS, on a Mac without Xcode it fails unless SELFTEST_SKIP_XCODE=1" {
+  fixture xcode xcode-pinned
+  echo NEEDS_XCODE=1 >>"$F/xcode/fixture.conf"
+  host Linux
+  HARNESS_STACK=go,ios SELFTEST_SKIP_SWIFT=1 SELFTEST_SKIP_XCODE='' run -0 "$SANDBOX/scripts/harness/selftest.sh" xcode
+  has "- xcode: skipped (no Swift on macOS here)"
+  host Darwin
+  stub swift 'exit 0'
+  stub xcodebuild 'echo "xcode-select: error: tool xcodebuild requires Xcode" >&2; exit 1'
+  HARNESS_STACK=go,ios SELFTEST_SKIP_XCODE='' run -1 --separate-stderr "$SANDBOX/scripts/harness/selftest.sh" xcode
+  grep -qF "✗ xcode: needs Xcode selected on macOS (or SELFTEST_SKIP_XCODE=1)" <<<"$stderr"
+  HARNESS_STACK=go,ios SELFTEST_SKIP_XCODE=1 run -0 "$SANDBOX/scripts/harness/selftest.sh" xcode
+  has "- xcode: skipped (no Xcode selected here)"
+  has "harness-selftest: 0 passed, 0 failed, 1 skipped"
 }
 
 @test "the full stack is every group layout.env declares: a skip for an undeclared group passes, for a declared one fails" {

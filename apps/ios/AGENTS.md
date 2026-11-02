@@ -19,7 +19,14 @@ while Swift code stays and `ios` is gone, and while `ios` stays without a `Packa
 - `make check` runs the package's tests with `swift test` (`make test-ios`) on macOS, with Xcode or with only
   Apple's command-line tools (XCTest needs Xcode selected; only Swift Testing runs with the command-line tools
   alone); on another host it says it leaves `test-ios` out
-  ([ADR 0042](../../docs/adr/0042-swift-unit-tests-in-make-check.md)). Lint, format and the Xcode build
-  arrive later in phase 2 of the exec plan.
+  ([ADR 0042](../../docs/adr/0042-swift-unit-tests-in-make-check.md)).
+- `make check` also runs SwiftLint (`make lint-ios`: [ios-lint](../../docs/harness/rules.md#ios-lint) and the
+  size rules, tests included) and swift-format (`make fmt-check-ios`:
+  [ios-format](../../docs/harness/rules.md#ios-format)) on every Swift file under `PRODUCT_GLOBS` or
+  `WEB_GLOBS`, with the repo-root `.swiftlint.yml` and `.swift-format`; `make fmt` formats Swift. A suppression
+  is `// swiftlint:disable:next <rule> - reason: … (rule: <id>)`; `// swift-format-ignore` is never allowed.
+  `make check-ios` adds the check that the selected Xcode is `XCODE_VERSION`
+  ([ios-xcode-pinned](../../docs/harness/rules.md#ios-xcode-pinned), [ADR 0043](../../docs/adr/0043-swift-lint-format-and-xcode-pin.md));
+  the Xcode build arrives with the macOS CI job (phase 2c of the exec plan).
 - No remote Swift package dependencies yet: once there are, `Package.resolved` is committed and scanned for
   known vulnerabilities ([deps-no-known-vulns](../../docs/harness/rules.md#deps-no-known-vulns)).

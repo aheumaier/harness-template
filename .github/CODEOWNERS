@@ -15,6 +15,9 @@ playwright.config.*         @aheumaier
 atlas.hcl                   @aheumaier
 .squawk.toml                @aheumaier
 .shellcheckrc               @aheumaier
+.swiftlint.yml              @aheumaier
+.swift-format               @aheumaier
+.swift-format-ignore        @aheumaier
 .editorconfig               @aheumaier
 .gitattributes              @aheumaier
 knip.json                   @aheumaier
@@ -29,6 +32,7 @@ tsconfig*.json              @aheumaier
 /scripts/tool-versions.env  @aheumaier
 /.harness-version           @aheumaier
 /scripts/install-tools.sh   @aheumaier
+/scripts/swift-format/Package.resolved  @aheumaier
 /scripts/gen-schema-doc.sh  @aheumaier
 /scripts/github-branch-protection.sh  @aheumaier
 /apps/api/tools/analyzers/  @aheumaier

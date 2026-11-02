@@ -42,7 +42,9 @@ Steps that need a human are marked **(human)**.
 `go:db:web:ios` here; `HARNESS_STACK=go,db` overrides it for one run
 ([ADR 0033](docs/adr/0033-stack-profiles.md), [ADR 0041](docs/adr/0041-ios-stack-group.md)). The `ios`
 sensors need macOS (Xcode or Apple's command-line tools): on another host `make check` leaves them out and says
-so ([ADR 0042](docs/adr/0042-swift-unit-tests-in-make-check.md)).
+so ([ADR 0042](docs/adr/0042-swift-unit-tests-in-make-check.md)). With only the command-line tools, `make check`
+runs the Swift tests, SwiftLint and swift-format, and `make check-ios` skips the Xcode version check, which needs
+Xcode selected ([ADR 0043](docs/adr/0043-swift-lint-format-and-xcode-pin.md)).
 
 Never install a tool globally. `make setup` puts every pinned, checksum-verified tool into `.bin/`.
 
@@ -67,7 +69,8 @@ Claude Code hooks fail closed.
    Claude Code hooks block every shell command except a bare `make setup` (`cd <repo> && make setup` is
    blocked too). Without an iOS app, delete `apps/ios` and drop `ios` from `STACK` in
    `scripts/harness/layout.env` in the same commit ([ADR 0041](docs/adr/0041-ios-stack-group.md)):
-   `make layout-check` fails while Swift stays and `ios` is gone.
+   `make layout-check` fails while Swift stays and `ios` is gone. `.swiftlint.yml`, `.swift-format` and
+   `scripts/swift-format/` may go too: only the ios sensors read them.
 2. **Set up and prove green:**
    ```sh
    make setup
@@ -156,8 +159,8 @@ The harness has three kinds of parts:
   every other script in `scripts/harness/`, the `Makefile`, `.bin/harness`, the domainiso analyzer and the
   CI workflows. Step 5 writes your layout into it. The files that cannot read it (linter configs, CODEOWNERS,
   codegen configs, `fast-check.sh`, ...) are listed in step 5, each to be re-pointed by hand.
-- **Stack-specific parts** carry over only if the stack matches (Go, React/TS, OpenAPI, Postgres):
-  - the `go-*`, `web-*`, `api-*` and `db-*` rules;
+- **Stack-specific parts** carry over only if the stack matches (Go, React/TS, OpenAPI, Postgres, Swift):
+  - the `go-*`, `web-*`, `api-*`, `db-*` and `ios-*` rules;
   - their linter configs;
   - the generators (oapi-codegen, sqlc, orval, atlas).
 
@@ -202,11 +205,12 @@ template changed since. Adopt by hand, in one reviewed harness PR:
 3. **Copy and merge the harness.** Copy these:
    - `docs/harness/`, `docs/adr/` (format and the ADRs you keep), `docs/exec-plans/`;
    - `scripts/harness/` (but `layout.env`, which step 2 copied and edited), `scripts/git-hooks/`,
-     `scripts/test/`, `scripts/install-tools.sh`, `scripts/setup-worktree.sh`,
+     `scripts/test/`, `scripts/install-tools.sh`, `scripts/swift-format/Package.resolved`, `scripts/setup-worktree.sh`,
      `scripts/github-branch-protection.sh`;
    - the workflows and action listed in [protected-paths.txt](scripts/harness/protected-paths.txt),
      `.github/CODEOWNERS` and `.github/pull_request_template.md` (not `.github/` whole: the repo's own
-     workflows there stay its own), `trivy.yaml`, `.shellcheckrc` and `.editorconfig`;
+     workflows there stay its own), `.swiftlint.yml`, `.swift-format`, `trivy.yaml`, `.shellcheckrc` and
+     `.editorconfig`;
    - every guide the template's `AGENTS.md` "Where to look" table links to: `ARCHITECTURE.md`,
      `docs/design-docs/`, `docs/QUALITY.md`, `docs/SECURITY.md`, `docs/RELIABILITY.md`, `docs/generated/`,
      `docs/references/` and the area `AGENTS.md`/`CLAUDE.md` pairs (`apps/api/internal/`'s pair goes to
@@ -353,12 +357,16 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      | web | `web-*` (7) | `WEB_TARGETS`: `lint-web`, `arch-web`, `typecheck-web`, `test-web`, `knip`, `clones-web`, `e2e`, `gen-api-client` | eslint, dependency-cruiser, turbo, knip, jscpd, typescript from `package.json` |
      | db | `db-*` (5) | `DB_TARGETS`: `schema-doc-fresh`, `lint-migrations`, `squawk`, `migrations-append-only`, `test-integration`, `test-obs`, `e2e`, `gen-sqlc`, `gen-atlas-sum` | atlas, sqlc, squawk |
      | api | `api-*` (6) | `lint-api`, `contract-check`, `gen-oapi` | oasdiff, oapi-codegen, spectral |
-     | ios | `ios-*` (1) | `IOS_TARGETS`: `test-ios` (macOS only) | Swift from Xcode or Apple's command-line tools (XCTest needs Xcode selected) |
+     | ios | `ios-*` (4) | `IOS_TARGETS` (macOS only): `test-ios`, `lint-ios`, `fmt-check-ios` (`IOS_SWIFT_TARGETS`, in `make check`), `xcode-pinned` (`IOS_XCODE_TARGETS`, in `make check-ios`, needs Xcode) | Swift from Xcode or Apple's command-line tools (XCTest and `xcode-pinned` need Xcode selected), SwiftLint and swift-format from `install-tools.sh`, `.swiftlint.yml`, `.swift-format`, `scripts/swift-format/Package.resolved` |
 
      The ios set grows with [exec plan 0004](docs/exec-plans/active/0004-ios-stack-group.md); it also counts
      Swift tests for [specs-scenarios-tested](docs/harness/rules.md#specs-scenarios-tested), and without it
      any Swift under a `PRODUCT_GLOBS` or `WEB_GLOBS` entry fails `layout-check`. A product that runs `make harness-selftest` on
-     Linux with `ios` in `STACK` sets `SELFTEST_SKIP_SWIFT=1` there.
+     Linux with `ios` in `STACK` sets `SELFTEST_SKIP_SWIFT=1` there, and on a Mac with only the command-line tools
+     `SELFTEST_SKIP_XCODE=1`. Without ios, `lint-ios` goes, and with it the Swift part of the size rules
+     (`code-*`): narrow their entries to Go and TS. Nothing reads `.swiftlint.yml`, `.swift-format` or
+     `scripts/swift-format/` then: leave them out of step 3; template sync names one only when the template
+     changes it, and a `# declined <path>: <why>` line in `.harness-version` skips it.
      The web and db sets are `STACK` groups ([ADR 0033](docs/adr/0033-stack-profiles.md)), and their targets are
      the [Makefile](Makefile)'s `WEB_TARGETS` and `DB_TARGETS` as listed; `e2e` is in both: it needs both
      groups, and leaving out db or web drops it. A group drops whole targets: without db, `test-integration` and `test-obs` go entirely, so
@@ -368,7 +376,8 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      db or web, `e2e` goes ([web-e2e-journeys](docs/harness/rules.md#web-e2e-journeys)) too. Drop those rules with their
      group, or narrow the rules.md entries you keep to what still runs. Leaving a group out
      of `STACK` in `layout.env` already drops its targets from `check`, `check-all` and `gen`, its tools from
-     `make tools` (pnpm and `make deps` with web, Postgres in `make setup` with db) and its fixtures from
+     `make tools` (pnpm and `make deps` with web, Postgres in `make setup` with db, SwiftLint and swift-format with
+     ios on macOS, where `make setup` builds swift-format from source once, in about 3 minutes) and its fixtures from
      `make harness-selftest`, so the Makefile, `gen-check.sh`, `install-tools.sh` and the fixtures stay as
      they are. Still remove the dropped rules' rules.md entries, and the links to the directories you deleted:
      `make docs-links` and `make references-pinned` name them (in the template: the `apps/web/` and

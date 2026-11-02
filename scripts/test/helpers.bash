@@ -51,10 +51,14 @@ edit() { sed -i.bak "$2" "$SANDBOX/$1" && rm -f "$SANDBOX/$1.bak"; }
 # host <Darwin|Linux>: a uname on PATH whose -s names that host, so a Makefile's HOST_OFF follows it; every
 # other uname call goes to the real one.
 host() {
-  mkdir -p "$BATS_TEST_TMPDIR/bin"
-  printf '#!/bin/sh\n[ "$1" = -s ] && echo %s || exec /usr/bin/uname "$@"\n' "$1" >"$BATS_TEST_TMPDIR/bin/uname"
-  chmod +x "$BATS_TEST_TMPDIR/bin/uname"
+  stub uname "[ \"\$1\" = -s ] && echo $1 || exec /usr/bin/uname \"\$@\""
   PATH="$BATS_TEST_TMPDIR/bin:$PATH"
+}
+
+# stub <command> <sh body>: a command in $BATS_TEST_TMPDIR/bin, for this test only.
+stub() {
+  mkdir -p "$BATS_TEST_TMPDIR/bin" && printf '#!/bin/sh\n%s\n' "$2" >"$BATS_TEST_TMPDIR/bin/$1"
+  chmod +x "$BATS_TEST_TMPDIR/bin/$1"
 }
 
 # own <path...>: replaces sandboxed files with private copies (same content and mode), breaking the hardlink

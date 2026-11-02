@@ -84,6 +84,23 @@ case "$file" in
     check $RUN eslint web-no-direct-http,web-domain-pure,web-lint -- eslint --max-warnings=0 "$file"
     ;;
 
+  *.swift)
+    # Like make lint-ios and fmt-check-ios: Swift under PRODUCT_GLOBS or WEB_GLOBS (file-sensors.sh), ios in
+    # STACK, on macOS (the tools are macOS only, ADR 0043), where a missing tool blocks rather than passes.
+    # shellcheck source=../../scripts/harness/file-sensors.sh
+    source scripts/harness/file-sensors.sh || exit 2
+    kind="$(harness_file_kind "$file")"
+    [[ "$kind" != generated ]] ||
+      fail "$file is generated (GENERATED_GLOBS in scripts/harness/layout.env, rules.md#gen-up-to-date). Revert the edit, change its source and run \`make gen\`."
+    [[ "$kind" == swift ]] && harness_stack_has ios || exit 0
+    [[ "$(uname -s)" == Darwin ]] || exit 0
+    [[ -x .bin/swiftlint && -x .bin/swift-format ]] ||
+      fail "SwiftLint or swift-format is missing from .bin: run \`make setup\` (ADR 0043)."
+    check $RUN swiftlint ios-lint,code-function-length,code-complexity,code-parameters,code-file-length \
+      -- scripts/harness/swiftlint.sh "$file"
+    check $RUN swift-format ios-format -- scripts/harness/swift-format.sh "$file"
+    ;;
+
   *.sh | *.bash | *.bats)
     check $RUN shellcheck sh-shellcheck -- shellcheck -f gcc "$file"
     check $RUN shfmt sh-format -- shfmt -d "$file"

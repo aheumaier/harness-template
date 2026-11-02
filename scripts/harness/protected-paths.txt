@@ -17,6 +17,9 @@ apps/web/e2e/global-setup.ts config
 *atlas.hcl config
 *.squawk.toml config
 *.shellcheckrc config
+*.swiftlint.yml config
+*.swift-format config
+*.swift-format-ignore config
 knip.json config
 trivy.yaml config
 pnpm-workspace.yaml config
@@ -42,6 +45,7 @@ scripts/tool-versions.env config
 .harness-version config
 scripts/github-branch-protection.sh config
 scripts/install-tools.sh config
+scripts/swift-format/Package.resolved config
 scripts/gen-schema-doc.sh config
 scripts/harness/* config
 scripts/templates/adoption-probe/* config

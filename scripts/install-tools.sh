@@ -112,7 +112,7 @@ if [[ "${1:-}" == claude ]]; then
 fi
 
 # The stack (layout.env's STACK, or HARNESS_STACK; ADR 0033) picks the tools: go's always, db's and web's only
-# with that group.
+# with that group, ios's only with that group and on macOS.
 # shellcheck source=harness/layout.sh
 source "$ROOT/scripts/harness/layout.sh" || exit 2
 
@@ -166,6 +166,50 @@ if ! stamp_ok bats "$BATS_VERSION"; then
   rm -f "$BIN/.dl-bats"
   ln -sf .bats/bin/bats "$BIN/bats"
   stamp bats "$BATS_VERSION"
+fi
+
+# The ios group's linters (ADR 0043), on macOS only: owner decision Q4 of exec plan 0004.
+if harness_stack_has ios && [[ $os == darwin ]]; then
+  if ! stamp_ok swiftlint "$SWIFTLINT_VERSION"; then
+    echo "installing swiftlint $SWIFTLINT_VERSION" >&2
+    download swiftlint "https://github.com/realm/SwiftLint/releases/download/${SWIFTLINT_VERSION}/portable_swiftlint.zip" SWIFTLINT_SHA256_DARWIN
+    unzip -o -q "$BIN/.dl-swiftlint" swiftlint -d "$BIN" || {
+      rm -f "$BIN/.dl-swiftlint"
+      echo "could not unpack swiftlint; not installed" >&2
+      exit 1
+    }
+    rm -f "$BIN/.dl-swiftlint"
+    stamp swiftlint "$SWIFTLINT_VERSION"
+  fi
+  # No release binaries: built once from the tag's commit, every dependency at its pinned revision (about 3 min).
+  # The stamp names the commit and the pins too, so a change to either rebuilds it.
+  resolved="$ROOT/scripts/swift-format/Package.resolved"
+  [[ -f "$resolved" ]] || {
+    echo "scripts/swift-format/Package.resolved is missing: restore it from the template (swift-format's dependency pins, ADR 0043)" >&2
+    exit 1
+  }
+  pin="$SWIFT_FORMAT_VERSION $SWIFT_FORMAT_COMMIT $(sha256 "$resolved")"
+  if ! stamp_ok swift-format "$pin"; then
+    echo "building swift-format $SWIFT_FORMAT_VERSION from source (about 3 minutes, once)" >&2
+    src="$BIN/.src-swift-format"
+    not_installed() {
+      rm -rf "${src:?}"
+      echo "swift-format $SWIFT_FORMAT_VERSION $1; not installed" >&2
+      exit 1
+    }
+    rm -rf "${src:?}"
+    git -c advice.detachedHead=false clone -q --depth 1 --branch "$SWIFT_FORMAT_VERSION" \
+      https://github.com/swiftlang/swift-format.git "$src" || not_installed "could not be cloned"
+    [[ "$(git -C "$src" rev-parse HEAD)" == "$SWIFT_FORMAT_COMMIT" ]] ||
+      not_installed "is not commit $SWIFT_FORMAT_COMMIT (SWIFT_FORMAT_COMMIT)"
+    cp "$resolved" "$src/Package.resolved"
+    swift build -q --package-path "$src" -c release --product swift-format --only-use-versions-from-resolved-file ||
+      not_installed "did not build"
+    mv "$(swift build --package-path "$src" -c release --show-bin-path)/swift-format" "$BIN/swift-format" ||
+      not_installed "built, but could not be moved to .bin"
+    rm -rf "${src:?}"
+    stamp swift-format "$pin"
+  fi
 fi
 
 harness_stack_has web || exit 0

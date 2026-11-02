@@ -71,23 +71,24 @@ remediation() { # rule-id -> remediation line from rules.md
 }
 
 # Some findings cannot carry their rule id: golangci ends a line with the linter's name ("(funlen)"), ESLint's
-# stylish format with its rule's name ("max-params"). This maps each such finding to the rule it belongs to, so
+# stylish format and SwiftLint with their rule's name ("max-params", "(file_length)"). This maps each such finding to the rule it belongs to, so
 # only that rule's remediation prints (ADR 0024: each size measure prints its own split recipe).
 finding_pattern() { # rule-id -> ERE matching a tool finding of that rule, or nothing
   case "$1" in
-    code-function-length) echo '\(funlen\)$|[[:space:]]max-lines-per-function$' ;;
-    code-complexity) echo '\(gocognit\)$|[[:space:]]complexity$' ;;
-    code-parameters) echo ': argument-limit: .*\(revive\)$|[[:space:]]max-params$' ;;
-    code-file-length) echo ': file-length-limit: .*\(revive\)$|[[:space:]]max-lines$' ;;
+    code-function-length) echo '\(funlen\)$|[[:space:]]max-lines-per-function$|\(function_body_length\)$' ;;
+    code-complexity) echo '\(gocognit\)$|[[:space:]]complexity$|\(cyclomatic_complexity\)$' ;;
+    code-parameters) echo ': argument-limit: .*\(revive\)$|[[:space:]]max-params$|\(function_parameter_count\)$' ;;
+    code-file-length) echo ': file-length-limit: .*\(revive\)$|[[:space:]]max-lines$|\(file_length\)$' ;;
     repo-no-clones) echo '\(dupl\)$' ;;
     go-sec) echo '\(gosec\)$' ;;
     go-structured-logging) echo '\(sloglint\)$' ;;
     go-format) echo '\((gofmt|goimports)\)$' ;;
     harness-reads-layout) echo '\[harness-reads-layout\]$' ;;                            # not dead: keeps its remediation off other go test failures
     web-lint) echo '^[[:space:]]+[0-9]+:[0-9]+[[:space:]]+(error|warning)[[:space:]]' ;; # any ESLint finding
+    ios-lint) echo ': (error|warning): .* \([a-z_]+\)$' ;;                               # any SwiftLint finding
   esac
 }
-catch_all() { [[ "$1" == web-lint ]]; } # owns the mapped findings that no other given rule names or maps
+catch_all() { [[ "$1" == web-lint || "$1" == ios-lint ]]; } # owns the mapped findings that no other given rule names or maps
 
 findings_of() { # rule-id -> the output lines that name the rule or hold one of its mapped findings
   local id="$1" pattern found other

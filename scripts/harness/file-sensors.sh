@@ -1,8 +1,8 @@
 # shellcheck shell=bash
 # Sourced. The per-file sensor list: which cheap sensor a single changed file gets. Shared by the pre-commit git
-# hook (scripts/git-hooks/pre-commit) and meant for .claude/hooks/fast-check.sh, so both pick sensors from one
-# table (exec plan 0003, Q2). Each caller decides what it runs per kind; this file only classifies. The paths
-# come from scripts/harness/layout.env, read here through layout.sh.
+# hook (scripts/git-hooks/pre-commit) and, for now only for Swift, .claude/hooks/fast-check.sh, so both pick
+# sensors from one table (exec plan 0003, Q2). Each caller decides what it runs per kind; this file only
+# classifies. The paths come from scripts/harness/layout.env, read here through layout.sh.
 #
 #   harness_file_kind <repo-relative path>   prints one kind, or nothing when no per-file sensor applies:
 #
@@ -15,6 +15,7 @@
 #   sql             sqlc queries (QUERIES_DIR) and config
 #   openapi         SPEC
 #   web             TS/JS in the WEB_GLOBS workspaces
+#   swift           Swift under PRODUCT_GLOBS or WEB_GLOBS (owner decision Q8 of exec plan 0004, ADR 0043)
 #   sh              shell, bats and git hooks (the Makefile's SH_FILES)
 #   md              Markdown
 
@@ -41,6 +42,13 @@ harness_file_kind() {
     *.ts | *.tsx | *.js | *.mjs)
       for d in "${WEB_DIRS[@]}"; do
         [[ "$1" != "$d"/* ]] || { echo web && return; }
+      done
+      ;;
+    *.swift)
+      for g in "${PRODUCT_GLOBS[@]}" "${WEB_GLOBS[@]}"; do
+        # As a git pathspec in the Makefile's swift_files: an entry without a `*` also names what is under it.
+        # shellcheck disable=SC2254 # reason: $g is a glob from layout.env, matched as one (rule: sh-shellcheck)
+        case "$1" in $g | $g/*) echo swift && return ;; esac
       done
       ;;
     *.sh | *.bash | *.bats | scripts/git-hooks/*) echo sh ;;

@@ -35,6 +35,7 @@ setup() {
 SIZE=code-function-length,code-complexity,code-parameters,code-file-length
 GO_IDS=rule-a,go-sec,go-structured-logging,go-format,$SIZE,repo-no-clones # as lint-go passes them
 WEB_IDS=rule-a,web-lint,$SIZE                                             # as lint-web passes them
+IOS_IDS=ios-lint,$SIZE                                                    # as lint-ios passes them
 
 # remediations <ids>: a "Fix <id>." remediation in the sandbox rules.md for each id that has none yet.
 remediations() {
@@ -93,6 +94,16 @@ recipe_of() {
   recipe_of "$WEB_IDS" '  2:16  error  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any' web-lint
   # A finding that names another given rule is that rule's, not web-lint's.
   recipe_of "$WEB_IDS,web-x" "  1:1  error  [web-x] fetch is not allowed  no-restricted-globals" web-x
+}
+
+@test "maps each SwiftLint finding to its rule alone; ios-lint takes the unmapped ones (ADR 0043)" {
+  # Lines as SwiftLint 0.65.1 prints them through scripts/harness/swiftlint.sh (copied from a run on a file over
+  # every limit).
+  recipe_of "$IOS_IDS" 'Big.swift:1:1: error: Function Body Length Violation: Function body should span 50 lines or less excluding comments and whitespace: currently spans 52 lines (function_body_length)' code-function-length
+  recipe_of "$IOS_IDS" 'Big.swift:58:1: error: Cyclomatic Complexity Violation: Function should have complexity 10 or less; currently complexity is 11 (cyclomatic_complexity)' code-complexity
+  recipe_of "$IOS_IDS" 'Big.swift:56:1: error: Function Parameter Count Violation: Function should have 5 parameters or less: it currently has 6 (function_parameter_count)' code-parameters
+  recipe_of "$IOS_IDS" 'Big.swift:404:1: error: File Length Violation: File should contain 400 lines or less: currently contains 404 (file_length)' code-file-length
+  recipe_of "$IOS_IDS" 'Big.swift:73:25: error: Force Cast Violation: Force casts should be avoided (force_cast)' ios-lint
 }
 
 @test "prints a split recipe only when its finding is there, even when nothing is named (ADR 0024)" {

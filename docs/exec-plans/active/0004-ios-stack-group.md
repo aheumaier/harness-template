@@ -72,6 +72,9 @@ default for a `layout.env` without `STACK`, and ADR 0033 keeps that the old beha
 `NEEDS_DOCKER` and `SELFTEST_SKIP_DOCKER` work. The Ubuntu jobs set it; the macOS job never does, so every
 iOS fixture runs there. Fixtures that need only Swift (`swift test`) say `NEEDS_SWIFT=1` instead, so they also
 run on this Mac. Fixtures stay in `scripts/harness/fixtures/` (`fixture-claims` accepts no other place).
+As built (2026-11-01, superseded by [ADR 0043](../../adr/0043-swift-lint-format-and-xcode-pin.md)): off macOS
+an ios fixture's target is in `HOST_OFF`, so `SELFTEST_SKIP_SWIFT=1` skips both kinds there (D3);
+`SELFTEST_SKIP_XCODE=1` is only for a Mac with the command-line tools and no Xcode.
 
 **D3. iOS targets are left out on a host that is not macOS, as their own class.** `STACK_OFF` depends on the
 stack only. A `HOST_OFF` beside it holds the iOS targets when the host is not darwin; `make check` names them
@@ -124,7 +127,8 @@ macOS (Q5); `xcodebuild` stays in `check-ios`.
 `HARNESS_LAYOUT_EMPTY_OK`), appended last in `layout.sh --print` (ADR 0033: a new key keeps older copies of
 `layout.env` working; base-branch readers run a parser at least as new). It arrives in Phase 2 with its first
 readers (the iOS targets, `affected.sh:79`, which today sends an asset catalog's `Contents.json` to an
-unscoped web run). The suppression forms (`swiftlint:disable`, `swift-format-ignore`) arrive with the linters.
+unscoped web run). The suppression forms (`swiftlint:disable`, `swift-format-ignore`) arrive with the linters;
+as built in 2b, `swiftlint:disable` needs a reason and `swift-format-ignore` is never allowed (ADR 0043).
 
 **D9. The skeleton is small and dependency-free.** Phase 1: `apps/ios/Package.swift` (platforms iOS and
 macOS, so `swift test` runs without a simulator), one source file in `Sources/AppCore/`, two tests in
@@ -170,21 +174,29 @@ learn a new one. By phase:
     cannot (a `*Tests` subfolder of an Xcode app folder counts today).
   - Re-point the literal `apps/ios` in `test-writer.md`, `apps/ios/AGENTS.md` and the `layout.env` comment to
     `IOS_DIR`. Done in 2a.
-- CI: the macOS job (Q7), the setup action's `":ios:"` steps, `REQUIRED_CHECKS` and `docs/harness/ci.md`, the
-  workflow in `protected-paths.txt` and `CODEOWNERS`; the Ubuntu jobs set `SELFTEST_SKIP_XCODE=1`.
+- CI (2c): the macOS job (Q7), the setup action's `":ios:"` steps, `REQUIRED_CHECKS` and `docs/harness/ci.md`,
+  the workflow in `protected-paths.txt` and `CODEOWNERS`; the Ubuntu jobs' `SELFTEST_SKIP_XCODE=1` is redundant
+  there (`SELFTEST_SKIP_SWIFT=1` covers both off macOS, see D2). From 2b's architecture review: the job selects
+  `/Applications/Xcode_${XCODE_VERSION}.app` and fails when it is missing, asserts that `xcode-select -p` is not
+  the command-line tools (or `xcode-pinned` would skip), starts on every PR and passes with a notice when nothing
+  iOS changed (Q7), and caches `.bin/swift-format` under a key of `SWIFT_FORMAT_COMMIT` and the sha256 of
+  `scripts/swift-format/Package.resolved` (TD-156).
 - `Makefile`: `IOS_TARGETS`, `HOST_OFF` (D3), a `##@ iOS sensors` section, `check-ios` (D7), `test-ios`
-  (`swift test`) in `make check` on darwin (Q5), `scripts/test/make-stack.bats`, `budgets.txt` rows.
+  (`swift test`) in `make check` on darwin (Q5), `scripts/test/make-stack.bats`, `budgets.txt` rows. Done in 2a
+  and 2b.
 - `layout.env`, `layout.sh`, `layout.go`: `IOS_DIR` (D8) and its path check; `affected.sh:79`.
-- Selftest: `NEEDS_XCODE`, `NEEDS_SWIFT`, `SELFTEST_SKIP_XCODE` (D2).
+- Selftest: `NEEDS_XCODE`, `NEEDS_SWIFT`, `SELFTEST_SKIP_XCODE` (D2). Done in 2a and 2b.
 - Tools: `install-tools.sh` (an `ios` block before `harness_stack_has web || exit 0`, darwin only),
-  `tool-versions.env` (SwiftLint, swift-format, XcodeGen, `XCODE_VERSION`).
+  `tool-versions.env` (SwiftLint, swift-format, XcodeGen, `XCODE_VERSION`). Done in 2b except XcodeGen (2c).
 - `run.sh` `finding_pattern` (SwiftLint size findings → the `code-*` rules, ADR 0024); `integritycheck.go`
-  suppressions.
+  suppressions. Done in 2b.
 - The app target: `apps/ios/project.yml`, the generated project ignored or checked by `gen-check`.
 - `.claude/agents/test-writer.md` and ADR 0039's amendment (D6); `file-sensors.sh` and
-  `.claude/hooks/fast-check.sh` (a Swift kind).
-- `protected-paths.txt` and `CODEOWNERS`: `*.swiftlint.yml`, `*.swift-format`.
-- rules.md `ios-*` sections, each with its fixture; the review agents' Skip lists if `rule-lists` asks.
+  `.claude/hooks/fast-check.sh` (a Swift kind). The hook and `file-sensors.sh` done in 2b.
+- `protected-paths.txt` and `CODEOWNERS`: `*.swiftlint.yml`, `*.swift-format`. Done in 2b (root configs only,
+  as the callers always name them).
+- rules.md `ios-*` sections, each with its fixture; the review agents' Skip lists if `rule-lists` asks. Done in
+  2a and 2b for their rules.
 - Supply chain: fail when a Swift package with remote dependencies has no git-known `Package.resolved`.
 
 **Phase 3 (generated client)**
@@ -242,3 +254,25 @@ the `test-writer` and `swift test` into Phase 2. Each phase is its own branch an
   a Mac with only the command-line tools is a third host class beside `HOST_OFF`'s "not macOS". In 2c, the
   `layout_test.go` trees that use `apps/ios/project.yml` as a neutral file need another once `project.yml`
   marks an iOS app (D4).
+- 2026-11-01: 2a merged (PR #14). Built 2b on `feat/ios-lint`
+  ([ADR 0043](../../adr/0043-swift-lint-format-and-xcode-pin.md)), with these rulings recorded there: Swift tests
+  are not exempt from the size rules (TD-154); SwiftLint's size thresholds are its 0.65.1 defaults, written into
+  `.swiftlint.yml`; SwiftLint's `line_length` is 120 while swift-format wraps at 100; both configs sit at the
+  repo root and are always named; `swift-format-ignore` is never allowed; swift-format is built from source at
+  its release commit (TD-156); `XCODE_VERSION=26.6` follows the `macos-26` arm64 runner image; a Mac with only
+  the command-line tools skips `xcode-pinned` by name. The `ios-xcode-mismatch` fixture waits for 2c's macOS
+  job (TD-155).
+- 2026-11-01: 2b reviews (shell, evasion, senior architect) folded in, recorded in ADR 0043: SwiftLint runs
+  through `scripts/harness/swiftlint.sh` (relative paths; exit 2 for a broken sensor); its style-kind and naming
+  rules are off; the Swift file list is read NUL-separated and follows directory symlinks, and swift-format runs
+  with `--follow-symlinks`; the hook blocks on a Mac when a Swift tool is missing; a non-breaking space no longer
+  hides a `swiftlint:disable`; `NEEDS_SWIFT`/`NEEDS_XCODE` on a non-ios fixture is a bad `fixture.conf`;
+  swift-format's resolved file moved to `scripts/swift-format/Package.resolved`, where Trivy scans it; no Swift
+  step in the pre-commit hook. The 2c touchpoints gained the Xcode selection, the command-line-tools assertion
+  and the cache key. Second review round: any non-letter between `swiftlint:` and `disable` counts;
+  `swift-format.sh` turns swift-format's exit 1 for an unreadable config into 2; a linked directory's hidden
+  `.build` is not linted; the tools stamp no longer needs the resolved file, so a product without ios may delete
+  the three ios harness files, as README now says. Third round: a `.swift-format-ignore` file is protected config;
+  SwiftLint runs with `--no-cache`; the integrity check matches config paths in any ASCII case, reports a config
+  added, retargeted or deleted as a symlink and no longer reads a `#` line holding a carriage return, or ending in
+  `\`, as a comment; `install-tools.sh` cleans up on every swift-format failure and names a missing resolved file.

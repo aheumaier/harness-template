@@ -17,6 +17,12 @@ pre-commit 2000 NFR-H8
 # after touching a source and a test file (2026-11-01, Apple Silicon, command-line tools only). A cold .build
 # (a fresh worktree, the selftest copy) compiles first: 17 s.
 swift-test 3000 NFR-H5
+# make lint-ios (SwiftLint) and fmt-check-ios (swift-format) on every Swift file under PRODUCT_GLOBS or WEB_GLOBS
+# (ADR 0043): 0.33 s and 0.15 s on the skeleton's 4 files, HARNESS_SCOPE=full (2026-11-01, Apple Silicon, command-line
+# tools only, load avg 11). Both grow with the app; the rows warn well before NFR-H5's 5 s default. xcode-pinned has
+# no row: it runs only where Xcode is selected (the macOS CI job), and the default applies.
+swiftlint 2000 NFR-H5
+swift-format 2000 NFR-H5
 # The full-tree secret scan in make check (exec plan 0003, NFR-H9).
 repo-no-secrets 5000 NFR-H9
 # make harness-determinism runs make check twice: twice the NFR-H4 budget.
