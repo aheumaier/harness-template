@@ -1,6 +1,6 @@
 # 0004 — iOS stack group
 
-Status: phase 1 merged (PR #12); phase 2a in review (branch feat/ios-swift-test) · Owner: @aheumaier · Started: 2026-10-31
+Status: phase 1 merged (PR #12); phase 2a merged (PR #14); phase 2b in review (PR #15) · Owner: @aheumaier · Started: 2026-10-31
 
 ## Goal
 
@@ -201,7 +201,7 @@ learn a new one. By phase:
 | # | Phase | Exit criterion | State |
 |---|-------|----------------|-------|
 | 1 | `ios` group and skeleton, no Xcode: D1, D4, D5, D9, Trivy, `.gitignore`, adoption, rules.md, ADR 0041 | `make check`, `make check-all` and `HARNESS_SCOPE=full make harness-selftest` green on Ubuntu; `adoption-probe` green; the three Phase 1 fixtures rejected; `swift test` on the skeleton green on this Mac; a product with `STACK=go:db:web:ios` and Swift tests under `apps/ios/Tests/…Tests/` passes `layout-check` and `specs-tested` | merged (PR #12) |
-| 2 | macOS job, D2, D3, D6, D7, D8, Xcode pin check, SwiftLint, swift-format, `swift test` in `make check` on macOS, the app target | the macOS job green and required; each new rule rejects its fixture there; Ubuntu jobs skip iOS only by name | 2a (`IOS_DIR`, `HOST_OFF`, `test-ios`, `NEEDS_SWIFT`, the `test-writer`; ADR 0042) in review on `feat/ios-swift-test`; 2b (lint, format, Xcode pin) and 2c (macOS job, app target) pending |
+| 2 | macOS job, D2, D3, D6, D7, D8, Xcode pin check, SwiftLint, swift-format, `swift test` in `make check` on macOS, the app target | the macOS job green and required; each new rule rejects its fixture there; Ubuntu jobs skip iOS only by name | 2a (`IOS_DIR`, `HOST_OFF`, `test-ios`, `NEEDS_SWIFT`, the `test-writer`; ADR 0042) merged (PR #14); 2b (SwiftLint, swift-format, the Xcode pin, `IOS_SWIFT_TARGETS`/`IOS_XCODE_TARGETS`, `NEEDS_XCODE`, the Swift kind in the per-file sensors; ADR 0043) in review (PR #15); 2c (macOS job, app target, XcodeGen, the `Package.resolved` check) pending |
 | 3 | Generated Swift client | `make gen` regenerates it; `gen-check` fails on a hand edit (fixture); the `x-extensible-enum` rule documented | after 2 |
 | 4 | Simulator UI tests, layer rule | `ios-e2e` in `check-ios` within its budget; the layer rule rejects its fixture | after 3 |
 
@@ -232,7 +232,8 @@ the `test-writer` and `swift test` into Phase 2. Each phase is its own branch an
 
 - 2026-10-31: drafted from the adopter's request and an inventory of the harness; architecture review folded
   in; the owner decided Q1–Q8. Phase 1 built on `feat/ios-stack-phase1` (ADR 0041).
-- 2026-11-01: phase 1 merged (PR #12). Phase 2 split into three PRs: 2a `swift test` in `make check`, 2b lint,
+- 2026-11-01: phase 1 merged (PR #12) after the obs-e2e flake fix (PR #11); ADR 0041 accepted. Phase 2 split
+  into three PRs: 2a `swift test` in `make check`, 2b lint,
   format and the Xcode pin, 2c the macOS job and the app target. Built 2a on `feat/ios-swift-test`
   ([ADR 0042](../../adr/0042-swift-unit-tests-in-make-check.md)); ruled the selftest's full stack to be every
   group `layout.env` declares (option (b)), recorded there. For 2b, from 2a's architecture review: the Xcode
