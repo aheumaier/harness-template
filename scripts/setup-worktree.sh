@@ -105,6 +105,19 @@ fi
 # --- tools + deps -------------------------------------------------------------------------------------
 make --no-print-directory tools deps
 
+# --- the iOS app's Xcode project ------------------------------------------------------------------------
+# XcodeGen writes it from IOS_DIR/project.yml, git-ignored, so Xcode can open the app (ADR 0044). Only where Xcode
+# is selected: nothing else uses the project, and make build-ios generates it again anyway, so a failure (offline,
+# a project.yml error) is logged and setup goes on to the git hooks and Postgres.
+if harness_stack_has ios && [[ -n "$IOS_DIR" && -f "$IOS_DIR/project.yml" && "$(uname -s)" == Darwin ]]; then
+  if xcodebuild -version >/dev/null 2>&1; then
+    make --no-print-directory ios-project ||
+      log "could not generate the iOS app's Xcode project: make build-ios shows why (rules.md#ios-app-builds)"
+  else
+    log "no Xcode selected: not generating the iOS app's Xcode project (make ios-project, once it is)"
+  fi
+fi
+
 # --- git hooks ----------------------------------------------------------------------------------------
 # pre-commit scans the staged content for secrets and runs the cheap per-file sensors on it
 # (scripts/harness/pre-commit.sh); commit-msg checks Conventional Commits locally

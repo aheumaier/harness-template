@@ -6,14 +6,14 @@
 #   CONFIRM=1 scripts/github-branch-protection.sh    # applies it (needs `gh auth login` with admin rights)
 #
 # GH_REPO (owner/name) defaults to the current gh repository; BRANCH defaults to main. Required checks are
-# the job names in .github/workflows/{ci,contract-gate,harness-integrity}.yml; migration-gate is
+# the job names in .github/workflows/{ci,contract-gate,harness-integrity,ios}.yml; migration-gate is
 # path-filtered, so it is not required (its sensors also run in check-all). See docs/harness/ci.md.
 # enforce_admins is false on purpose: with a single code owner, GitHub forbids approving your own PR, so
 # the admin must be able to merge their own reviewed changes. Everyone else needs a code-owner approval.
 set -euo pipefail
 
 BRANCH="${BRANCH:-main}"
-REQUIRED_CHECKS=(check-all harness-selftest generator-probe adoption-probe api-no-breaking-change harness-integrity pr-conventions)
+REQUIRED_CHECKS=(check-all harness-selftest generator-probe adoption-probe check-ios api-no-breaking-change harness-integrity pr-conventions)
 
 # app_id 15368 = GitHub Actions: only a workflow job can satisfy a required check, not any app posting
 # a status with the same name.

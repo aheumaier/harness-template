@@ -1,0 +1,28 @@
+# The iOS app target (ADR 0044). XcodeGen generates the Xcode project from this file: `make build-ios` (and
+# `make setup` where Xcode is selected) writes it next to this file, and git ignores it (.gitignore here), so this
+# file is the only source. The app's logic stays in the local Swift package of this folder (Package.swift,
+# Sources/AppCore), where `swift test` reaches it without a simulator. `make build-ios` builds the scheme App.
+name: App
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  AppCore:
+    path: .
+targets:
+  App:
+    type: application
+    platform: iOS
+    sources: [App]
+    dependencies:
+      - package: AppCore
+    scheme: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.app
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"

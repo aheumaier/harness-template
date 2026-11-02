@@ -36,6 +36,7 @@ Makefile config
 .github/workflows/drift.yml config
 .github/workflows/harness-integrity.yml config
 .github/workflows/harness-nfr.yml config
+.github/workflows/ios.yml config
 .github/workflows/migration-gate.yml config
 .github/workflows/pr-review.yml config
 .github/actions/setup/* config

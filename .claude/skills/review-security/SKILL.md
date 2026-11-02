@@ -12,7 +12,7 @@ computational rule. Every path below is relative to the repository root.
 ## Skip
 
 - What a sensor already catches on every PR (`docs/harness/rules.md`): `go-sec` (gosec), every rule under
-  `## Secrets and dependencies`: `repo-no-secrets`, `deps-no-known-vulns`; and `go-no-known-vulns`, `api-errors-problem-json`, `go-structured-logging`,
+  `## Secrets and dependencies`: `repo-no-secrets`, `deps-no-known-vulns`, `deps-swift-resolved`; and `go-no-known-vulns`, `api-errors-problem-json`, `go-structured-logging`,
   `ci-workflows-valid`.
 - Generated code and fixtures: `scripts/harness/fixtures/` (deliberately broken examples), `.specify/`,
   `*.gen.go`, `apps/api/internal/*/store/` and `packages/api-client/src/gen/`.

@@ -1,7 +1,8 @@
 # ADR 0042: Swift unit tests run in `make check` on macOS (amends 0033, 0039, 0041)
 
 Status: proposed · 2026-11-01 · amends [ADR 0033](0033-stack-profiles.md),
-[ADR 0039](0039-tests-are-written-apart-from-the-implementation.md), [ADR 0041](0041-ios-stack-group.md)
+[ADR 0039](0039-tests-are-written-apart-from-the-implementation.md), [ADR 0041](0041-ios-stack-group.md) · amended
+2026-11-02 by [ADR 0044](0044-ios-ci-on-macos.md) (`swift-tests`: every Swift file in `Tests/` is compiled)
 
 ## Context
 [ADR 0041](0041-ios-stack-group.md) (phase 1 of [exec plan 0004](../exec-plans/active/0004-ios-stack-group.md))

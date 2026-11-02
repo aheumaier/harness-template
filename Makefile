@@ -40,7 +40,7 @@ $(foreach kv,$(LAYOUT),$(eval override $(kv)))
 DB_TARGETS  := schema-doc-fresh lint-migrations squawk migrations-append-only test-integration test-obs e2e gen-sqlc gen-atlas-sum
 WEB_TARGETS := lint-web arch-web typecheck-web test-web knip clones-web e2e gen-api-client
 IOS_SWIFT_TARGETS := test-ios lint-ios fmt-check-ios
-IOS_XCODE_TARGETS := xcode-pinned
+IOS_XCODE_TARGETS := xcode-pinned build-ios
 IOS_TARGETS := $(IOS_SWIFT_TARGETS) $(IOS_XCODE_TARGETS)
 override stack_has = $(filter $(1),$(subst :, ,$(STACK)))
 override STACK_OFF := $(strip $(if $(call stack_has,db),,$(DB_TARGETS)) $(if $(call stack_has,web),,$(WEB_TARGETS)) $(if $(call stack_has,ios),,$(IOS_TARGETS)))
@@ -128,7 +128,7 @@ db-reset: ## Drop this worktree's database volume (and the obs stack), recreate,
 check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=60s any: NFR-H3/H4): format, lint, arch, unit tests, secrets, gen-check
 	@$(if $(STACK_OFF),echo "STACK=$(STACK) leaves out: $(sort $(STACK_OFF)) (ADR 0033)" >&2,true)
 	@$(if $(and $(call stack_has,ios),$(HOST_OFF)),echo "this host (not macOS) leaves out: $(HOST_OFF) (ADR 0042)" >&2,true)
-	@$(MAKE) -k -j4 $(call stacked,layout-check lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned fixture-claims rule-lists approved-check specs-tested lint-web arch-web typecheck-web test-web $(IOS_SWIFT_TARGETS))
+	@$(MAKE) -k -j4 $(call stacked,layout-check lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned swift-resolved fixture-claims rule-lists approved-check specs-tested lint-web arch-web typecheck-web test-web $(IOS_SWIFT_TARGETS))
 	@$(MAKE) gen-check
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
@@ -311,7 +311,7 @@ clones-web: ## Copy-pasted code in the JS workspaces (jscpd)
 	@$(RUN) jscpd repo-no-clones -- bash -c 'root="$$(pwd -P)"; out="$$(jscpd --config "$$root/scripts/harness/jscpd.json" --reporters xcode --absolute --exit-code 1 --fail-on-empty --no-colors --no-tips $(foreach d,$(WEB_DIRS),"$$root/$(d)"))" && s=0 || s=$$?; echo "$${out//"$$root"\//}"; ((s == 0)) || { ((s == 1)) && grep -Eq ": warning: Found [0-9]+ lines " <<<"$$out" && s=1 || s=2; }; exit $$s'
 
 ##@ iOS sensors (the Swift package in IOS_DIR, macOS only: ADR 0042; the Swift linters and Xcode: ADR 0043)
-.PHONY: check-ios test-ios lint-ios fmt-check-ios xcode-pinned
+.PHONY: check-ios test-ios lint-ios fmt-check-ios xcode-pinned build-ios ios-project
 check-ios: ## Every iOS sensor, those needing Xcode too (the macOS CI job)
 	@$(if $(call stacked,$(IOS_TARGETS)),$(MAKE) -k $(call stacked,$(IOS_TARGETS)),echo "$@: skipped, $(if $(call stack_has,ios),this host is not macOS (ADR 0042),STACK=$(STACK) has no ios (ADR 0033))")
 
@@ -319,6 +319,11 @@ check-ios: ## Every iOS sensor, those needing Xcode too (the macOS CI job)
 # Testing only through the tools' frameworks directory, passed as -F and -rpath; XCTest needs Xcode selected. An app without
 # a Swift package (only an XcodeGen project.yml) and without Swift tests in Tests/ has nothing for swift test, which
 # would otherwise search the parent folders; with tests there but no package, nothing would run them, so it fails.
+# swift test compiles only the test targets the manifest declares: `harness swift-tests` fails on a Swift file in
+# Tests/ that none of them compiles (ADR 0044), and swift test still runs, so both kinds of finding show at once.
+# .bin/harness is built only past the skips, so a skip by name needs no Go. In scope full (CI, check-all) SwiftPM
+# may use only the versions in Package.resolved, so a lockfile left stale by a manifest change fails swift test
+# (reported as ios-tests-pass) rather than resolving fresh; locally a new dependency resolves as usual.
 test-ios: ## Swift unit tests of the package in IOS_DIR (swift test)
 	@[[ -n "$(IOS_DIR)" ]] || { echo "$@: skipped, IOS_DIR is empty in scripts/harness/layout.env (no iOS app)"; exit 0; }; \
 	if scripts/harness/unchanged.sh '*.swift' 'Package.resolved' '*/Package.resolved' '$(IOS_DIR)'; then \
@@ -327,10 +332,13 @@ test-ios: ## Swift unit tests of the package in IOS_DIR (swift test)
 	  tests="$$(git ls-files -co --exclude-standard -- '$(IOS_DIR)/Tests/*.swift')" || exit 2; \
 	  if [[ -z "$$tests" ]]; then echo "$@: skipped, no Package.swift and no Swift file in Tests/ in IOS_DIR=$(IOS_DIR) (ADR 0042)"; exit 0; fi; \
 	  $(RUN) swift-test ios-tests-pass -- bash -c 'echo "$@: Swift tests in $(IOS_DIR)/Tests but no Package.swift there, so nothing runs them: restore the package"; exit 1'; exit; fi; \
-	dev="$$(xcode-select -p)" || { echo "$@: no Xcode or command-line tools: run xcode-select --install [ios-tests-pass]" >&2; exit 2; }; fw=(); \
+	dev="$$(xcode-select -p)" || { echo "$@: no Xcode or command-line tools: run xcode-select --install [ios-tests-pass]" >&2; exit 2; }; fw=(); pin=(); \
+	[[ "$(HARNESS_SCOPE)" != full ]] || pin=(--only-use-versions-from-resolved-file); \
 	if [[ "$$dev" == */CommandLineTools ]]; then \
 	  fw=(-Xswiftc -F -Xswiftc "$$dev/Library/Developer/Frameworks" -Xlinker -rpath -Xlinker "$$dev/Library/Developer/Frameworks"); fi; \
-	$(RUN) swift-test ios-tests-pass --dir "$(IOS_DIR)" -- swift test $${fw[@]+"$${fw[@]}"}
+	$(MAKE) -s --no-print-directory $(HARNESS) || exit 2; \
+	$(RUN) swift-tests-declared ios-tests-pass -- bash -c 'set -o pipefail; d="$$1"; swift package --package-path "$$d" describe --type json | $(HARNESS) swift-tests . "$$d"' _ "$(IOS_DIR)" && s=0 || s=$$?; \
+	$(RUN) swift-test ios-tests-pass --dir "$(IOS_DIR)" -- swift test $${pin[@]+"$${pin[@]}"} $${fw[@]+"$${fw[@]}"} || exit; exit $$s
 
 # `$(call swift_files) <command on "$${files[@]}">`: the Swift files the linters read (owner decision Q8 of exec
 # plan 0004), each git-known *.swift under PRODUCT_GLOBS or WEB_GLOBS (layout.env) and not under GENERATED_GLOBS.
@@ -358,14 +366,37 @@ lint-ios: $(TOOLS_STAMP) ## SwiftLint on the Swift files (rules.md#ios-lint, the
 fmt-check-ios: $(TOOLS_STAMP) ## swift-format lint on the Swift files (rules.md#ios-format; make fmt fixes)
 	@$(call swift_files) $(RUN) swift-format ios-format -- scripts/harness/swift-format.sh "$${files[@]}"
 
+# `$(call xcode_selected,<rule id>) <command>`: fails (exit 2) without even the command-line tools, and skips the
+# target by name while only they are selected (xcodebuild fails: no Xcode, the third host class of ADR 0043).
+xcode_selected = dev="$$(xcode-select -p)" || { echo "$@: no Xcode or command-line tools: run xcode-select --install [$(1)]" >&2; exit 2; }; \
+	if [[ "$$dev" == */CommandLineTools ]] && ! xcodebuild -version >/dev/null 2>&1; then \
+	  echo "$@: skipped, only the command-line tools are selected, no Xcode (ADR 0043)"; exit 0; fi;
+
 # rules.md#ios-xcode-pinned: xcodebuild -version's first line is "Xcode <version>". With only the command-line
 # tools selected, xcodebuild fails: there is no Xcode to compare (the third host class, ADR 0043), skipped by name.
 xcode-pinned: ## The selected Xcode is XCODE_VERSION (tool-versions.env)
-	@dev="$$(xcode-select -p)" || { echo "$@: no Xcode or command-line tools: run xcode-select --install [ios-xcode-pinned]" >&2; exit 2; }; \
-	if [[ "$$dev" == */CommandLineTools ]] && ! xcodebuild -version >/dev/null 2>&1; then \
-	  echo "$@: skipped, only the command-line tools are selected, no Xcode (ADR 0043)"; exit 0; fi; \
+	@$(call xcode_selected,ios-xcode-pinned) \
 	$(RUN) xcode-pinned ios-xcode-pinned -- bash -c 'set -o pipefail; v="$$(xcodebuild -version | sed -n "1s/^Xcode //p")" || exit 2; [[ -n "$$v" ]] || exit 2; \
 	  [[ "$$v" == "$(XCODE_VERSION)" ]] || { echo "the selected Xcode is $$v, scripts/tool-versions.env pins XCODE_VERSION=$(XCODE_VERSION)"; exit 1; }'
+
+XCODEGEN = .bin/xcodegen generate --quiet --spec "$(IOS_DIR)/project.yml" --project "$(IOS_DIR)"
+
+# make setup runs it where Xcode is selected, so Xcode can open the app; build-ios generates the project itself.
+ios-project: ## The iOS app's Xcode project from IOS_DIR/project.yml (XcodeGen, git-ignored; needs macOS)
+	@scripts/install-tools.sh xcodegen && $(XCODEGEN)
+
+# rules.md#ios-app-builds: XcodeGen (installed on demand, as the browsers for e2e) generates the app's Xcode project
+# from IOS_DIR/project.yml into IOS_DIR, where git ignores it (ADR 0044), and xcodebuild builds its scheme App for
+# the iOS Simulator, unsigned, into .cache/xcode. Needs Xcode selected; skipped by name without it, as xcode-pinned.
+build-ios: ## The iOS app builds for the simulator: XcodeGen, then xcodebuild (needs Xcode)
+	@[[ -n "$(IOS_DIR)" && -f "$(IOS_DIR)/project.yml" ]] || { echo "$@: skipped, no project.yml in IOS_DIR=$(IOS_DIR) (no app target yet)"; exit 0; }; \
+	$(call xcode_selected,ios-app-builds) \
+	scripts/install-tools.sh xcodegen || exit 2; \
+	$(RUN) xcodegen ios-app-builds -- $(XCODEGEN) || exit; \
+	projects=("$(IOS_DIR)"/*.xcodeproj); [[ -d "$${projects[0]}" ]] || { echo "$@: XcodeGen wrote no *.xcodeproj in $(IOS_DIR) [ios-app-builds]" >&2; exit 2; }; \
+	[[ $${#projects[@]} == 1 ]] || { echo "$@: want one generated *.xcodeproj in $(IOS_DIR), found: $${projects[*]}; delete the stale ones, they are generated [ios-app-builds]" >&2; exit 2; }; \
+	$(RUN) xcodebuild ios-app-builds -- xcodebuild -quiet -project "$${projects[0]}" -scheme App -destination 'generic/platform=iOS Simulator' \
+	  -derivedDataPath .cache/xcode CODE_SIGNING_ALLOWED=NO build
 
 ##@ Contract (SPEC)
 .PHONY: lint-api contract-check upstream-drift approve approved-check
@@ -437,8 +468,8 @@ fmt-check-sh: ## shfmt (style from .editorconfig) on every shell script
 test-sh: $(HARNESS) ## bats tests for scripts/ and .claude/hooks/ (scripts/test)
 	@$(call sh_sensor,$(RUN) bats sh-tests-pass -- bats scripts/test)
 
-##@ Secrets and dependency vulnerabilities (Trivy: trivy.yaml, scripts/harness/trivy.sh)
-.PHONY: secrets vuln-deps
+##@ Secrets and dependencies (Trivy: trivy.yaml, scripts/harness/trivy.sh; Swift lockfiles: .bin/harness)
+.PHONY: secrets vuln-deps swift-resolved
 # The sensor id is the rule id: budgets.txt row repo-no-secrets (NFR-H9). $(TOOLS_STAMP) runs install-tools.sh
 # (Trivy too) once tool-versions.env changes, before the scan, not racing it under -j4.
 secrets: $(TOOLS_STAMP) ## Offline secret scan of the git-known files (in make check, only the changed ones)
@@ -446,6 +477,9 @@ secrets: $(TOOLS_STAMP) ## Offline secret scan of the git-known files (in make c
 
 vuln-deps: $(TOOLS_STAMP) ## Known vulns in pnpm-lock.yaml, every go.mod and Package.resolved (fetches the Trivy DB into .cache/trivy)
 	@$(RUN) trivy-vuln deps-no-known-vulns -- scripts/harness/trivy.sh vuln
+
+swift-resolved: $(HARNESS) ## A Swift package with remote dependencies has its Package.resolved in git
+	@$(RUN) swift-resolved deps-swift-resolved -- $(HARNESS) swift-resolved .
 
 ##@ CI and harness integrity (.github/, protected harness files)
 .PHONY: lint-ci layout-check harness-integrity orphans harness-sync-check adoption-probe commits specs specs-tested

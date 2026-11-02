@@ -50,6 +50,7 @@ tsconfig*.json              @aheumaier
 /.github/workflows/drift.yml              @aheumaier
 /.github/workflows/harness-integrity.yml  @aheumaier
 /.github/workflows/harness-nfr.yml        @aheumaier
+/.github/workflows/ios.yml                @aheumaier
 /.github/workflows/migration-gate.yml     @aheumaier
 /.github/workflows/pr-review.yml          @aheumaier
 /.github/actions/setup/     @aheumaier

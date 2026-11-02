@@ -1,8 +1,9 @@
 # harness-template
 
 A template for products built by coding agents. It has a Go HTTP API (`apps/api`), a React web app (`apps/web`),
-an iOS app's Swift package (`apps/ios`), a shared OpenAPI contract (`api/openapi.yaml`) and Postgres. There are
-no business domains yet. What the template really offers is the **harness**:
+an iOS app (`apps/ios`: a Swift package and an XcodeGen app target), a shared OpenAPI contract
+(`api/openapi.yaml`) and Postgres. There are no business domains yet. What the template really offers is the
+**harness**:
 
 - **Guides** say what good looks like: [AGENTS.md](AGENTS.md), [ARCHITECTURE.md](ARCHITECTURE.md) and
   [docs/](docs/).
@@ -43,8 +44,9 @@ Steps that need a human are marked **(human)**.
 ([ADR 0033](docs/adr/0033-stack-profiles.md), [ADR 0041](docs/adr/0041-ios-stack-group.md)). The `ios`
 sensors need macOS (Xcode or Apple's command-line tools): on another host `make check` leaves them out and says
 so ([ADR 0042](docs/adr/0042-swift-unit-tests-in-make-check.md)). With only the command-line tools, `make check`
-runs the Swift tests, SwiftLint and swift-format, and `make check-ios` skips the Xcode version check, which needs
-Xcode selected ([ADR 0043](docs/adr/0043-swift-lint-format-and-xcode-pin.md)).
+runs the Swift tests, SwiftLint and swift-format, and `make check-ios` skips the Xcode version check and the app
+build, which need Xcode selected ([ADR 0043](docs/adr/0043-swift-lint-format-and-xcode-pin.md)). CI's `check-ios`
+job runs all of them on a macOS runner with Xcode ([ADR 0044](docs/adr/0044-ios-ci-on-macos.md)).
 
 Never install a tool globally. `make setup` puts every pinned, checksum-verified tool into `.bin/`.
 
@@ -117,8 +119,9 @@ Claude Code hooks fail closed.
    - Create the labels `harness-change-approved`, `breaking-change-approved` and `no-spec-needed`
      ([ci.md](docs/harness/ci.md)).
    - Dry-run [scripts/github-branch-protection.sh](scripts/github-branch-protection.sh), then apply it with
-     `CONFIRM=1` to require the seven status checks. One of them, `adoption-probe`, passes without running once
-     step 3's `make rename WRITE=1` has set `HARNESS_UPSTREAM`.
+     `CONFIRM=1` to require the eight status checks. One of them, `adoption-probe`, passes without running once
+     step 3's `make rename WRITE=1` has set `HARNESS_UPSTREAM`; another, `check-ios`, passes with a notice without
+     `ios` in `STACK`.
 5. **Constitution.** Run `/speckit-constitution` to adapt `.specify/memory/constitution.md` to the product.
    This file is protected, so it needs a human or `HARNESS_EDIT=1`.
 6. **First domain.** Follow the [new-domain skill](.claude/skills/new-domain/SKILL.md):
@@ -329,6 +332,7 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      | [jscpd.json](scripts/harness/jscpd.json) | ignores `**/packages/api-client/src/gen/**` | your generated client counts as duplicated code |
      | [pnpm-workspace.yaml](pnpm-workspace.yaml), [knip.json](knip.json) | the workspaces `apps/web`, `packages/*`; knip's ignores | `pnpm install` and knip miss your workspaces; keep them in step with `WEB_GLOBS` |
      | The web app `apps/web` (tracker TD-46) | the `dev`, `e2e` and `e2e-deps` Makefile targets; Playwright in [install-tools.sh](scripts/install-tools.sh) (`browsers`) and the setup action's `Locked Playwright version` step; the hints in `coverage.sh` and `mutation.sh` | `make dev` and `make e2e` fail; with input `browser`, CI's `check-all` job fails in setup |
+     | The iOS app's shape, with `ios` in `STACK` ([ADR 0044](docs/adr/0044-ios-ci-on-macos.md)) | the scheme `App` in the Makefile's `build-ios`; the app's sources in `App/` in the `ios-app-build-broken` fixture | `build-ios` fails on a missing scheme; the selftest fails until the app keeps that shape |
      | [action.yml](.github/actions/setup/action.yml) | the `Install JS dependencies` step (`make deps`, a no-op without `web` in `STACK`); node is set up in every job | with `web`, every CI job fails in setup without a root `package.json` and lockfile |
      | [install-tools.sh](scripts/install-tools.sh) | with `web` in `STACK`: installs pnpm and exits 1 unless the root `package.json` pins `packageManager` | `make setup` aborts after the other tools land; leave `web` out of `STACK` if you have no JS workspaces |
      | [setup-worktree.sh](scripts/setup-worktree.sh) | `make tools deps`, with `db` in `STACK` compose `db` and `atlas migrate apply` in `API_DIR` | `make setup` fails in `pnpm install` without a lockfile (with `web`) or without Docker (with `db`) |
@@ -357,14 +361,15 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      | web | `web-*` (7) | `WEB_TARGETS`: `lint-web`, `arch-web`, `typecheck-web`, `test-web`, `knip`, `clones-web`, `e2e`, `gen-api-client` | eslint, dependency-cruiser, turbo, knip, jscpd, typescript from `package.json` |
      | db | `db-*` (5) | `DB_TARGETS`: `schema-doc-fresh`, `lint-migrations`, `squawk`, `migrations-append-only`, `test-integration`, `test-obs`, `e2e`, `gen-sqlc`, `gen-atlas-sum` | atlas, sqlc, squawk |
      | api | `api-*` (6) | `lint-api`, `contract-check`, `gen-oapi` | oasdiff, oapi-codegen, spectral |
-     | ios | `ios-*` (4) | `IOS_TARGETS` (macOS only): `test-ios`, `lint-ios`, `fmt-check-ios` (`IOS_SWIFT_TARGETS`, in `make check`), `xcode-pinned` (`IOS_XCODE_TARGETS`, in `make check-ios`, needs Xcode) | Swift from Xcode or Apple's command-line tools (XCTest and `xcode-pinned` need Xcode selected), SwiftLint and swift-format from `install-tools.sh`, `.swiftlint.yml`, `.swift-format`, `scripts/swift-format/Package.resolved` |
+     | ios | `ios-*` (5) | `IOS_TARGETS` (macOS only): `test-ios`, `lint-ios`, `fmt-check-ios` (`IOS_SWIFT_TARGETS`, in `make check`), `xcode-pinned`, `build-ios` (`IOS_XCODE_TARGETS`, in `make check-ios`, need Xcode) | Swift from Xcode or Apple's command-line tools (XCTest, `xcode-pinned` and `build-ios` need Xcode selected), SwiftLint, swift-format and XcodeGen from `install-tools.sh`, `.swiftlint.yml`, `.swift-format`, `scripts/swift-format/Package.resolved` |
 
      The ios set grows with [exec plan 0004](docs/exec-plans/active/0004-ios-stack-group.md); it also counts
      Swift tests for [specs-scenarios-tested](docs/harness/rules.md#specs-scenarios-tested), and without it
      any Swift under a `PRODUCT_GLOBS` or `WEB_GLOBS` entry fails `layout-check`. A product that runs `make harness-selftest` on
      Linux with `ios` in `STACK` sets `SELFTEST_SKIP_SWIFT=1` there, and on a Mac with only the command-line tools
-     `SELFTEST_SKIP_XCODE=1`. Without ios, `lint-ios` goes, and with it the Swift part of the size rules
-     (`code-*`): narrow their entries to Go and TS. Nothing reads `.swiftlint.yml`, `.swift-format` or
+     `SELFTEST_SKIP_XCODE=1`. With ios, the app keeps `IOS_DIR/project.yml` with its sources in `App/` and its scheme
+     named `App`, the shape `build-ios` and its fixture expect. Without ios, `lint-ios` goes, and with it the Swift
+     part of the size rules (`code-*`): narrow their entries to Go and TS. Nothing reads `.swiftlint.yml`, `.swift-format` or
      `scripts/swift-format/` then: leave them out of step 3; template sync names one only when the template
      changes it, and a `# declined <path>: <why>` line in `.harness-version` skips it.
      The web and db sets are `STACK` groups ([ADR 0033](docs/adr/0033-stack-profiles.md)), and their targets are

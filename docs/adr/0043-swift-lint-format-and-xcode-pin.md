@@ -1,7 +1,8 @@
 # ADR 0043: SwiftLint, swift-format and the Xcode pin (amends 0016, 0024, 0042)
 
 Status: proposed · 2026-11-01 · amends [ADR 0016](0016-tool-supply-chain.md),
-[ADR 0024](0024-size-and-complexity-limits-are-maintainability-sensors.md), [ADR 0042](0042-swift-unit-tests-in-make-check.md)
+[ADR 0024](0024-size-and-complexity-limits-are-maintainability-sensors.md), [ADR 0042](0042-swift-unit-tests-in-make-check.md) ·
+amended 2026-11-02 by [ADR 0044](0044-ios-ci-on-macos.md) (`build-ios` joins `IOS_XCODE_TARGETS`)
 
 ## Context
 [ADR 0042](0042-swift-unit-tests-in-make-check.md) (the first PR of phase 2 of

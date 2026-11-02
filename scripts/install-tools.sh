@@ -111,6 +111,31 @@ if [[ "${1:-}" == claude ]]; then
   exit 0
 fi
 
+# XcodeGen, for make build-ios (ADR 0044): installed by `install-tools.sh xcodegen` alone, on demand where Xcode is
+# selected (make build-ios, make setup), never by `make tools`: a Mac with only the command-line tools cannot use
+# it. The zip's tree is kept whole in .bin/.xcodegen, since the binary reads its setting presets from
+# ../share/xcodegen next to it (it follows the .bin/xcodegen link to find them).
+if [[ "${1:-}" == xcodegen ]]; then
+  [[ $os == darwin ]] || {
+    echo "xcodegen runs on macOS only (ADR 0044); not installed" >&2
+    exit 1
+  }
+  if ! stamp_ok xcodegen "$XCODEGEN_VERSION"; then
+    echo "installing xcodegen $XCODEGEN_VERSION" >&2
+    download xcodegen "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" XCODEGEN_SHA256_DARWIN
+    rm -rf "$BIN/.xcodegen"
+    unzip -q "$BIN/.dl-xcodegen" -d "$BIN/.xcodegen" && [[ -x "$BIN/.xcodegen/xcodegen/bin/xcodegen" ]] || {
+      rm -rf "$BIN/.dl-xcodegen" "$BIN/.xcodegen"
+      echo "could not unpack xcodegen (no xcodegen/bin/xcodegen in the zip); not installed" >&2
+      exit 1
+    }
+    rm -f "$BIN/.dl-xcodegen"
+    ln -sfn .xcodegen/xcodegen/bin/xcodegen "$BIN/xcodegen"
+    stamp xcodegen "$XCODEGEN_VERSION"
+  fi
+  exit 0
+fi
+
 # The stack (layout.env's STACK, or HARNESS_STACK; ADR 0033) picks the tools: go's always, db's and web's only
 # with that group, ios's only with that group and on macOS.
 # shellcheck source=harness/layout.sh

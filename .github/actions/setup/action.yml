@@ -45,10 +45,12 @@ runs:
       if: inputs.save-caches == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        # Playwright's browser follows the lockfile, not these inputs: it has its own cache below.
+        # Playwright's browser follows the lockfile, and swift-format its pins, not these inputs: each has its own cache.
         path: |
           .bin
           !.bin/playwright
+          !.bin/swift-format
+          !.bin/.swift-format.version
         key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', format('{0}/.custom-gcl.yml', env.API_DIR), format('{0}/tools/analyzers/**', env.API_DIR), format('{0}/tools/harness/**', env.API_DIR), 'scripts/harness/layout.env') }}
 
     - name: Restore pinned tools (.bin), saving nothing
@@ -59,7 +61,21 @@ runs:
         path: |
           .bin
           !.bin/playwright
+          !.bin/swift-format
+          !.bin/.swift-format.version
         key: bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tool-versions.env', 'scripts/install-tools.sh', format('{0}/.custom-gcl.yml', env.API_DIR), format('{0}/tools/analyzers/**', env.API_DIR), format('{0}/tools/harness/**', env.API_DIR), 'scripts/harness/layout.env') }}
+
+    # swift-format is built from source (about 3 minutes, ADR 0043), so it is cached on its own pins (TD-156): a
+    # change to tool-versions.env or install-tools.sh does not rebuild it. Its stamp makes make tools rebuild a
+    # binary whose pins differ. Only a macOS job with ios in STACK builds it.
+    - name: Cache swift-format (.bin/swift-format)
+      if: runner.os == 'macOS' && contains(format(':{0}:', env.STACK), ':ios:') && inputs.save-caches == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          .bin/swift-format
+          .bin/.swift-format.version
+        key: swift-format-${{ runner.os }}-${{ runner.arch }}-${{ env.SWIFT_FORMAT_COMMIT }}-${{ hashFiles('scripts/swift-format/Package.resolved') }}
 
     - name: Install pinned tools
       shell: bash
