@@ -58,11 +58,14 @@ if that wins nothing in run time, and that `scripts/` is rewritten in Go.
 - **New harness logic is Go.** From this ADR on, new harness logic is a subcommand, not a new `.sh` file outside
   the bootstrap and the fixture data. The plan's slice 2 proposes a sensor for it.
 - **Subcommands register themselves.** Each subcommand's file registers its name, usage line and function in one
-  registry from `init()`; a duplicate name panics at start-up, and the usage text and the package doc's list come
-  from the registry, so `main.go` holds no list. This is the one place the harness prefers registration over
-  explicit wiring ([core belief 1](../design-docs/core-beliefs.md)): a product-only subcommand is then one more
-  file, not an edit to `main.go` at every template sync. A product's variant of a shared subcommand takes its own
-  name.
+  registry from `init()`; a duplicate name panics at start-up. The usage text and `harness help` print the list
+  from the registry and the package doc keeps none, so `main.go` holds no list. Inside `.bin/harness` this is the
+  one place the harness prefers registration over explicit wiring
+  ([core belief 1](../design-docs/core-beliefs.md)); the analyzers plugin already registers from `init()` for
+  golangci's loader (ADR 0031). A product-only subcommand is then one more file, not an edit to `main.go` at every
+  template sync. A product's variant of a shared subcommand takes its own name; the product then deletes the
+  template's file and declines it in `.harness-version` (ADR 0026), or keeps a caller for it, because a name
+  nothing calls fails `repo-no-orphan-subcommands`.
 - **Subcommands take their root, environment and working directory as arguments** and never call `os.Exit`, so
   tests can call them in-process and in parallel.
 - **The trigger list decides when the harness tests re-run.** Go's test cache rechecks only files inside the

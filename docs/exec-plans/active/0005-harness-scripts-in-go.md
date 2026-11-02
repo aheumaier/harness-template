@@ -82,7 +82,8 @@ each in ADR 0045's Alternatives; the product's copy has them in full.
   `make harness-sync-check`** ([ADR 0026](../../adr/0026-template-sync-is-a-drift-report.md)). The scripts are
   template files: a rewrite only in a product turns every later upstream change to a script into a hand port
   from bash into Go. The adoption probe ([ADR 0038](../../adr/0038-readme-brownfield-adoption-is-probed.md))
-  runs only here (`HARNESS_UPSTREAM` is empty in `scripts/tool-versions.env`), so trap 3 is proven here.
+  runs only here (`HARNESS_UPSTREAM` is empty in `scripts/tool-versions.env`), so [trap 3](#three-traps) is proven
+  here.
   Products port their own scripts after the template's slice (for example a product's own Sonar or Swift
   wrappers, and the shared scripts it changed locally).
 - **R2, scope: (a) everything except a bash bootstrap.** What stays bash, and why:
@@ -123,8 +124,9 @@ each in ADR 0045's Alternatives; the product's copy has them in full.
   `run` with a registry that each subcommand's file fills from `init()` (name, usage line, function), so `run`
   stays a thin dispatcher and a product-only subcommand is one more file, not an edit to `main.go` that every
   template sync touches. `main.go` holds four lists today (the package doc `:5-28`, the `usage` const `:46`,
-  `rootSensors` `:50-60`, the `switch` `:72-201`); all four come from the registry afterwards. A duplicate name
-  panics at start-up, so a product's variant of a shared subcommand takes its own name and its own make target.
+  `rootSensors` `:50-60`, the `switch` `:72-201`). Afterwards the usage text, `harness help`, `rootSensors` and the
+  dispatch come from the registry, and the package doc keeps no list. A duplicate name panics at start-up, so a
+  product's variant of a shared subcommand takes its own name and its own make target.
   ADR 0045 records why this is registration rather than explicit wiring.
 - **A stable surface for product files.** A product-only subcommand compiles against the package's unexported
   helpers. Slice 2 names the surface such a file may use (the command type, the value carrying root,
@@ -159,8 +161,13 @@ each in ADR 0045's Alternatives; the product's copy has them in full.
   - `fast-check.sh` runs `run.sh` (`:19`) and the slice 6 sensors `migrations-append-only.sh`, `squawk.sh`,
     `swiftlint.sh` and `swift-format.sh`, and sources `file-sensors.sh`. Its slice 5 subcommand only prints the
     routing decision; the wrapper, which stays bash (R2), runs `$RUN` on what it prints.
-  - `pre-commit.sh` runs `run.sh` (`:30`): it ports in slice 9 with `run.sh`.
-  - `scheduled-review.sh` sources `ci-agent.sh` (`:49`): it ports in slice 8 with `ci-agent`.
+  - `pre-commit.sh` runs `run.sh` (`:30`): it ports in slice 9 with `run.sh`. It also sources `file-sensors.sh`
+    (`:27`) for `harness_file_kind` (`:51`) and runs `trivy.sh secret --staged` (`:65`). The slice 6 PR that
+    ports those two swaps both calls for their subcommands (`harness file-kind <path>` gives
+    `harness_file_kind` a CLI form) and measures NFR-H8.
+  - `pr-review.sh` (`:55`), `scheduled-review.sh` (`:49`) and `agent-gc.sh` (`:76`) source `ci-agent.sh`: all
+    port in slice 8 with `ci-agent`. `ci-agent.sh` is deleted in the last slice 8 PR; until then a change to
+    one copy is made in the other.
 - **Callers change in the same PR**, with one exception: a workflow that runs the PR's own copy against the base
   checkout (`pr-review.yml`, whose header says "Change the script's interface and this file in separate PRs",
   `pr-review.yml:25`). There it is two PRs: the first adds the subcommand, keeps the script as a shim that calls
@@ -181,9 +188,9 @@ each in ADR 0045's Alternatives; the product's copy has them in full.
   (`HARNESS_BUDGETS=/dev/null`, no `HARNESS_SCOPE`, no `HARNESS_STACK`) passed as values, not set in the process.
   Ported tests read paths from `layout.env` and never hard-code the template layout (TD-99, TD-133). A test reads
   only files inside the module or matched by the trigger pathspec (Scope and budgets), because only those make
-  `test-harness` re-run. Two tests read files outside it today: `qualityrows_test.go:197`
-  (`scripts/templates/new-domain/quality-row.md.tmpl`) and `:207` (`docs/QUALITY.md`); slice 2 moves those
-  inputs into `testdata/` or adds the paths to the trigger.
+  `test-harness` re-run. One test reads a file outside it today: `qualityrows_test.go:207` (`docs/QUALITY.md`);
+  slice 2 moves that input into `testdata/` or keeps the path in the trigger. (`:197` reads
+  `scripts/templates/new-domain/quality-row.md.tmpl`, which `'scripts/*'` already matches.)
 - **Linted like product code.** Slice 2 adds a `lint-harness` target that runs golangci in
   `apps/api/tools/harness` with its own protected config, and brings the module under the size and complexity
   rules of ADR 0024 with starting numbers measured when it lands (a deliberate second set that only goes down
@@ -323,7 +330,7 @@ slowest-first because `run.sh` and `selftest.sh` have the most callers; the user
   cache, decides what re-runs after a harness change. The cost: any protected-path edit, `AGENTS.md` or
   `docs/harness/*` included, runs the whole Go suite uncached, as it runs all of bats today.
 - **NFR-H5 (one sensor ≤ 5 s or a `budgets.txt` row).** `harness-tests` already breaks it uncached (10.4 s
-  here; median 12.7 s in the lane's `make check` runs). The merged suite will be larger. Each slice records
+  here; median 12.7 s in the 11 `make check` runs of Why). The merged suite will be larger. Each slice records
   `go test` time cached and uncached. Slice 11 proposes a measured `harness-tests` row in `budgets.txt`
   (protected; a human decides). "NFR-H5 met" means met through that row.
 - **NFR-H4 (`make check` ≤ 60 s on any change).** Met when a harness change no longer pays 192 s of bats.
@@ -334,7 +341,7 @@ slowest-first because `run.sh` and `selftest.sh` have the most callers; the user
   `nfr.md` on 2026-10-28); the wrapper keeps no `node` call and gains no new process. On macOS the first hook
   call after each rebuild pays the ~0.35 s executable check once; the median hides it, and the Log says so.
 - **NFR-H2 (`fast-check` ≤ 1 s) and NFR-H8 (the pre-commit hook ≤ 2 s, `budgets.txt`).** Slice 5 measures
-  `fast-check` before and after, slice 9 the pre-commit path.
+  `fast-check` before and after, slices 6 and 9 the pre-commit path (Target shape).
 
 ## Three traps
 
@@ -432,8 +439,8 @@ Each PR updates every reference to the files it moves:
 - `sh-tests-pass` in `rules.md` is reworded to the Go tests (or retired into `go-tests-pass`), so no rule names a
   sensor that no longer runs ([ADR 0032](../../adr/0032-rules-that-never-fire-are-a-drift-report.md)).
 - What stays bash is the bootstrap table of R2 plus the fixture data, and nothing else; each bootstrap file is
-  covered by a Go test. `setup-worktree.sh`, `commit-msg` and `pre-commit` have no bats file today, so their Go
-  tests are new, not ported.
+  covered by a Go test. `setup-worktree.sh`, `scripts/git-hooks/commit-msg` and `scripts/git-hooks/pre-commit`
+  have no bats file today, so their Go tests are new, not ported.
 - `lint-harness` runs in `make check` with the size and complexity rules, each with a rule id and a fixture, as
   are its `tparallel` and `os/exec` bans; `repo-no-orphan-subcommands`, `harness-go-runs-no-script` and
   `harness-no-new-shell` are rules with fixtures; `harness-layout-valid` fails when the module is not
@@ -451,13 +458,15 @@ Each PR updates every reference to the files it moves:
 - **The trigger rule is the only guard against a replayed pass.** If `test-harness` loses its gate, or a harness
   file is missing from `protected-paths.txt`, `make check` can report an old green. Mitigation: A1, and the full
   uncached run in `check-all` and CI catches it before a merge.
-- **A stale binary.** Covered by the exit-64 routing for every usage error (A7). A behaviour change behind an
+- **A stale binary.** Covered by the escape check before the binary call, plus the 64/126/127 and usage-text
+  check (Target shape, A7). A behaviour change behind an
   unchanged interface is not detected until the binary is rebuilt; `.bin/harness` rebuilds on every
   `make check` (ADR 0012).
 - **Hand ports into products.** A product that changed a shared script locally gets "deleted upstream, changed
   here too" from `sync-check` when the template deletes it, and must decide before that slice whether to
-  upstream its change or keep it as a separate subcommand file under its own name. Mitigation: freeze changes to
-  a script while its slice is open.
+  upstream its change or keep it as a separate subcommand file under its own name. In the second case it deletes
+  the template's file and declines it in `.harness-version`, or keeps a caller for it, or
+  `repo-no-orphan-subcommands` fails. Mitigation: freeze changes to a script while its slice is open.
 - **Product files break on a template helper change.** A product-only subcommand compiles against unexported
   template helpers, and breaks only when the product syncs. Mitigation: the stable surface (Target shape), and a
   PR that changes it says so.
@@ -522,6 +531,12 @@ lens. 23 findings; 22 fixed here, one in part. No finding reversed a ruling.
   - The PR description lists where this copy differs from the text the user ruled on.
 - *Not taken:* the suggestion to add a note to plan 0004 that new iOS harness logic is Go. ADR 0045's decision
   already binds it, and plan 0004 belongs to the iOS work; its next PR picks up the rule.
+
+**Re-check, 2026-11-02.** Both reviewers re-read the fixed copy. All 23 findings read as resolved; 10 new small
+ones, all fixed: `pre-commit.sh`'s slice 6 callees (`file-sensors.sh`, `trivy.sh`) and NFR-H8 in slice 6; when
+`ci-agent.sh` goes; the package doc cannot be filled from a runtime registry; a product's variant leaves the
+template's subcommand uncalled; the analyzers plugin already registers from `init()`; the stale-binary Risk line;
+`:197` is inside the trigger; "iOS lane" in Scope; which `pre-commit` has no bats file; a link to trap 3.
 
 ## Log
 
