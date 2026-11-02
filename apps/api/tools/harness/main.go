@@ -43,7 +43,7 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness test-file <root> <path> | harness check-links <root> | harness fixture-claims <root> | harness rule-lists <root> | harness orphans <root> | harness quality-rows [-no-clock] <root> | harness references-pinned <root> | harness approved-check <root> | harness specs-tested <root> | harness layout-check <root> | harness spec-refs <file>... | harness integrity-check <root> | harness rename [-write] <root> <name> <module|skip> <owner>"
+const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness test-file <root> <path> | harness check-links <root> | harness fixture-claims <root> | harness rule-lists <root> | harness orphans <root> | harness quality-rows [-no-clock] <root> | harness references-pinned <root> | harness approved-check <root> | harness specs-tested <root> | harness layout-check <root> | harness swift-resolved <root> | swift package describe --type json | harness swift-tests <root> <dir> | harness spec-refs <file>... | harness integrity-check <root> | harness rename [-write] <root> <name> <module|skip> <owner>"
 
 // rootSensors are the sensors run as `harness <name> <root>`: findings on stdout, whether there was any, and an
 // error when they cannot run.
@@ -56,6 +56,7 @@ var rootSensors = map[string]func(root string, stdout io.Writer) (bool, error){
 	"approved-check":    approvedCheck,
 	"specs-tested":      scenariosTested,
 	"layout-check":      layoutCheck,
+	"swift-resolved":    swiftResolved,
 }
 
 // printFinding prints one sensor finding as `<file>:<line>: <message> [<rule>]`, the line run.sh maps to the rule.
@@ -106,7 +107,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return 1
 		}
 		return 0
-	case "check-links", "fixture-claims", "rule-lists", "orphans", "references-pinned", "approved-check", "specs-tested", "layout-check":
+	case "check-links", "fixture-claims", "rule-lists", "orphans", "references-pinned", "approved-check", "specs-tested", "layout-check", "swift-resolved":
 		if len(args) != 2 {
 			break
 		}
@@ -114,6 +115,19 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		switch {
 		case err != nil:
 			fmt.Fprintf(stderr, "harness %s: %v\n", args[0], err)
+			return 2
+		case bad:
+			return 1
+		}
+		return 0
+	case "swift-tests":
+		if len(args) != 3 {
+			break
+		}
+		bad, err := swiftTests(args[1], args[2], stdin, stdout)
+		switch {
+		case err != nil:
+			fmt.Fprintf(stderr, "harness swift-tests: %v\n", err)
 			return 2
 		case bad:
 			return 1

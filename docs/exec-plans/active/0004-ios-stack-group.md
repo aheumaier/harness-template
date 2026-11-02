@@ -1,6 +1,6 @@
 # 0004 — iOS stack group
 
-Status: phase 1 merged (PR #12); phase 2a merged (PR #14); phase 2b in review (PR #15) · Owner: @aheumaier · Started: 2026-10-31
+Status: phase 1 merged (PR #12); phase 2a merged (PR #14); phase 2b merged (PR #15, 095e846); phase 2c in review · Owner: @aheumaier · Started: 2026-10-31
 
 ## Goal
 
@@ -171,7 +171,8 @@ learn a new one. By phase:
   - The selftest's "full stack" is now `go:db:web:ios`, so every product that drops `ios` loses NFR-R3's
     "a skip fails" once iOS-only targets exist: decide whether full means "every group the product declares". Decided 2026-11-01: yes (ADR 0042).
   - XcodeGen's `project.yml` marks an iOS app for D4 and decides Xcode test folders by target, which a path
-    cannot (a `*Tests` subfolder of an Xcode app folder counts today).
+    cannot (a `*Tests` subfolder of an Xcode app folder counts today). D4 done in 2c; test folders by target not yet
+    ([TD-153](../tech-debt-tracker.md)).
   - Re-point the literal `apps/ios` in `test-writer.md`, `apps/ios/AGENTS.md` and the `layout.env` comment to
     `IOS_DIR`. Done in 2a.
 - CI (2c): the macOS job (Q7), the setup action's `":ios:"` steps, `REQUIRED_CHECKS` and `docs/harness/ci.md`,
@@ -180,24 +181,26 @@ learn a new one. By phase:
   `/Applications/Xcode_${XCODE_VERSION}.app` and fails when it is missing, asserts that `xcode-select -p` is not
   the command-line tools (or `xcode-pinned` would skip), starts on every PR and passes with a notice when nothing
   iOS changed (Q7), and caches `.bin/swift-format` under a key of `SWIFT_FORMAT_COMMIT` and the sha256 of
-  `scripts/swift-format/Package.resolved` (TD-156).
+  `scripts/swift-format/Package.resolved` (TD-156). Done in 2c.
 - `Makefile`: `IOS_TARGETS`, `HOST_OFF` (D3), a `##@ iOS sensors` section, `check-ios` (D7), `test-ios`
   (`swift test`) in `make check` on darwin (Q5), `scripts/test/make-stack.bats`, `budgets.txt` rows. Done in 2a
   and 2b.
 - `layout.env`, `layout.sh`, `layout.go`: `IOS_DIR` (D8) and its path check; `affected.sh:79`.
 - Selftest: `NEEDS_XCODE`, `NEEDS_SWIFT`, `SELFTEST_SKIP_XCODE` (D2). Done in 2a and 2b.
 - Tools: `install-tools.sh` (an `ios` block before `harness_stack_has web || exit 0`, darwin only),
-  `tool-versions.env` (SwiftLint, swift-format, XcodeGen, `XCODE_VERSION`). Done in 2b except XcodeGen (2c).
+  `tool-versions.env` (SwiftLint, swift-format, XcodeGen, `XCODE_VERSION`). Done in 2b, XcodeGen in 2c.
 - `run.sh` `finding_pattern` (SwiftLint size findings → the `code-*` rules, ADR 0024); `integritycheck.go`
   suppressions. Done in 2b.
-- The app target: `apps/ios/project.yml`, the generated project ignored or checked by `gen-check`.
+- The app target: `apps/ios/project.yml`, the generated project ignored or checked by `gen-check`. Done in 2c
+  (ignored).
 - `.claude/agents/test-writer.md` and ADR 0039's amendment (D6); `file-sensors.sh` and
   `.claude/hooks/fast-check.sh` (a Swift kind). The hook and `file-sensors.sh` done in 2b.
 - `protected-paths.txt` and `CODEOWNERS`: `*.swiftlint.yml`, `*.swift-format`. Done in 2b (root configs only,
   as the callers always name them).
 - rules.md `ios-*` sections, each with its fixture; the review agents' Skip lists if `rule-lists` asks. Done in
   2a and 2b for their rules.
-- Supply chain: fail when a Swift package with remote dependencies has no git-known `Package.resolved`.
+- Supply chain: fail when a Swift package with remote dependencies has no git-known `Package.resolved`. Done in
+  2c (`deps-swift-resolved`).
 
 **Phase 3 (generated client)**
 - `gen-check.sh` `INPUTS`, `GENERATED_GLOBS`, a `gen-*` target in `IOS_TARGETS`, `make gen`.
@@ -213,7 +216,7 @@ learn a new one. By phase:
 | # | Phase | Exit criterion | State |
 |---|-------|----------------|-------|
 | 1 | `ios` group and skeleton, no Xcode: D1, D4, D5, D9, Trivy, `.gitignore`, adoption, rules.md, ADR 0041 | `make check`, `make check-all` and `HARNESS_SCOPE=full make harness-selftest` green on Ubuntu; `adoption-probe` green; the three Phase 1 fixtures rejected; `swift test` on the skeleton green on this Mac; a product with `STACK=go:db:web:ios` and Swift tests under `apps/ios/Tests/…Tests/` passes `layout-check` and `specs-tested` | merged (PR #12) |
-| 2 | macOS job, D2, D3, D6, D7, D8, Xcode pin check, SwiftLint, swift-format, `swift test` in `make check` on macOS, the app target | the macOS job green and required; each new rule rejects its fixture there; Ubuntu jobs skip iOS only by name | 2a (`IOS_DIR`, `HOST_OFF`, `test-ios`, `NEEDS_SWIFT`, the `test-writer`; ADR 0042) merged (PR #14); 2b (SwiftLint, swift-format, the Xcode pin, `IOS_SWIFT_TARGETS`/`IOS_XCODE_TARGETS`, `NEEDS_XCODE`, the Swift kind in the per-file sensors; ADR 0043) in review (PR #15); 2c (macOS job, app target, XcodeGen, the `Package.resolved` check) pending |
+| 2 | macOS job, D2, D3, D6, D7, D8, Xcode pin check, SwiftLint, swift-format, `swift test` in `make check` on macOS, the app target | the macOS job green and required; each new rule rejects its fixture there; Ubuntu jobs skip iOS only by name | 2a (`IOS_DIR`, `HOST_OFF`, `test-ios`, `NEEDS_SWIFT`, the `test-writer`; ADR 0042) merged (PR #14); 2b (SwiftLint, swift-format, the Xcode pin, `IOS_SWIFT_TARGETS`/`IOS_XCODE_TARGETS`, `NEEDS_XCODE`, the Swift kind in the per-file sensors; ADR 0043) merged (PR #15, 095e846); 2c (the macOS job `check-ios`, the app target, XcodeGen, `build-ios`, the `Package.resolved` and undeclared-test checks; ADR 0044) in review |
 | 3 | Generated Swift client | `make gen` regenerates it; `gen-check` fails on a hand edit (fixture); the `x-extensible-enum` rule documented | after 2 |
 | 4 | Simulator UI tests, layer rule | `ios-e2e` in `check-ios` within its budget; the layer rule rejects its fixture | after 3 |
 
@@ -276,3 +279,19 @@ the `test-writer` and `swift test` into Phase 2. Each phase is its own branch an
   SwiftLint runs with `--no-cache`; the integrity check matches config paths in any ASCII case, reports a config
   added, retargeted or deleted as a symlink and no longer reads a `#` line holding a carriage return, or ending in
   `\`, as a comment; `install-tools.sh` cleans up on every swift-format failure and names a missing resolved file.
+- 2026-11-02: 2b merged (PR #15, 095e846). Built 2c on `feat/ios-ci`
+  ([ADR 0044](../../adr/0044-ios-ci-on-macos.md)), with these rulings recorded there: the generated
+  `.xcodeproj` is git-ignored and generated by `make setup` and `build-ios` (option (b)), not checked by
+  `gen-check`; a push to main always runs the macOS job; `XCODE_VERSION` stays 26.6 from 2b. The macOS job
+  `check-ios` (`ios.yml`, a required check) runs `make check-ios` and the selftest without the Docker fixtures;
+  XcodeGen 2.46.0 is installed on demand; `project.yml` marks an iOS app for D4; the new checks
+  `deps-swift-resolved` and the undeclared-test half of `ios-tests-pass` (TD-153's fix candidate) are `.bin/harness`
+  subcommands in Go; the setup action caches swift-format apart (TD-156). Only the macOS job on the PR proves the
+  Xcode parts (`build-ios`, `project.yml`, the `ios-app-build-broken` and `ios-xcode-mismatch` fixtures).
+  After review, the gate of `ios.yml` no longer counts a change to `SPEC` (phase 3 adds the contract once Swift is
+  generated from it), the swift-resolved check reads manifests in any case, refuses a linked manifest and an empty
+  or intent-to-add lockfile, and counts a backticked `.package` or one with a comment before its parenthesis;
+  the gate's blind spots, the build's fresh package resolution and the unread timings artifact are TD-164, TD-162
+  and TD-163. The second review round added: `package(url:`, `id:` or `name:` without the dot (a bare `package(`
+  matched the template's own comment "a Swift package (ADR 0041)"), a lockfile must pin a package, a link under
+  `Tests/` is a finding, and Xcode project and `IOS_DIR` names match in any case.

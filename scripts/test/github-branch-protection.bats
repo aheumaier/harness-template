@@ -44,7 +44,7 @@ script() { run "$@" "$REPO/scripts/github-branch-protection.sh"; }
 
 @test "required checks are exactly the job ids of the required workflows" {
   jobs="$(cd "$REPO/.github/workflows" && awk 'FNR == 1 { j = 0 } /^jobs:/ { j = 1; next }
-    j && /^  [a-z][a-z0-9-]*:$/ { sub(/:$/, ""); print $1 }' ci.yml contract-gate.yml harness-integrity.yml | sort)"
+    j && /^  [a-z][a-z0-9-]*:$/ { sub(/:$/, ""); print $1 }' ci.yml contract-gate.yml harness-integrity.yml ios.yml | sort)"
   checks="$(sed -n 's/^REQUIRED_CHECKS=(\(.*\))$/\1/p' "$REPO/scripts/github-branch-protection.sh" | tr ' ' '\n' | sort)"
   [[ "$jobs" == "$checks" ]] || {
     printf 'workflow jobs:\n%s\nREQUIRED_CHECKS:\n%s\n' "$jobs" "$checks" >&2

@@ -78,10 +78,13 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - run: make setup
-      # Ubuntu is not macOS: no ios sensor runs here, so the NEEDS_SWIFT and NEEDS_XCODE fixtures are skipped (ADR 0042, 0043).
+      # Ubuntu is not macOS: no ios sensor runs here, so the NEEDS_SWIFT and NEEDS_XCODE fixtures are skipped (ADR 0042,
+      # 0043); the ios workflow runs them. SELFTEST_SKIP_XCODE is redundant: off macOS a NEEDS_XCODE fixture is
+      # skipped by its Swift check first. It is set so the skip does not depend on that order.
       - run: make harness-selftest
         env:
           SELFTEST_SKIP_SWIFT: "1"
+          SELFTEST_SKIP_XCODE: "1"
 
   generator-probe:
     # The domain generator must keep producing code that passes every fast sensor, with a passing service,

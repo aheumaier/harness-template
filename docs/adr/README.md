@@ -49,3 +49,4 @@ only through a new ADR. Architectural PRs link an ADR in the PR template.
 | [0041](0041-ios-stack-group.md) | An `ios` stack group, with a Swift skeleton in the template (amends 0033, 0036, 0039) | accepted |
 | [0042](0042-swift-unit-tests-in-make-check.md) | Swift unit tests run in `make check` on macOS (amends 0033, 0039, 0041) | proposed |
 | [0043](0043-swift-lint-format-and-xcode-pin.md) | SwiftLint, swift-format and the Xcode pin (amends 0016, 0024, 0042) | proposed |
+| [0044](0044-ios-ci-on-macos.md) | iOS CI on macOS, the app target and Swift lockfiles (amends 0042, 0043) | proposed |

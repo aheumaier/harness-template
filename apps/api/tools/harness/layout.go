@@ -10,8 +10,8 @@ package main
 // `:`); it names each of go, db, web and ios (ADR 0041) at most once, and go always. Without db, layout-check
 // leaves MIGRATIONS_DIR and QUERIES_DIR unchecked; without web, API_CLIENT_DIR and WEB_GLOBS. A stack must match
 // the tree: a group left out while its git-known files exist (a *.sql in MIGRATIONS_DIR or a file in QUERIES_DIR;
-// a package.json in a WEB_GLOBS workspace or an API_CLIENT_DIR; a *.swift or an Xcode project under a
-// PRODUCT_GLOBS or WEB_GLOBS entry) is a finding, so a narrowed stack never silently drops sensors whose code is still there.
+// a package.json in a WEB_GLOBS workspace or an API_CLIENT_DIR; a *.swift, an Xcode project or an XcodeGen
+// project.yml under a PRODUCT_GLOBS or WEB_GLOBS entry) is a finding, so a narrowed stack never silently drops sensors whose code is still there.
 //
 // IOS_DIR (the iOS app's directory, ADR 0042), UPSTREAM_SPECS and CONTRACT_CONSUMERS (cross-repo contracts, ADR
 // 0037) are optional and the only keys that may be empty. With ios in STACK, IOS_DIR must hold a git-known
@@ -248,15 +248,15 @@ func (l layout) problems(root string) ([]string, error) {
 			report("IOS_DIR", "not a clean path inside this repo (no leading /, no ./ or .., no trailing /)")
 		default:
 			want := []string{path.Join(dir, "Package.swift"), path.Join(dir, "project.yml")}
-			apps, err := gitKnown(root, ":(literal)"+want[0], ":(literal)"+want[1])
+			apps, err := gitKnown(root, ":(literal,icase)"+want[0], ":(literal,icase)"+want[1]) // as macOS reads them
 			if err != nil {
 				return nil, err
 			}
 			// One of exactly those paths (a literal pathspec also lists the files under a directory of that name),
 			// and a regular file, not a symlink: a link to /dev/null or to any other file is no app.
 			found := slices.ContainsFunc(apps, func(f string) bool {
-				fi, err := os.Lstat(filepath.Join(root, f))
-				return slices.Contains(want, f) && err == nil && fi.Mode().IsRegular()
+				regular, err := isRegular(root, f)
+				return slices.ContainsFunc(want, func(w string) bool { return strings.EqualFold(w, f) }) && err == nil && regular
 			})
 			if !found {
 				report("IOS_DIR", "no git-known Package.swift or project.yml there, but STACK has ios (set it to the iOS app's directory)")
@@ -344,7 +344,10 @@ func (l layout) hiddenGroups(root string, isDir func(string) bool) ([]string, er
 		}
 	}
 	if !l.has("ios") { // any Swift counts, hybrid shells and server Swift too (ADR 0041)
-		files, err := gitKnown(root, "*.swift", "*.xcodeproj/project.pbxproj") // not gitFiles: a fixtures/ folder in the app is still the app
+		// project.yml, in any case as macOS's file system reads it (an Xcode project too): an XcodeGen app with no
+		// Swift yet (ADR 0044).
+		// Not gitFiles: a fixtures/ folder in the app is still the app.
+		files, err := gitKnown(root, "*.swift", ":(icase)*.xcodeproj/project.pbxproj", ":(icase)project.yml", ":(icase)*/project.yml")
 		if err != nil {
 			return nil, err
 		}

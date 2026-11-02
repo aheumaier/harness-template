@@ -60,10 +60,17 @@ func layoutTree(t *testing.T, lines []string) string {
 		"apps/api/db/migrations/atlas.sum":            {"h1:"},
 		"api/openapi.yaml":                            {"openapi: 3.1.0"},
 		"packages/api-client/package.json":            {"{}"},
-		"apps/ios/project.yml":                        {"name: App"}, // not Package.swift: no Swift, so STACK=go still passes
+		"apps/ios/project.yml":                        {"name: App"}, // the iOS app: tests without ios use withoutIOSApp
 		"scripts/harness/fixtures/x/files/a/b/c/d.go": {"package d"},
 	})
 	gitT(t, root, "add", "-A")
+	return root
+}
+
+// withoutIOSApp removes layoutTree's iOS app, as in a product without ios: its project.yml marks the app (D4).
+func withoutIOSApp(t *testing.T, root string) string {
+	t.Helper()
+	gitT(t, root, "rm", "-qf", "apps/ios/project.yml")
 	return root
 }
 
@@ -197,7 +204,7 @@ func TestLayoutStack(t *testing.T) {
 		t.Run(tt.env, func(t *testing.T) {
 			t.Setenv("HARNESS_STACK", tt.env)
 			var out bytes.Buffer
-			bad, err := layoutCheck(layoutTree(t, lines), &out)
+			bad, err := layoutCheck(withoutIOSApp(t, layoutTree(t, lines)), &out)
 			want := strings.Join(append(tt.want, ""), "\n")
 			if len(tt.want) == 0 {
 				want = ""
@@ -220,7 +227,7 @@ func TestLayoutStack(t *testing.T) {
 // go:db:web; a STACK that is present but invalid still fails closed (TestLayoutCheck, TestStackVectors).
 func TestLayoutStackDefault(t *testing.T) {
 	noHarnessStack(t)
-	root := layoutTree(t, withLayout("STACK", ""))
+	root := withoutIOSApp(t, layoutTree(t, withLayout("STACK", "")))
 	l, err := loadLayout(root)
 	if err != nil || l.get("STACK") != "go:db:web" || !l.has("db") || !l.has("web") {
 		t.Errorf("STACK=%q err=%v", l.get("STACK"), err)
@@ -278,6 +285,15 @@ func TestLayoutStackHides(t *testing.T) {
 		{"an Xcode project is ios code", "go", "-", map[string][]string{
 			"apps/mobile/App.xcodeproj/project.pbxproj": {""},
 		}, []string{hides(layoutFile+":12: STACK=go", "ios", "apps/mobile/App.xcodeproj/project.pbxproj")}},
+		{"an XcodeGen project.yml is ios code, Swift or not", "go", "-", map[string][]string{
+			"apps/mobile/project.yml": {"name: App"},
+		}, []string{hides(layoutFile+":12: STACK=go", "ios", "apps/mobile/project.yml")}},
+		{"a Project.yml is an XcodeGen spec on macOS", "go", "-", map[string][]string{
+			"apps/mobile/Project.yml": {"name: App"},
+		}, []string{hides(layoutFile+":12: STACK=go", "ios", "apps/mobile/Project.yml")}},
+		{"an Xcode project in another case is one on macOS", "go", "-", map[string][]string{
+			"apps/mobile/App.XCODEPROJ/Project.pbxproj": {""},
+		}, []string{hides(layoutFile+":12: STACK=go", "ios", "apps/mobile/App.XCODEPROJ/Project.pbxproj")}},
 		{"Swift in a fixtures/ folder of the app is still the app", "go", "-", map[string][]string{
 			"apps/ios/Sources/App/fixtures/Main.swift": {""},
 		}, []string{hides(layoutFile+":12: STACK=go", "ios", "apps/ios/Sources/App/fixtures/Main.swift")}},
@@ -419,13 +435,18 @@ func TestLayoutRootModule(t *testing.T) {
 
 // A Swift package alone marks the iOS app (layoutTree has only a project.yml: a .swift file there would be hidden
 // Swift under STACK=go).
+// So does a project.yml in another case, as macOS reads it.
 func TestLayoutCheckIOSPackage(t *testing.T) {
 	noHarnessStack(t)
-	root := layoutTree(t, withLayout("IOS_DIR", "apps/pkg"))
-	writeLines(t, root, "apps/pkg/Package.swift", "// swift-tools-version: 6.0")
-	var out bytes.Buffer
-	if bad, err := layoutCheck(root, &out); err != nil || bad {
-		t.Errorf("bad=%v, err=%v, output:\n%s", bad, err, out.String())
+	for _, app := range []string{"apps/pkg/Package.swift", "apps/pkg/Project.yml"} {
+		t.Run(app, func(t *testing.T) {
+			root := layoutTree(t, withLayout("IOS_DIR", "apps/pkg"))
+			writeLines(t, root, app, "// swift-tools-version: 6.0")
+			var out bytes.Buffer
+			if bad, err := layoutCheck(root, &out); err != nil || bad {
+				t.Errorf("bad=%v, err=%v, output:\n%s", bad, err, out.String())
+			}
+		})
 	}
 }
 

@@ -344,7 +344,7 @@ drop_sets() {
   hand_edit Makefile '/^new-domain:/,/^$/d' '/^\.PHONY:/s/ new-domain( |$)/\1/'
   hand_edit .github/workflows/ci.yml '/^  generator-probe:$/,/^$/d'
   hand_edit scripts/github-branch-protection.sh 's/ generator-probe([ )])/\1/' 's/\(generator-probe /(/'
-  hand_edit docs/harness/ci.md '/`generator-probe`/d' 's/the seven required checks/the six required checks/'
+  hand_edit docs/harness/ci.md '/`generator-probe`/d' 's/the eight required checks/the seven required checks/'
 }
 step 6 "drop the web and db sets and make new-domain" drop_sets
 # The skeleton's drop.txt: what this layout drops by path. A dropped test leaves its rule's Fixture line.

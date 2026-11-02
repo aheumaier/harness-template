@@ -1,0 +1,99 @@
+# Harness file (protected). The iOS sensors that need macOS and Xcode, on every PR and on main (ADR 0044).
+# The job name is a required status check: keep it in sync with scripts/github-branch-protection.sh.
+name: ios
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  BASE_REF: origin/${{ github.base_ref || 'main' }}
+  HARNESS_SCOPE: full
+
+jobs:
+  check-ios:
+    # Hosted macOS runners have no Docker, so no Postgres: this job runs make check-ios and the selftest, never
+    # check-all (plan 0004 D7). It always starts, so it can be required, and passes with a notice when there is
+    # nothing iOS to check (Q7): macOS minutes cost ten times Linux minutes in a private repo.
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Skips when STACK has no ios (ADR 0033), or on a PR that changes no Swift file, Swift package or XcodeGen
+      # spec anywhere (Q8), nothing in IOS_DIR and no harness file (unchanged.sh adds every protected path). A push
+      # to main always runs, so the newest main is proven after a merge.
+      - name: Is there anything iOS to check?
+        id: gate
+        shell: bash
+        run: |
+          layout="$(scripts/harness/layout.sh --print)"
+          stack="$(sed -n 's/^STACK=//p' <<<"$layout")"
+          ios_dir="$(sed -n 's/^IOS_DIR=//p' <<<"$layout")"
+          if [[ ":$stack:" != *":ios:"* ]]; then
+            echo "::notice::STACK=$stack in scripts/harness/layout.env has no ios (ADR 0033): nothing to check on macOS"
+            echo skip=true >>"$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_EVENT_NAME" == pull_request ]] &&
+            HARNESS_SCOPE=changed scripts/harness/unchanged.sh ${ios_dir:+"$ios_dir"} '*.swift' \
+              Package.swift '*/Package.swift' Package.resolved '*/Package.resolved' project.yml '*/project.yml'; then
+            echo "::notice::this PR changes no Swift file, Swift package, project.yml, file in IOS_DIR=$ios_dir or harness file: nothing to check on macOS (ADR 0044)"
+            echo skip=true >>"$GITHUB_OUTPUT"
+          else
+            echo skip=false >>"$GITHUB_OUTPUT"
+          fi
+      # The pinned Xcode, before any Swift is built. Fails when the runner image lacks it, rather than building
+      # with another Xcode; the command-line tools would make xcode-pinned and build-ios skip (ADR 0043).
+      - name: Select Xcode XCODE_VERSION from scripts/tool-versions.env
+        if: steps.gate.outputs.skip != 'true'
+        shell: bash
+        run: |
+          v="$(sed -n 's/^XCODE_VERSION=//p' scripts/tool-versions.env | tail -n 1)"
+          app="/Applications/Xcode_$v.app"
+          [[ -n "$v" ]] || {
+            echo "::error::XCODE_VERSION is not set in scripts/tool-versions.env"
+            exit 1
+          }
+          [[ -d "$app" ]] || {
+            echo "::error::$app is not on this runner image: set XCODE_VERSION in scripts/tool-versions.env to an Xcode the macos-26 image lists"
+            exit 1
+          }
+          sudo xcode-select -s "$app/Contents/Developer"
+          dev="$(xcode-select -p)"
+          [[ "$dev" != */CommandLineTools ]] || {
+            echo "::error::xcode-select -p is $dev, the command-line tools, not $app"
+            exit 1
+          }
+          xcodebuild -version
+      - if: steps.gate.outputs.skip != 'true'
+        uses: ./.github/actions/setup
+      # Tools, deps, .env.local and the app's Xcode project (make ios-project); no Postgres.
+      - if: steps.gate.outputs.skip != 'true'
+        run: make setup
+        env:
+          SKIP_DB: "1"
+      - if: steps.gate.outputs.skip != 'true'
+        run: make check-ios
+      # Every fixture on macOS with Xcode, so each ios rule rejects its fixture here (NFR-R5). Only the fixtures
+      # that need Postgres are skipped, by name; the Ubuntu job runs them.
+      - if: steps.gate.outputs.skip != 'true'
+        run: make harness-selftest
+        env:
+          SELFTEST_SKIP_DOCKER: "1"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && steps.gate.outputs.skip != 'true'
+        with:
+          name: harness-timings-check-ios
+          path: .cache/harness/timings.jsonl
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 8
