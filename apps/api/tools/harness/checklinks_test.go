@@ -147,7 +147,7 @@ func TestCheckLinksExitCodes(t *testing.T) {
 		{[]string{"check-links", ok}, 0},
 		{[]string{"check-links", broken}, 1},
 		{[]string{"check-links", t.TempDir()}, 2}, // not a git repo: fail closed
-		{[]string{"check-links"}, 2},
+		{[]string{"check-links"}, exitUsage},
 	} {
 		var stdout, stderr bytes.Buffer
 		if code := run(tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.want {

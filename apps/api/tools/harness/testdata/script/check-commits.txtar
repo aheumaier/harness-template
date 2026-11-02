@@ -1,0 +1,144 @@
+# harness check-commits: commit subjects and the PR title follow Conventional Commits
+# (rules.md#git-conventional-commits). Each case starts from a fresh branch work off main.
+env BASE_REF=main
+exec git init -q -b main
+exec git commit -q --allow-empty -m base
+
+# passes conventional commits, with scope and breaking marker
+exec git checkout -qB work main
+exec git commit -q --allow-empty -m 'feat(web): add a banner'
+exec git commit -q --allow-empty -m 'fix!: drop the v0 route'
+exec git commit -q --allow-empty -m 'chore(deps/go): bump pgx'
+exec git commit -q --allow-empty -m 'docs: 👨‍👩‍👧 café'
+harness 0 check-commits $WORK
+! stdout .
+
+# flags non-conventional subjects with the sha
+exec git checkout -qB work main
+exec git commit -q --allow-empty -m 'feat: fine'
+exec git commit -q --allow-empty -m 'update stuff'
+exec git commit -q --allow-empty -m 'Feat: capitalised type'
+shortsha SHA HEAD~1
+harness 1 check-commits $WORK
+stdout '^'$SHA': ''update stuff'' is not'
+stdout '''Feat: capitalised type'' is not'
+stdout '\[git-conventional-commits\]$'
+! stdout 'feat: fine'
+
+# flags subjects over 100 characters, counted in characters, not bytes
+exec git checkout -qB work main
+exec git commit -q --allow-empty -m 'docs: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+exec git commit -q --allow-empty -m 'docs: üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü'
+harness 0 check-commits $WORK
+exec git commit -q --allow-empty -m 'docs: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+harness 1 check-commits $WORK
+stdout 'subject is 101 characters, max 100'
+! stdout 'subject is 100'
+
+# flags a description of only Unicode spaces, format or control characters, combining marks or fillers, and a subject git stored with a leading U+00A0
+exec git checkout -qB work main
+exec git commit -q --allow-empty -m 'feat: 　'
+exec git commit -q --allow-empty -m 'feat: ́'
+exec git commit -q --allow-empty -m 'feat: ㅤ'
+exec git commit -q --allow-empty -m 'feat: '
+exec git commit -q --allow-empty -F $WORK/nbsp-line.msg
+exec git commit -q --allow-empty -m ' feat: x'
+harness 1 check-commits $WORK
+stdout -count=6 ' is not '
+env PR_TITLE='feat: ​'
+harness 1 check-commits $WORK
+stdout '^PR title: '
+env PR_TITLE=
+
+# checks the first line git stored, untrimmed, also for the oldest commit of the range
+exec git checkout -qB work main
+exec git commit -q --allow-empty -F $WORK/long-nbsp.msg
+exec git commit -q --allow-empty -m ' feat: leading space'
+exec git commit -q --allow-empty -F $WORK/two-lines.msg
+harness 1 check-commits $WORK
+stdout 'subject is 101 characters, max 100'
+stdout ''' feat: leading space'' is not'
+stdout '''feat\(api\):'' is not'
+
+# checks PR_TITLE when set, with room for GitHub's squash suffix
+exec git checkout -qB work main
+exec git commit -q --allow-empty -m 'feat: fine'
+env PR_TITLE='Add banner'
+harness 1 check-commits $WORK
+stdout '^PR title: ''Add banner'' is not'
+env PR_TITLE='docs: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+harness 0 check-commits $WORK
+env PR_TITLE='docs: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+harness 1 check-commits $WORK
+stdout '^PR title: subject is 91 characters, max 90'
+env PR_TITLE=
+
+# passes an empty range
+exec git checkout -qB work main
+harness 0 check-commits $WORK
+
+# reads the commits in HARNESS_ROOT, not the root argument (CI runs the base branch's binary on the PR head)
+exec git commit -q --allow-empty -m 'update stuff'
+env HARNESS_ROOT=$WORK
+harness 1 check-commits /nonexistent
+stdout '''update stuff'' is not'
+env HARNESS_ROOT=
+
+# ignores merge commits
+exec git checkout -qB side main
+exec git commit -q --allow-empty -m 'fix: side'
+exec git checkout -qB work main
+exec git merge -q --no-ff -m 'Merge branch ''side''' side
+harness 0 check-commits $WORK
+
+# exits 2 without a base
+env BASE_REF=nope
+harness 2 check-commits $WORK
+stderr '^harness check-commits: BASE_REF ''nope'' is not a commit'
+env BASE_REF=main
+
+# --msg checks the first non-comment line
+harness 0 check-commits --msg $WORK/good.msg
+harness 1 check-commits --msg $WORK/bad.msg
+stdout '^commit message: ''add orders'' is not'
+
+# --msg does not skip or trim a line git keeps (U+00A0 is not blank to git)
+harness 1 check-commits --msg $WORK/nbsp-line.msg
+harness 1 check-commits --msg $WORK/nbsp-desc.msg
+
+# --msg lets git's own merge, revert and autosquash subjects through
+harness 0 check-commits --msg $WORK/merge.msg
+harness 0 check-commits --msg $WORK/revert.msg
+harness 0 check-commits --msg $WORK/fixup.msg
+
+# a usage error exits 64 (ADR 0045)
+harness 64 check-commits --msg
+stderr '^usage: harness'
+harness 64 check-commits
+stderr '^usage: harness'
+
+-- good.msg --
+# comment
+
+feat(api): add orders
+
+body
+-- bad.msg --
+# comment
+add orders
+-- merge.msg --
+Merge branch 'main' into work
+-- revert.msg --
+Revert "feat: x"
+-- fixup.msg --
+fixup! feat: x
+-- nbsp-line.msg --
+ 
+feat: x
+-- nbsp-desc.msg --
+feat:  
+-- long-nbsp.msg --
+docs: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx 
+-- two-lines.msg --
+feat(api):
+add orders

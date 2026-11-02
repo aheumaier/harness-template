@@ -158,7 +158,7 @@ func TestTestFileExitCodes(t *testing.T) {
 		{[]string{"test-file", root, filepath.Join(root, "apps/api/a.go")}, 1},
 		{[]string{"test-file", filepath.Join(root, "missing"), filepath.Join(root, "apps/api/a_test.go")}, 1},
 		{[]string{"test-file", noLayout, filepath.Join(noLayout, "apps/api/a_test.go")}, 1},
-		{[]string{"test-file", root}, 2},
+		{[]string{"test-file", root}, exitUsage},
 	} {
 		var stdout, stderr bytes.Buffer
 		if code := run(tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.code {

@@ -177,24 +177,25 @@ func TestReferencesPinnedCannotRun(t *testing.T) {
 	tests := []struct {
 		name string
 		args func(t *testing.T) []string
+		want int
 	}{
-		{"missing root", func(*testing.T) []string { return []string{"references-pinned"} }},
-		{"not a git repository", func(t *testing.T) []string { return []string{"references-pinned", t.TempDir()} }},
+		{"missing root", func(*testing.T) []string { return []string{"references-pinned"} }, exitUsage},
+		{"not a git repository", func(t *testing.T) []string { return []string{"references-pinned", t.TempDir()} }, 2},
 		{"no reference files", func(t *testing.T) []string {
 			return []string{"references-pinned", linkRepo(t, map[string][]string{"README.md": {"x"}})}
-		}},
+		}, 2},
 		{"git-known package.json does not parse", func(t *testing.T) []string {
 			return []string{"references-pinned", linkRepo(t, map[string][]string{
 				"package.json":                 {"{"},
 				"docs/references/gen-llms.txt": refHeader("1.0.0", "package.json gen", "https://e.com/1.0.0"),
 			})}
-		}},
+		}, 2},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			if got := run(tt.args(t), strings.NewReader(""), &stdout, &stderr); got != 2 {
-				t.Errorf("exit %d, want 2; stdout %q stderr %q", got, stdout.String(), stderr.String())
+			if got := run(tt.args(t), strings.NewReader(""), &stdout, &stderr); got != tt.want {
+				t.Errorf("exit %d, want %d; stdout %q stderr %q", got, tt.want, stdout.String(), stderr.String())
 			}
 		})
 	}

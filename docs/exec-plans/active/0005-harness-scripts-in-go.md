@@ -107,7 +107,8 @@ each in ADR 0045's Alternatives; the product's copy has them in full.
 - **R3, test framework: (a) `github.com/rogpeppe/go-internal/testscript` for command-level tests, plain Go table
   tests for logic.** A `.txtar` file holds the steps and the fixture files of one case, which reads close to
   today's bats files. `go-internal v1.15.0` is already in the module's `go.sum` (`go.sum:11-12`), so this adds a
-  direct `require`, not a new module; ADR 0045 records it, as
+  direct `require`, not a new module (`go mod tidy` also lists `golang.org/x/sys` and `golang.org/x/tools`,
+  which only the test binary links, as indirect requires; pilot 1); ADR 0045 records it, as
   [ADR 0022](../../adr/0022-approved-api-responses.md) did for its harness dependency. `testscript.Main` does
   *not* run subcommands in-process: it copies the test binary into a temp `PATH` directory under each command
   name (`cloneFile`, a new inode on macOS) and each call is a child process, which pays the macOS first-run check

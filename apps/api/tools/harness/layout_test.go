@@ -509,7 +509,7 @@ func TestLayoutCheckExitCodes(t *testing.T) {
 		{[]string{"layout-check", ok}, 0},
 		{[]string{"layout-check", bad}, 1},
 		{[]string{"layout-check", t.TempDir()}, 2}, // no layout.env
-		{[]string{"layout-check"}, 2},
+		{[]string{"layout-check"}, exitUsage},
 	} {
 		var stdout, stderr bytes.Buffer
 		if code := run(tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.want {

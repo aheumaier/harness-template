@@ -95,7 +95,7 @@ func TestSwiftTestsExitCodes(t *testing.T) {
 		{[]string{"swift-tests", root, "apps/ios"}, "", 2},
 		{[]string{"swift-tests", root, "apps/ios"}, "error: manifest parse error", 2},
 		{[]string{"swift-tests", root, "apps/ios"}, `{"targets": 1}`, 2},
-		{[]string{"swift-tests", root}, declared, 2},
+		{[]string{"swift-tests", root}, declared, exitUsage},
 	} {
 		var stdout, stderr bytes.Buffer
 		if code := run(tt.args, strings.NewReader(tt.stdin), &stdout, &stderr); code != tt.want {

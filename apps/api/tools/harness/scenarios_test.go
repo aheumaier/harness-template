@@ -282,7 +282,7 @@ func TestScenariosTestedExitCodes(t *testing.T) {
 		{[]string{"specs-tested", noLayout}, 2},
 		{[]string{"specs-tested", noProtected}, 2},
 		{[]string{"specs-tested", noGit}, 2},
-		{[]string{"specs-tested"}, 2},
+		{[]string{"specs-tested"}, exitUsage},
 	} {
 		var stdout, stderr bytes.Buffer
 		if code := run(tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.want {

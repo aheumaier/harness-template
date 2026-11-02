@@ -17,7 +17,7 @@
 #     .bin/harness is built from the base checkout (`make` in the workspace root; the PR head is in pr-head/,
 #     outside apps/api/tools/harness), never from the PR head (ADR 0012);
 #   - only head.sha is used, as the checkout ref (never head.ref, title or body in a `run:` block; the title
-#     reaches check-commits.sh as the PR_TITLE env var, never interpolated into a script);
+#     reaches `harness check-commits` as the PR_TITLE env var, never interpolated into a script);
 #   - permissions stay `contents: read` and no secret is referenced.
 name: harness-integrity
 
@@ -70,6 +70,12 @@ jobs:
           path: pr-head
           fetch-depth: 0
           persist-credentials: false
+      - name: Load the base branch's scripts/harness/layout.env (API_DIR)
+        run: scripts/harness/layout.sh --print >>"$GITHUB_ENV"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ env.API_DIR }}/go.mod
+          cache: false # no cache written from a pull_request_target run
       - run: make -k commits specs BASE_REF="origin/$GITHUB_BASE_REF"
         env:
           HARNESS_ROOT: ${{ github.workspace }}/pr-head

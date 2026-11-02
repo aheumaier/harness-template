@@ -511,14 +511,15 @@ any other Trivy exit is a failure to run (exit 2, `trivy failed to run (exit N) 
 Team conventions, not earned from an incident: the team already writes Conventional Commits and specifies
 product features with [spec-kit](https://github.com/github/spec-kit); PR #1 adopted them as rules, a
 deliberate exception recorded in [ADR 0011](../adr/0011-conventional-commits-and-spec-kit.md).
-In CI these run in the `pr-conventions` job of `harness-integrity.yml` (base branch's scripts, PR title as data).
+In CI these run in the `pr-conventions` job of `harness-integrity.yml` (base branch's scripts and `.bin/harness`,
+PR title as data).
 
 ### git-conventional-commits
 - **Rule:** Every non-merge commit subject on a branch, and the PR title, is `<type>(<scope>)!: <description>` (scope and `!` optional; scope lowercase `[a-z0-9._/-]`) with type one of build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test. A subject is at most 100 characters, the PR title at most 90.
 - **Why:** The subject is the changelog and the release signal (`feat` = minor, `!` = major); a squash merge of several commits makes the PR title plus ` (#N)` the commit on `main`, so the title is checked too, with room for the suffix.
-- **Sensor:** `scripts/harness/check-commits.sh` on `BASE_REF..HEAD` and `PR_TITLE` (`make commits`, in `make check-all` locally); the `commit-msg` git hook (`scripts/git-hooks/`, installed by `make setup`) rejects a bad message before the commit exists.
+- **Sensor:** `.bin/harness check-commits` (`apps/api/tools/harness/checkcommits.go`) on `BASE_REF..HEAD` and `PR_TITLE` (`make commits`, in `make check-all` locally); the `commit-msg` git hook (`scripts/git-hooks/`, installed by `make setup`) rejects a bad message before the commit exists, and says "run `make setup`" when `.bin/harness` is missing or out of date ([ADR 0045](../adr/0045-harness-scripts-and-tests-in-go.md)).
 - **Remediation:** Reword the subject as `<type>(<scope>): <imperative description>`, e.g. `feat(billing): add invoice export`: the last commit with `git commit --amend`, older ones with `git rebase -i` and `reword`, the PR title in the PR.
-- **Fixture:** `fixtures/git-commit-not-conventional` · Status: team-convention (PR #1)
+- **Fixture:** `fixtures/git-commit-not-conventional`; `apps/api/tools/harness/testdata/script/check-commits.txtar`, `apps/api/tools/harness/commitmsg_test.go` · Status: team-convention (PR #1)
 
 ### specs-structure
 - **Rule:** Every `specs/<dir>/` is a directory (not a symlink) named `NNN-kebab-slug` with a unique `NNN`, contains `spec.md`, contains `plan.md` once it has `tasks.md`, no Markdown file in it has an open clarification (a `[NEEDS CLARIFICATION: …]` marker, or a plan field left as `: NEEDS CLARIFICATION`; `checklists/` is skipped because it names the marker), and no file in it is an OpenAPI document (`contracts/` describes the change to `api/openapi.yaml` in prose).

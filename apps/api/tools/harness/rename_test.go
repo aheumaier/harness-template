@@ -385,14 +385,15 @@ func TestRenameArgs(t *testing.T) {
 	gitT(t, root, "add", "-A")
 	for _, tc := range []struct {
 		args []string
+		code int
 		want string
 	}{
-		{[]string{"-write", root, "acme-shop", "github.com/acme/shop"}, "usage:"}, // owner missing
-		{[]string{"-write", root, "acme-shop", "acme/shop/", "@acme"}, "want a Go module path"},
-		{[]string{"-write", root, "acme-shop", "github.com/acme/shop", "@aheumaier/platform"}, "second run"},
+		{[]string{"-write", root, "acme-shop", "github.com/acme/shop"}, exitUsage, "usage:"}, // owner missing
+		{[]string{"-write", root, "acme-shop", "acme/shop/", "@acme"}, 2, "want a Go module path"},
+		{[]string{"-write", root, "acme-shop", "github.com/acme/shop", "@aheumaier/platform"}, 2, "second run"},
 	} {
-		if code, out := renameRun(t, tc.args...); code != 2 || !strings.Contains(out, tc.want) {
-			t.Errorf("rename %v: exit %d, want 2 with %q: %s", tc.args, code, tc.want, out)
+		if code, out := renameRun(t, tc.args...); code != tc.code || !strings.Contains(out, tc.want) {
+			t.Errorf("rename %v: exit %d, want %d with %q: %s", tc.args, code, tc.code, tc.want, out)
 		}
 	}
 	if got := renameFile(t, root, "package.json"); got != "{\"name\": \"harness-template\"}\n" {

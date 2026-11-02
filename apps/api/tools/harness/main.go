@@ -1,6 +1,7 @@
 // Command harness holds the parts of the harness hooks and sensors that parse input (ADR 0012), plus the
-// one-shot template rename, which needs the same portable file handling. The shell scripts and make stay
-// the entry points and call it; it is built into .bin/harness by make (setup, check).
+// one-shot template rename, which needs the same portable file handling, and the harness logic ported from
+// shell (ADR 0045). Make, the hook wrappers and the git hooks call it; it is built into .bin/harness by make
+// (setup, check).
 //
 //	harness hook-input <field>...  Claude Code hook JSON on stdin → the fields, one per line
 //	harness guard-bash <root>      PreToolUse guard for Bash commands (.claude/hooks/guard-bash.sh)
@@ -21,14 +22,23 @@
 //	harness approved-check <root>  api-approved-match-contract (make approved-check)
 //	harness specs-tested <root>    specs-scenarios-tested (make specs-tested)
 //	harness layout-check <root>    harness-layout-valid: scripts/harness/layout.env (make layout-check)
+//	harness swift-resolved <root>  deps-swift-resolved: Package.resolved in git (make swift-resolved)
+//	harness swift-tests <root> <dir>
+//	                               ios-tests-pass: every Swift test file is in a declared test target, from
+//	                               `swift package describe --type json` on stdin (make test-ios)
 //	harness spec-refs <file>...    every $ref internal: contract-check.sh, upstream-drift.sh (ADR 0037)
+//	harness check-commits <root>   git-conventional-commits: commits since the merge base, PR_TITLE (make
+//	                               commits; env BASE_REF, HARNESS_ROOT, PR_TITLE)
+//	harness check-commits --msg <file>
+//	                               git-conventional-commits: one commit message (scripts/git-hooks/commit-msg)
 //	harness integrity-check <root> harness-suppression-reason, harness-config-not-loosened (make
 //	                               harness-integrity; env BASE_REF, HARNESS_ROOT, HARNESS_CHANGE_APPROVED)
 //	harness rename [-write] <root> <name> <module|skip> <owner>
 //	                               rename the template identity once for a new product (make rename)
 //
 // Exit 2 is a block (or unusable input) for Claude Code; the hooks pass it on. Sensors exit 1 on findings
-// and 2 when they cannot run.
+// and 2 when they cannot run. A usage error (an unknown subcommand, a wrong argument) exits 64, which the
+// wrappers and git hooks read as a stale binary (ADR 0045).
 package main
 
 import (
@@ -43,7 +53,10 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness test-file <root> <path> | harness check-links <root> | harness fixture-claims <root> | harness rule-lists <root> | harness orphans <root> | harness quality-rows [-no-clock] <root> | harness references-pinned <root> | harness approved-check <root> | harness specs-tested <root> | harness layout-check <root> | harness swift-resolved <root> | swift package describe --type json | harness swift-tests <root> <dir> | harness spec-refs <file>... | harness integrity-check <root> | harness rename [-write] <root> <name> <module|skip> <owner>"
+// exitUsage is the exit code of a usage error.
+const exitUsage = 64
+
+const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness test-file <root> <path> | harness check-links <root> | harness fixture-claims <root> | harness rule-lists <root> | harness orphans <root> | harness quality-rows [-no-clock] <root> | harness references-pinned <root> | harness approved-check <root> | harness specs-tested <root> | harness layout-check <root> | harness swift-resolved <root> | swift package describe --type json | harness swift-tests <root> <dir> | harness spec-refs <file>... | harness check-commits <root> | harness check-commits --msg <file> | harness integrity-check <root> | harness rename [-write] <root> <name> <module|skip> <owner>"
 
 // rootSensors are the sensors run as `harness <name> <root>`: findings on stdout, whether there was any, and an
 // error when they cannot run.
@@ -64,10 +77,25 @@ func printFinding(out io.Writer, file string, line int, rule, format string, a .
 	fmt.Fprintf(out, "%s:%d: %s [%s]\n", file, line, fmt.Sprintf(format, a...), rule)
 }
 
+// harnessRoot is the tree a git-reading sensor checks: HARNESS_ROOT when set (CI runs the base branch's binary
+// on the PR head, harness-integrity.yml), else root.
+func harnessRoot(getenv func(string) string, root string) string {
+	if r := getenv("HARNESS_ROOT"); r != "" {
+		return r
+	}
+	return root
+}
+
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	return dispatch(args, os.Getenv, stdin, stdout, stderr)
+}
+
+// dispatch is run with the environment as a value, so a test can run a subcommand in-process with its own
+// (testscript's Params.Cmds).
+func dispatch(args []string, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, usage)
-		return 2
+		return exitUsage
 	}
 	switch args[0] {
 	case "hook-input":
@@ -83,6 +111,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			}
 		}
 		fmt.Fprintf(stderr, "harness hook-input: %v\n", err)
+		if errors.Is(err, errUnknownField) {
+			return exitUsage
+		}
 		return 2
 	case "guard-bash":
 		if len(args) != 2 {
@@ -143,7 +174,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			bad, err = qualityFresh(args[1], time.Now(), stdout)
 		default:
 			fmt.Fprintln(stderr, usage)
-			return 2
+			return exitUsage
 		}
 		switch {
 		case err != nil:
@@ -166,15 +197,31 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return 1
 		}
 		return 0
+	case "check-commits":
+		var bad bool
+		var err error
+		switch {
+		case len(args) == 3 && args[1] == "--msg":
+			bad, err = checkMessage(args[2], stdout)
+		case len(args) == 2 && args[1] != "--msg":
+			bad, err = checkCommits(harnessRoot(getenv, args[1]), getenv("BASE_REF"), getenv("PR_TITLE"), stdout)
+		default:
+			fmt.Fprintln(stderr, usage)
+			return exitUsage
+		}
+		switch {
+		case err != nil:
+			fmt.Fprintf(stderr, "harness check-commits: %v\n", err)
+			return 2
+		case bad:
+			return 1
+		}
+		return 0
 	case "integrity-check":
 		if len(args) != 2 {
 			break
 		}
-		root := os.Getenv("HARNESS_ROOT")
-		if root == "" {
-			root = args[1]
-		}
-		bad, err := integrityCheck(args[1], root, os.Getenv("BASE_REF"), os.Getenv("HARNESS_CHANGE_APPROVED") == "1", stdout)
+		bad, err := integrityCheck(args[1], harnessRoot(getenv, args[1]), getenv("BASE_REF"), getenv("HARNESS_CHANGE_APPROVED") == "1", stdout)
 		switch {
 		case err != nil:
 			fmt.Fprintf(stderr, "harness integrity-check: %v\n", err)
@@ -198,5 +245,5 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 	fmt.Fprintln(stderr, usage)
-	return 2
+	return exitUsage
 }

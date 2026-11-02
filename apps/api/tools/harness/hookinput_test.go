@@ -33,7 +33,6 @@ func TestHookInput(t *testing.T) {
 func TestHookInputFailsClosed(t *testing.T) {
 	for _, tt := range []struct{ in, field string }{
 		{"not json", "command"}, {"", "command"}, {"null", "command"}, {`{"cwd":3}`, "cwd"}, {`{}x`, "cwd"},
-		{`{}`, "nope"},
 	} {
 		var stdout, stderr bytes.Buffer
 		if code := run([]string{"hook-input", tt.field}, strings.NewReader(tt.in), &stdout, &stderr); code != 2 {
@@ -44,7 +43,10 @@ func TestHookInputFailsClosed(t *testing.T) {
 		}
 	}
 	var stdout, stderr bytes.Buffer
-	if code := run(nil, strings.NewReader(""), &stdout, &stderr); code != 2 {
-		t.Errorf("no subcommand: exit %d, want 2", code)
+	if code := run(nil, strings.NewReader(""), &stdout, &stderr); code != exitUsage {
+		t.Errorf("no subcommand: exit %d, want %d", code, exitUsage)
+	}
+	if code := run([]string{"hook-input", "nope"}, strings.NewReader("{}"), &stdout, &stderr); code != exitUsage {
+		t.Errorf("unknown field: exit %d, want %d", code, exitUsage)
 	}
 }
