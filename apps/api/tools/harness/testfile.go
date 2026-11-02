@@ -143,7 +143,7 @@ func pathspecMatch(p, rel string) bool {
 // testFile is the test-writer subagent's write guard (.claude/hooks/only-test-files.sh, ADR 0039): p (absolute,
 // or relative to the working directory) must name a file inside root that productTests allows, the predicate
 // specs-tested reads tests with. Symlinks in the part of the path that exists are resolved first, as
-// protect-harness's protected() does, so a link cannot carry the write out of the repo or onto another file.
+// protect-harness's check does, so a link cannot carry the write out of the repo or onto another file.
 // It returns nil for an allowed path and an error saying why for any other; an unreadable layout.env or
 // protected-paths.txt is an error too (fail closed).
 //

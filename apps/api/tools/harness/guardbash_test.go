@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,13 +12,7 @@ import (
 // guardRun feeds a PreToolUse Bash payload to `harness guard-bash root` and returns the exit code and stderr.
 func guardRun(t *testing.T, root, cwd, command string) (int, string) {
 	t.Helper()
-	payload, err := json.Marshal(map[string]any{"cwd": cwd, "tool_input": map[string]string{"command": command}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var stdout, stderr bytes.Buffer
-	code := run([]string{"guard-bash", root}, bytes.NewReader(payload), &stdout, &stderr)
-	return code, stderr.String()
+	return runHook(t, "guard-bash", root, payload(t, cwd, "Bash", command))
 }
 
 // gitRepo returns a new repository (symlinks resolved) on branch.
