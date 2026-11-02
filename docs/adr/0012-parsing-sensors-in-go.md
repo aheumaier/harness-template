@@ -1,6 +1,6 @@
 # ADR 0012: Sensors that parse move to one Go binary; orchestration stays in bash
 
-Status: accepted · 2026-10-27
+Status: accepted · 2026-10-27 · amended 2026-11-02 by [ADR 0045](0045-harness-scripts-and-tests-in-go.md) (every script and its tests move to Go; orchestration leaves bash)
 
 ## Context
 Sensors and hooks are bash (`scripts/harness/*.sh`, `.claude/hooks/*.sh`). Measured warm on macOS
