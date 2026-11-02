@@ -50,3 +50,4 @@ only through a new ADR. Architectural PRs link an ADR in the PR template.
 | [0042](0042-swift-unit-tests-in-make-check.md) | Swift unit tests run in `make check` on macOS (amends 0033, 0039, 0041) | proposed |
 | [0043](0043-swift-lint-format-and-xcode-pin.md) | SwiftLint, swift-format and the Xcode pin (amends 0016, 0024, 0042) | proposed |
 | [0044](0044-ios-ci-on-macos.md) | iOS CI on macOS, the app target and Swift lockfiles (amends 0042, 0043) | proposed |
+| [0045](0045-harness-scripts-and-tests-in-go.md) | Harness scripts and their tests move to Go (amends 0012, 0024, 0031) | accepted |

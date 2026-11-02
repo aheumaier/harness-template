@@ -1,6 +1,6 @@
 # ADR 0031: No orphan scripts or make targets; dead Go code is gated in check-all
 
-Status: accepted · 2026-10-29
+Status: accepted · 2026-10-29 · amended 2026-11-02 by [ADR 0045](0045-harness-scripts-and-tests-in-go.md) (subcommands need a caller)
 
 ## Context
 Gap G11 of exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`, slice P3.6): agents add helper
