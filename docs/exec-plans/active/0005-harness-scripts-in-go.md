@@ -547,3 +547,27 @@ template's subcommand uncalled; the analyzers plugin already registers from `ini
   0024 and 0031 marked amended.
 - 2026-11-02: reviewed here (23 findings, see Review); stale-binary escape, callee order, trigger pathspec, test
   protection and the registry settled in ADR 0045 before it merges.
+- 2026-11-02: pilot 1 (`check-commits`), measured on an Apple Silicon Mac.
+  - **Tests (A8).** The bats file took 2.66 s (median of 3). Now the testscript file (14 cases: the 10 bats
+    cases, plus length boundaries and descriptions that show nothing) takes 0.83 s, and the hook tests 0.56 s.
+    The harness module's whole suite takes 11.8–13.9 s uncached (10.2 s before) and 0.6 s cached.
+  - **Lines (A8).** Removed 139. Added 317 for `check-commits` (Go 96, testscript 144, hook test 56, hook 21),
+    and 287 one-time: sandbox helper 223, testscript runner 50, stub 4, dependencies 10.
+  - **`make check` after a one-line harness change (A8): 173 s.** The bats suite is 169 s of it and is
+    unchanged by the pilot.
+  - **Sandbox (A2).** The first run after a rebuild takes 1.20 s, then 0.54 s.
+  - **Cache trigger (A1),** with `BASE_REF=HEAD` and `make test-harness`.
+    - A clean tree runs 13.9 s, then 0.6 s from the cache.
+    - An edit to `scripts/harness/timing.sh` or to `checkcommits.go` runs uncached (11.8–12.1 s, each time).
+    - So does an edit to `protect-harness.sh`, `hook-bootstrap.sh` or `protected-paths.txt`.
+    - A `README.md` edit stays cached (0.6 s).
+  - **Fixtures (A3, A5).** `make harness-selftest` still rejects `git-commit-not-conventional`, and
+    `make adoption-probe` is green.
+  - **Base branch (A4).** `pr-conventions` took 9–15 s before. Its time after the change shows only on the first
+    PR after the merge, because `pull_request_target` runs main's workflow.
+  - **Review.** An evasion review found subjects that show nothing (Unicode spaces, format characters, combining
+    marks), a first line of only U+00A0, and a `%s` that joins the first paragraph. They are fixed, and the
+    testscript file pins them.
+  - **For slice 2.** `getenv` does not reach a child process's environment: in-process `git` reads the test
+    process's own. The "world" value that replaces `getenv` should carry the child-process environment as part of
+    the stable surface.
