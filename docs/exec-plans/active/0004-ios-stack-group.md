@@ -1,6 +1,6 @@
 # 0004 — iOS stack group
 
-Status: phase 1 merged (PR #12); phase 2a merged (PR #14); phase 2b merged (PR #15, 095e846); phase 2c in review · Owner: @aheumaier · Started: 2026-10-31
+Status: phase 1 merged (PR #12); phase 2a merged (PR #14); phase 2b merged (PR #15, 095e846); phase 2c merged (PR #17, 750c094), its macOS job not yet run · Owner: @aheumaier · Started: 2026-10-31
 
 ## Goal
 
@@ -216,7 +216,7 @@ learn a new one. By phase:
 | # | Phase | Exit criterion | State |
 |---|-------|----------------|-------|
 | 1 | `ios` group and skeleton, no Xcode: D1, D4, D5, D9, Trivy, `.gitignore`, adoption, rules.md, ADR 0041 | `make check`, `make check-all` and `HARNESS_SCOPE=full make harness-selftest` green on Ubuntu; `adoption-probe` green; the three Phase 1 fixtures rejected; `swift test` on the skeleton green on this Mac; a product with `STACK=go:db:web:ios` and Swift tests under `apps/ios/Tests/…Tests/` passes `layout-check` and `specs-tested` | merged (PR #12) |
-| 2 | macOS job, D2, D3, D6, D7, D8, Xcode pin check, SwiftLint, swift-format, `swift test` in `make check` on macOS, the app target | the macOS job green and required; each new rule rejects its fixture there; Ubuntu jobs skip iOS only by name | 2a (`IOS_DIR`, `HOST_OFF`, `test-ios`, `NEEDS_SWIFT`, the `test-writer`; ADR 0042) merged (PR #14); 2b (SwiftLint, swift-format, the Xcode pin, `IOS_SWIFT_TARGETS`/`IOS_XCODE_TARGETS`, `NEEDS_XCODE`, the Swift kind in the per-file sensors; ADR 0043) merged (PR #15, 095e846); 2c (the macOS job `check-ios`, the app target, XcodeGen, `build-ios`, the `Package.resolved` and undeclared-test checks; ADR 0044) in review |
+| 2 | macOS job, D2, D3, D6, D7, D8, Xcode pin check, SwiftLint, swift-format, `swift test` in `make check` on macOS, the app target | the macOS job green and required; each new rule rejects its fixture there; Ubuntu jobs skip iOS only by name | 2a (`IOS_DIR`, `HOST_OFF`, `test-ios`, `NEEDS_SWIFT`, the `test-writer`; ADR 0042) merged (PR #14); 2b (SwiftLint, swift-format, the Xcode pin, `IOS_SWIFT_TARGETS`/`IOS_XCODE_TARGETS`, `NEEDS_XCODE`, the Swift kind in the per-file sensors; ADR 0043) merged (PR #15, 095e846); 2c (the macOS job `check-ios`, the app target, XcodeGen, `build-ios`, the `Package.resolved` and undeclared-test checks; ADR 0044) merged (PR #17, 750c094); pending: XcodeGen run by its real path (the app did not build, fix/ios-xcodegen-presets), the first green `check-ios` run, its budget rows |
 | 3 | Generated Swift client | `make gen` regenerates it; `gen-check` fails on a hand edit (fixture); the `x-extensible-enum` rule documented | after 2 |
 | 4 | Simulator UI tests, layer rule | `ios-e2e` in `check-ios` within its budget; the layer rule rejects its fixture | after 3 |
 
@@ -295,3 +295,7 @@ the `test-writer` and `swift test` into Phase 2. Each phase is its own branch an
   and TD-163. The second review round added: `package(url:`, `id:` or `name:` without the dot (a bare `package(`
   matched the template's own comment "a Swift package (ADR 0041)"), a lockfile must pin a package, a link under
   `Tests/` is a finding, and Xcode project and `IOS_DIR` names match in any case.
+- 2026-11-02: 2c merged (PR #17, 750c094); no hosted macOS runner picked up its `check-ios` job (cancelled after
+  15 minutes, capacity), so no CI ran the Xcode parts. Run locally with Xcode 26.1 (`DEVELOPER_DIR`, not the
+  pinned 26.6), `make build-ios` failed: through the `.bin/xcodegen` link XcodeGen found no setting presets, so
+  the app had no `PRODUCT_NAME`. `.bin/xcodegen` is now a script that runs it by its real path.

@@ -114,13 +114,15 @@ fi
 # XcodeGen, for make build-ios (ADR 0044): installed by `install-tools.sh xcodegen` alone, on demand where Xcode is
 # selected (make build-ios, make setup), never by `make tools`: a Mac with only the command-line tools cannot use
 # it. The zip's tree is kept whole in .bin/.xcodegen, since the binary reads its setting presets from
-# ../share/xcodegen next to it (it follows the .bin/xcodegen link to find them).
+# ../share/xcodegen next to it. .bin/xcodegen execs it by that path: run through a link, it finds no presets and
+# writes a project whose app has no name.
 if [[ "${1:-}" == xcodegen ]]; then
   [[ $os == darwin ]] || {
     echo "xcodegen runs on macOS only (ADR 0044); not installed" >&2
     exit 1
   }
-  if ! stamp_ok xcodegen "$XCODEGEN_VERSION"; then
+  # stamp_ok sees only the script; a link left by an older install runs XcodeGen without its presets.
+  if [[ -L "$BIN/xcodegen" || ! -x "$BIN/.xcodegen/xcodegen/bin/xcodegen" ]] || ! stamp_ok xcodegen "$XCODEGEN_VERSION"; then
     echo "installing xcodegen $XCODEGEN_VERSION" >&2
     download xcodegen "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" XCODEGEN_SHA256_DARWIN
     rm -rf "$BIN/.xcodegen"
@@ -129,8 +131,9 @@ if [[ "${1:-}" == xcodegen ]]; then
       echo "could not unpack xcodegen (no xcodegen/bin/xcodegen in the zip); not installed" >&2
       exit 1
     }
-    rm -f "$BIN/.dl-xcodegen"
-    ln -sfn .xcodegen/xcodegen/bin/xcodegen "$BIN/xcodegen"
+    rm -f "$BIN/.dl-xcodegen" "$BIN/xcodegen"
+    printf '#!/bin/sh\nexec "$(dirname "$0")/.xcodegen/xcodegen/bin/xcodegen" "$@"\n' >"$BIN/xcodegen"
+    chmod +x "$BIN/xcodegen"
     stamp xcodegen "$XCODEGEN_VERSION"
   fi
   exit 0

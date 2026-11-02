@@ -40,8 +40,10 @@ that the app is described by an XcodeGen spec (Q2). This ADR records the third p
 - **XcodeGen 2.46.0** (released 2026-07-16, past the 14-day rule of
   [ADR 0016](0016-tool-supply-chain.md)) from its release zip, one universal binary, checked against a sha256 pin
   (`XCODEGEN_SHA256_DARWIN`) that matches GitHub's asset digest. `scripts/install-tools.sh xcodegen` installs it on
-  demand, macOS only, into `.bin/.xcodegen/` with `.bin/xcodegen` linked to it (XcodeGen finds its setting presets
-  beside the binary through that link); `make tools` does not, since only `ios-project` and `build-ios` use it.
+  demand, macOS only, into `.bin/.xcodegen/`, with a `.bin/xcodegen` script that runs it there by its real path:
+  XcodeGen reads its setting presets from beside the binary, and through a link it finds none, so the app had no name and did not build
+  (found 2026-11-02 with Xcode 26.1, after this PR merged). `make tools` does not install it, since only
+  `ios-project` and `build-ios` use it.
 - **The app build (rule `ios-app-builds`).** `make build-ios`, in `IOS_XCODE_TARGETS` beside `xcode-pinned`
   (amends ADR 0043), generates the project and runs `xcodebuild` for `generic/platform=iOS Simulator` with
   `CODE_SIGNING_ALLOWED=NO` and derived data in `.cache/xcode`. **Ruling: the scheme `App` and the sources in
