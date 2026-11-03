@@ -36,6 +36,10 @@ func parseHookInput(r io.Reader) (*hookInput, error) {
 	return in, nil
 }
 
+// errUnknownField is a usage error: a hook asked for a field this binary does not know, so it is older than the
+// hook (ADR 0045).
+var errUnknownField = errors.New("unknown field")
+
 // fields returns the named fields joined by newlines (no trailing one). `target` is the edited file:
 // tool_input.file_path, else tool_input.notebook_path. Only the last field may contain newlines.
 func (in *hookInput) fields(names []string) (string, error) {
@@ -54,7 +58,7 @@ func (in *hookInput) fields(names []string) (string, error) {
 				out[i] = in.ToolInput.NotebookPath
 			}
 		default:
-			return "", fmt.Errorf("unknown field %q (%s)", n, usage)
+			return "", fmt.Errorf("%w %q (%s)", errUnknownField, n, usage)
 		}
 	}
 	return strings.Join(out, "\n"), nil

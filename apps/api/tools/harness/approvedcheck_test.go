@@ -210,7 +210,7 @@ func TestApprovedCheckExitCodes(t *testing.T) {
 		{[]string{"approved-check", noLayout}, 2, layoutFile},
 		{[]string{"approved-check", badSpec}, 2, ""},
 		{[]string{"approved-check", t.TempDir()}, 2, ""},
-		{[]string{"approved-check"}, 2, ""},
+		{[]string{"approved-check"}, exitUsage, ""},
 	} {
 		var stdout, stderr bytes.Buffer
 		if code := run(tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.want || !strings.Contains(stderr.String(), tt.wantStderr) {

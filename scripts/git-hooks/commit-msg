@@ -1,7 +1,27 @@
 #!/usr/bin/env bash
 # Git commit-msg hook (core.hooksPath=scripts/git-hooks, set by `make setup`): rejects a commit whose
 # subject is not a Conventional Commit, before it exists. rules.md#git-conventional-commits
+# A missing or out-of-date .bin/harness (exit 64, 126 or 127, or an older binary's usage text) blocks the
+# commit with "run make setup" (ADR 0045).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 msg="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")" # run.sh changes directory
-exec "$ROOT/scripts/harness/run.sh" commit-msg git-conventional-commits -- "$ROOT/scripts/harness/check-commits.sh" --msg "$msg"
+out=""
+stale() {
+	[[ -z "$out" ]] || printf '%s\n' "$out" >&2
+	echo "commit-msg: your message was not checked (ignore any remediation above): .bin/harness is missing or out of date: run \`make setup\` (or just \`make .bin/harness\`)" >&2
+	exit 1
+}
+[[ -x "$ROOT/.bin/harness" ]] || stale
+rc=0
+out="$("$ROOT/scripts/harness/run.sh" commit-msg git-conventional-commits -- "$ROOT/.bin/harness" check-commits --msg "$msg" 2>&1)" || rc=$?
+case $rc in
+0)
+	[[ -z "$out" ]] || printf '%s\n' "$out" >&2 # a latency-budget warning
+	exit 0
+	;;
+64 | 126 | 127) stale ;;
+2) if grep -q '^usage: harness' <<<"$out"; then stale; fi ;;
+esac
+printf '%s\n' "$out" >&2
+exit "$rc"

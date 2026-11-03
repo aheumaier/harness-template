@@ -149,8 +149,8 @@ func TestGuardBashFailsClosed(t *testing.T) {
 		}
 	}
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"guard-bash"}, strings.NewReader("{}"), &stdout, &stderr); code != 2 {
-		t.Errorf("no root: exit %d, want 2", code)
+	if code := run([]string{"guard-bash"}, strings.NewReader("{}"), &stdout, &stderr); code != exitUsage {
+		t.Errorf("no root: exit %d, want %d", code, exitUsage)
 	}
 }
 

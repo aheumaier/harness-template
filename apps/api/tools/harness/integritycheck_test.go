@@ -485,7 +485,7 @@ func TestIntegrityCheckExitCodes(t *testing.T) {
 		{"HARNESS_CHANGE_APPROVED=1 waives it", []string{"integrity-check", config}, "", "main", "1", 0},
 		{"only 1 waives it", []string{"integrity-check", config}, "", "main", "true", 1},
 		{"base does not resolve", []string{"integrity-check", clean}, "", "nope", "", 2},
-		{"no args", []string{"integrity-check"}, "", "", "", 2},
+		{"no args", []string{"integrity-check"}, "", "", "", exitUsage},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("HARNESS_ROOT", tt.root)

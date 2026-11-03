@@ -156,7 +156,7 @@ func TestFixtureClaimsExitCodes(t *testing.T) {
 		{[]string{"fixture-claims", noRules}, 2}, // fail closed: nothing to check is not a pass
 		{[]string{"fixture-claims", noFile}, 2},
 		{[]string{"fixture-claims", t.TempDir()}, 2}, // not a git repo
-		{[]string{"fixture-claims"}, 2},
+		{[]string{"fixture-claims"}, exitUsage},
 	} {
 		var stdout, stderr bytes.Buffer
 		if code := run(tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.want {

@@ -273,8 +273,12 @@ test-go:
 test-analyzers:
 	@$(RUN) analyzer-tests go-tests-pass --dir $(API_DIR)/tools/analyzers -- go test $(GO_TEST_COUNT) ./...
 
+# Go's test cache tracks only files inside the module, so a changed shell or harness file, or docs/QUALITY.md
+# (qualityrows_test.go), runs the tests uncached: else make check could replay an old pass (exec plan 0005).
+# A test that reads another repo file outside the module adds it here.
 test-harness:
-	@$(RUN) harness-tests go-tests-pass,harness-reads-layout --dir $(API_DIR)/tools/harness -- go test $(GO_TEST_COUNT) ./...
+	@count='$(GO_TEST_COUNT)'; scripts/harness/unchanged.sh $(SH_PATHSPEC) docs/QUALITY.md || count=-count=1; \
+	$(RUN) harness-tests go-tests-pass,harness-reads-layout --dir $(API_DIR)/tools/harness -- go test $$count ./...
 
 vuln-go:
 	@$(RUN) govulncheck go-no-known-vulns --dir $(API_DIR) -- govulncheck ./...
@@ -454,9 +458,11 @@ test-scaffold: ## After make new-domain NAME=<name>: each of its scaffolded test
 # Every shell script and bats file, except fixture overlays (deliberate violations).
 # .specify/ is spec-kit's vendored code (ADR 0011): replaced on upgrade, not edited.
 SH_FILES = $(shell git ls-files -co --exclude-standard '*.sh' '*.bash' '*.bats' 'scripts/git-hooks/*' ':!:scripts/harness/fixtures/*/files/**' ':!:.specify/**')
+# The shell, bats and harness files (unchanged.sh also counts every protected path), for sh_sensor and test-harness.
+SH_PATHSPEC := '*.sh' '*.bash' '*.bats' 'scripts/*'
 # $(call sh_sensor,<command>): in make check, runs only when a shell, bats or harness file changed
 # (rules.md#harness-scope); make check-all and CI always run it.
-sh_sensor = if scripts/harness/unchanged.sh '*.sh' '*.bash' '*.bats' 'scripts/*'; then \
+sh_sensor = if scripts/harness/unchanged.sh $(SH_PATHSPEC); then \
 	echo "$@: skipped, no shell or harness file changed (make check-all runs it)"; else $(1); fi
 
 lint-sh: ## shellcheck (.shellcheckrc) on every shell script
@@ -505,8 +511,8 @@ adoption-probe: ## README (b) followed on a root-go.mod repo ends green: setup, 
 
 # PR_TITLE reaches these from the pull_request_target job as an env var (ADR 0011): never write $(PR_TITLE)
 # in a recipe, make would expand a title like `$(shell …)` in a job that holds the base branch's checkout.
-commits: ## Commit subjects (and PR_TITLE) since BASE_REF follow Conventional Commits
-	@$(RUN) commits git-conventional-commits -- env BASE_REF="$(BASE_REF)" scripts/harness/check-commits.sh
+commits: $(HARNESS) ## Commit subjects (and PR_TITLE) since BASE_REF follow Conventional Commits
+	@$(RUN) commits git-conventional-commits -- env BASE_REF="$(BASE_REF)" $(HARNESS) check-commits .
 
 specs: ## spec-kit specs/ are well formed; feat changes to PRODUCT_GLOBS (layout.env) come with a spec (vs BASE_REF)
 	@$(RUN) specs specs-structure,specs-required-for-features -- env BASE_REF="$(BASE_REF)" scripts/harness/check-specs.sh
