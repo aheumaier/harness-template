@@ -147,6 +147,9 @@ Claude Code hooks fail closed.
 
 ## (b) Brownfield project
 
+For a codebase on another stack (PHP, .NET), [docs/applying-the-harness.md](docs/applying-the-harness.md)
+explains each principle, sensor and hook and maps them to that stack's tools.
+
 The harness has three kinds of parts:
 
 - **Generic parts** carry over to any repo as they are:
