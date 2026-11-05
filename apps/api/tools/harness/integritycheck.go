@@ -170,24 +170,6 @@ func mergeBase(root, ref string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// protectedPath is one entry of protected-paths.txt: a pathspec and what follows it (`config`, or nothing).
-type protectedPath struct{ pattern, kind string }
-
-// protectedPaths returns the entries of protected-paths.txt.
-func protectedPaths(file string) ([]protectedPath, error) {
-	b, err := os.ReadFile(file)
-	if err != nil {
-		return nil, err
-	}
-	var entries []protectedPath
-	for _, l := range strings.Split(string(b), "\n") {
-		if f := strings.Fields(l); !commentRE.MatchString(l) {
-			entries = append(entries, protectedPath{f[0], strings.Join(f[1:], " ")})
-		}
-	}
-	return entries, nil
-}
-
 // configPatterns returns the pathspecs marked `config` in protected-paths.txt.
 func configPatterns(file string) ([]string, error) {
 	entries, err := protectedPaths(file)

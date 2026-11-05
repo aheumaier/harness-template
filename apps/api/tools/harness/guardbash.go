@@ -1,12 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"path"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -26,12 +23,6 @@ import (
 // Heredoc bodies are data (commit messages, file contents), not commands, except for the substitutions
 // in an unquoted one, which run.
 
-type blockError struct{ msg string }
-
-func (e *blockError) Error() string { return e.msg }
-
-func blockf(format string, a ...any) error { return &blockError{fmt.Sprintf(format, a...)} }
-
 // maxDepth bounds nested `bash -c` / `eval` strings.
 const maxDepth = 4
 
@@ -47,14 +38,6 @@ var (
 	shells = set("bash", "sh", "zsh")
 )
 
-func set(words ...string) map[string]bool {
-	m := make(map[string]bool, len(words))
-	for _, w := range words {
-		m[w] = true
-	}
-	return m
-}
-
 func guardBash(root string, stdin io.Reader) error {
 	in, err := parseHookInput(stdin)
 	if err != nil {
@@ -65,22 +48,6 @@ func guardBash(root string, stdin io.Reader) error {
 	}
 	g := &guard{root: root, cwd: physicalDir(in.Cwd)}
 	return g.check(in.ToolInput.Command, 0)
-}
-
-// physicalDir is dir with symlinks resolved, like `cd dir && pwd -P`; the working directory if dir is unusable.
-func physicalDir(dir string) string {
-	if dir != "" {
-		if p, err := filepath.EvalSymlinks(dir); err == nil {
-			if st, err := os.Stat(p); err == nil && st.IsDir() {
-				return p
-			}
-		}
-	}
-	wd, _ := os.Getwd()
-	if p, err := filepath.EvalSymlinks(wd); err == nil {
-		return p
-	}
-	return wd
 }
 
 type guard struct {
@@ -301,29 +268,6 @@ func embedded(text string) [][]word {
 			ws[i] = word{text: f, raw: f, static: !strings.ContainsAny(f, "$`")}
 		}
 		out = append(out, ws)
-	}
-	return out
-}
-
-var separator = regexp.MustCompile("[;&|\n`]|\\$\\(")
-
-// segments splits text on `;&|`, newlines, backquotes and `$(`, then each part into whitespace-separated
-// fields without leading quotes and grouping (`"`, `'`, `\`, `(`, `{`, backquote, `$(`) or trailing ones.
-func segments(text string) [][]string {
-	parts := separator.Split(text, -1)
-	out := make([][]string, len(parts))
-	for i, p := range parts {
-		for _, f := range strings.Fields(p) {
-			for len(f) > 0 && (strings.ContainsRune("\"'\\({`", rune(f[0])) || strings.HasPrefix(f, "$(")) {
-				if strings.HasPrefix(f, "$(") {
-					f = f[2:]
-				} else {
-					f = f[1:]
-				}
-			}
-			f = strings.TrimRight(f, "\"')}`")
-			out[i] = append(out[i], f)
-		}
 	}
 	return out
 }
