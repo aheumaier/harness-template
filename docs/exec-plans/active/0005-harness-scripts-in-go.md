@@ -72,6 +72,8 @@ nothing in run time. The evidence, re-measured here at `750c094` on 2026-11-02 o
 | 2026-11-02 | `scripts/` is rewritten in Go; this replaces ADR 0012's "orchestration stays in bash" and the clauses ADR 0045 lists (the user) | ADR 0045 |
 | 2026-11-02 | No GNU `parallel` pin and no `bats --jobs`: both are thrown away once bats goes (agent advice; the user did not object) | this file |
 | 2026-11-02 | R1–R4 all option (a): template first, everything but the bootstrap, testscript plus table tests, one `.bin/harness` (the user) | [Rulings](#rulings), ADR 0045 |
+| 2026-11-02 | The `protect-harness` port keeps every block of the bash heuristic and adds some: globs ignore case, symlinks and `..` are followed, an unresolvable path or an unreadable list blocks, a glob without `*` covers the paths under it, `$(…)` and backquotes are split, `-Ei`/`--in-place` and `cp … 2>/dev/null` are caught. ADR 0045 says "case for case"; whether to reword that sentence is the user's call in the pilot 2 PR (agent) | this file, pilot 2 PR |
+| 2026-11-02 | A hook guard's cases are table tests that call `run()` with a JSON payload, not testscript files: a payload per case is clearer as a Go value than as a `.txtar` file, and the wrapper is still run as a shell would (`TestProtectHarnessHook`). testscript stays for subcommands driven by arguments and files, as `check-commits` (agent) | this file |
 
 ## Rulings
 
@@ -94,11 +96,11 @@ each in ADR 0045's Alternatives; the product's copy has them in full.
   | `scripts/setup-worktree.sh` | 153 | `make setup` on a fresh clone, before `.bin/harness` exists |
   | `scripts/harness/layout.sh` | 136 | the Makefile reads `layout.sh --print` at parse time, and CI reads it before `setup-go` (`harness-integrity.yml:48`) |
   | `.claude/hooks/*.sh` (5) | 319 | ADR 0012: a missing binary exits 127, which Claude Code treats as non-blocking, so the wrapper turns it into exit 2 |
-  | `scripts/harness/hook-bootstrap.sh` | 14 | the wrappers' "run make setup" message and the `make setup` / `make .bin/harness` escape |
+  | `scripts/harness/hook-bootstrap.sh` | 14 (34 after pilot 2) | the wrappers' "run make setup" message and the `make setup` / `make .bin/harness` escape |
   | `scripts/harness/timing.sh` | 82 | `harness_time_exit` times each hook through an EXIT trap ([ADR 0013](../../adr/0013-harness-nfr-budgets.md)) |
   | `scripts/git-hooks/*` (2) | 13 | git runs them by name; they call the binary |
 
-  About 970 lines stay today; after the port each hook wrapper is a thin caller of `.bin/harness` like
+  About 970 lines stayed at `750c094`; after the port each hook wrapper is a thin caller of `.bin/harness` like
   `guard-bash.sh` (24 lines). Both `protect-harness.sh` (140 lines: its Bash heuristic) and `fast-check.sh`
   (113 lines: its file-type routing table, which hard-codes layout paths that belong in `layout.env`) move their
   logic into subcommands. `layout.sh` keeps its double in Go (`layout.go`, shared vectors in
@@ -145,12 +147,12 @@ each in ADR 0045's Alternatives; the product's copy has them in full.
   call. Both commands write no protected path, so letting them through matches today's behaviour. From slice 1
   on, every usage error (an unknown subcommand, a wrong argument count, an unknown flag) gets its own exit code,
   64; `run.sh` passes any non-zero code through, so sensors still fail. Wrappers and git hooks treat 64, 126 and
-  127, and an exit 2 whose stderr starts with `usage:`, as a stale binary: they block and say "rebuild" (the
-  `commit-msg` hook: "run make setup"). `harness_missing` reads the hook input itself (`hook-bootstrap.sh:11`),
+  127, and an exit 2 with a line starting with `usage: harness`, as a stale binary: they block and say "rebuild" (the
+  `commit-msg` hook: "run make setup"). `harness_missing` reads the hook input itself (`hook-bootstrap.sh:24`),
   so it gets the input from the wrapper's variable, not from stdin a second time.
 - **Subcommands take their world as arguments.** A subcommand reads its root, environment and working directory
-  from a value passed in by `run`, never from `os.Getenv`, `os.LookupEnv`, `os.Getwd` or `os.Chdir`, and never
-  calls `os.Exit`. Today non-test code has 5 such calls in 3 files: `main.go:173` and `:177` (`HARNESS_ROOT`,
+  from a value passed in by `run`, never from `os.Getenv`, `os.LookupEnv`, `os.Environ`, `os.Getwd` or `os.Chdir`, and never
+  calls `os.Exit`. At `750c094` non-test code had 5 such calls in 3 files: `main.go:173` and `:177` (`HARNESS_ROOT`,
   `BASE_REF`, `HARNESS_CHANGE_APPROVED`), `guardbash.go:79` (`os.Getwd`) and `layout.go:144`
   (`HARNESS_STACK`, in the layout parser every sensor calls, which must keep behaving like `layout.sh`,
   [ADR 0033](../../adr/0033-stack-profiles.md)).
@@ -247,7 +249,14 @@ or stays, because deleting it touches every caller.
    - The subcommand registry and the stable surface for product files (Target shape), folding in all four lists
      of `main.go`, the "world as arguments" change for the 5 calls including
      `layout.go`'s signature (the shared vectors keep it in step with `layout.sh`), and `t.Parallel()` in the
-     existing 72 tests.
+     existing 72 tests. Pilot 2 added a sixth: `protectharness.go`'s `worktrees` reads `os.Environ()` to drop
+     `GIT_DIR`, `GIT_WORK_TREE` and `GIT_COMMON_DIR`, and its test sets `PATH` with `t.Setenv`.
+   - The surface shared by subcommands moves into files of its own, named in the package doc: the hook helpers
+     (`blockf`, `set`, `physicalDir`, `segments`, now in `guardbash.go` and also used by `protectharness.go`)
+     and the path helpers (`protectedPaths`, `pathspecMatch*`, `matchesAny*`, `resolveExisting`, now in
+     `integritycheck.go` and `testfile.go`).
+   - The cases of `TestProtectHarness` that depend on the list move onto a fixed list in `testdata/`, so a product
+     that protects more paths keeps them green.
    - The sandbox helper from the pilot, generalised.
    - Fix TD-129 (`sync-check` literal `apps/api` paths) and extend `harness-layout-valid` (`layout-check`) to
      fail when no protected glob matches `<API_DIR>/tools/harness/*` (fixture
@@ -270,8 +279,10 @@ or stays, because deleting it touches every caller.
    bats files, and the scoped fixtures (`go-tests-dependent-package`, `web-lint-dependent-workspace`,
    `SCOPE=changed`) must still be rejected.
 5. **Hooks.** The wrappers stay (R2); `fast-check`'s routing moves into a subcommand that reads `layout.go` and
-   prints which sensors to run, and the wrapper runs them through `$RUN`; the 30 bats tests become Go tests that
-   execute the wrappers. `node -e` per hook call goes away with them.
+   prints which sensors to run, and the wrapper runs them through `$RUN`; the 31 bats tests become Go tests that
+   execute the wrappers. `node -e` per hook call goes away with them. The stale-binary branch, written out in
+   `protect-harness.sh` and `scripts/git-hooks/commit-msg` since slice 1, becomes one `harness_stale` function in
+   `hook-bootstrap.sh` that every wrapper calls.
 6. **Sensors in `make check` and `check-all`:** specs, contract, upstream drift, migrations, squawk, SwiftLint,
    swift-format, trivy, file sensors, branch protection, sync check. SwiftLint and swift-format start only when
    [plan 0004](0004-ios-stack-group.md)'s phase 2 is done and ADRs 0042–0044 are accepted, so the port does not
@@ -571,3 +582,26 @@ template's subcommand uncalled; the analyzers plugin already registers from `ini
   - **For slice 2.** `getenv` does not reach a child process's environment: in-process `git` reads the test
     process's own. The "world" value that replaces `getenv` should carry the child-process environment as part of
     the stable surface.
+- 2026-11-02: pilot 2 (`protect-harness`), measured on an Apple Silicon Mac (load avg 7–10).
+  - **Tests (A8).** The bats file took 6.6 s (median of 3). The Go tests take about 1.4 s uncached (0.01 s +
+    0.42–0.46 s + 0.89–0.93 s for the three test functions, 3 runs) and nothing when cached.
+  - **Lines (A8).** Removed 262: bats 129, the hook's heuristic 127, `hook-bootstrap.sh` 6. Added 641: Go 264,
+    Go tests 273, shared test helpers 33, hook 32, `hook-bootstrap.sh` 26 (the duplicate-key check), bats 13.
+  - **`make check` after a one-line edit to `protectharness.go` (A8): 174 s.** The bats suite is 172 s of it.
+  - **Cache trigger (A1),** with `BASE_REF=HEAD` and `make test-harness`. A clean tree runs 13.8 s, then 0.7 s.
+    An edit to `protectharness.go` runs uncached (13.4–13.6 s, each time); a `README.md` edit stays cached
+    (0.7 s). The first run after a `.go` file is restored is uncached once, since tests read the source files.
+  - **Contract (A5).** Each of the 10 bats cases is a row or subtest of the same name in
+    `protectharness_test.go`, plus rows for case folding, symlinks, NotebookEdit, quoting and redirects, an
+    unresolvable path, an empty list, and the wrapper's stale-binary and duplicate-key cases. The old and new
+    hook, run on 51 shell commands and a duplicate-key payload, differ only where the new one blocks more.
+  - **Budget (A6),** median of 9, before → after: Bash 40.1 → 29.8 ms, Edit 36.1 → 29.9 ms, Edit in another
+    worktree 47.8 → 36.0 ms, a blocked Edit 39.3 → 30.2 ms.
+  - **Stale binary (A7).** With the binaries of `b526181` (exit 2 and usage text) and `cc2c9d5` (exit 64) the
+    hook lets `make setup` and `make .bin/harness` through and blocks everything else with "rebuild".
+  - **Fixtures (A3).** `rules.md` names `protectharness_test.go`; no `drop.txt`, README or `adoption-probe.sh`
+    line named the bats file. `make harness-selftest` (88 passed) and `make adoption-probe` are green.
+  - **Review.** Go, shell, code, architecture and reuse reviewers, then one re-run. Fixed: `cp`'s destination
+    before a redirect, `rm AGENTS\.md`, a duplicate, differently cased or `\u`-escaped `command` key passing the
+    `make setup` escape, git's error text in the block. Still open in TD-73: wrapper words, interpreters, a word
+    glued to `>`, an input redirect after the destination, `cp -t`.

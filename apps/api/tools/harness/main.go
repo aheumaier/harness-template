@@ -5,6 +5,7 @@
 //
 //	harness hook-input <field>...  Claude Code hook JSON on stdin → the fields, one per line
 //	harness guard-bash <root>      PreToolUse guard for Bash commands (.claude/hooks/guard-bash.sh)
+//	harness protect-harness <root> PreToolUse guard for harness files (.claude/hooks/protect-harness.sh)
 //	harness test-file <root> <path>
 //	                               test-writer's write guard: path is a product test file inside root, as
 //	                               specs-tested counts them (.claude/hooks/only-test-files.sh)
@@ -56,7 +57,7 @@ func main() {
 // exitUsage is the exit code of a usage error.
 const exitUsage = 64
 
-const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness test-file <root> <path> | harness check-links <root> | harness fixture-claims <root> | harness rule-lists <root> | harness orphans <root> | harness quality-rows [-no-clock] <root> | harness references-pinned <root> | harness approved-check <root> | harness specs-tested <root> | harness layout-check <root> | harness swift-resolved <root> | swift package describe --type json | harness swift-tests <root> <dir> | harness spec-refs <file>... | harness check-commits <root> | harness check-commits --msg <file> | harness integrity-check <root> | harness rename [-write] <root> <name> <module|skip> <owner>"
+const usage = "usage: harness hook-input <cwd|tool_name|target|command>... | harness guard-bash <root> | harness protect-harness <root> | harness test-file <root> <path> | harness check-links <root> | harness fixture-claims <root> | harness rule-lists <root> | harness orphans <root> | harness quality-rows [-no-clock] <root> | harness references-pinned <root> | harness approved-check <root> | harness specs-tested <root> | harness layout-check <root> | harness swift-resolved <root> | swift package describe --type json | harness swift-tests <root> <dir> | harness spec-refs <file>... | harness check-commits <root> | harness check-commits --msg <file> | harness integrity-check <root> | harness rename [-write] <root> <name> <module|skip> <owner>"
 
 // rootSensors are the sensors run as `harness <name> <root>`: findings on stdout, whether there was any, and an
 // error when they cannot run.
@@ -115,20 +116,19 @@ func dispatch(args []string, getenv func(string) string, stdin io.Reader, stdout
 			return exitUsage
 		}
 		return 2
-	case "guard-bash":
+	case "guard-bash", "protect-harness":
 		if len(args) != 2 {
 			break
 		}
-		err := guardBash(args[1], stdin)
-		if err == nil {
-			return 0
+		guard := guardBash
+		if args[0] == "protect-harness" {
+			guard = protectHarness
 		}
-		var b *blockError
-		if !errors.As(err, &b) {
-			err = blockf("%v", err) // fail closed
+		if err := guard(args[1], stdin); err != nil {
+			fmt.Fprintf(stderr, "%s: blocked: %v\n", args[0], err) // any error blocks (fail closed)
+			return 2
 		}
-		fmt.Fprintf(stderr, "guard-bash: blocked: %v\n", err)
-		return 2
+		return 0
 	case "test-file":
 		if len(args) != 3 {
 			break

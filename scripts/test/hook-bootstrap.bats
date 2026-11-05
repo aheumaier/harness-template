@@ -53,6 +53,19 @@ bash_payload() { printf '{"cwd":"%s","tool_name":"Bash","tool_input":{"command":
   has 'fast-check: blocked: .bin/harness is missing'
 }
 
+@test "a second command or tool_name key, or another tool, is no way out" {
+  for p in '{"tool_name":"Bash","tool_input":{"command":"make setup","command":"rm -rf /x"}}' \
+    '{"tool_name":"Bash","tool_name":"Edit","tool_input":{"command":"make setup","file_path":"AGENTS.md"}}' \
+    '{"tool_name":"Edit","tool_input":{"command":"make setup","file_path":"AGENTS.md"}}' \
+    '{"tool_name":"Bash","tool_input":{"command":"make setup","Command":"rm -rf /x"}}' \
+    '{"tool_name":"Bash","tool_input":{"command":"make setup","command":"rm -rf /x"}}'; do
+    for h in guard-bash protect-harness; do
+      run -2 "$SANDBOX/.claude/hooks/$h.sh" <<<"$p"
+      has "$h: blocked: .bin/harness is missing"
+    done
+  done
+}
+
 @test "a file argument to fast-check needs no binary" {
   run -0 "$SANDBOX/.claude/hooks/fast-check.sh" scripts/tool-versions.env
 }

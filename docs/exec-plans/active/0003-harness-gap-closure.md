@@ -1452,7 +1452,7 @@ gates for contract, migration and harness changes. Four are not.
   remain a second spelling of the test-file forms. Rejected: renaming `spec-refs` to `openapi-refs` (naming
   churn for two callers). TD-114 and TD-120..122 are unassigned: ids were handed to lanes in flight and not all
   used. ci.md and rules.md#api-no-breaking-change do not yet mention the cannot-compare exit, and
-  `protect-harness.sh` still compares case-sensitively (hand-off: protected `.claude/hooks/`). Exit
+  `protect-harness.sh` still compares case-sensitively (hand-off: protected `.claude/hooks/`; fixed 2026-11-02 by exec plan 0005 pilot 2). Exit
   criterion: scenarios traced or exempted in `check` and `check-all` (fixture `specs-scenarios-tested`; the
   template has no `specs/`); PR template Assumptions checked by code-reviewer check 6 (in CI without the PR
   body, TD-119); trial recorded in ADR 0039 and the P5.4 Log line; weekly upstream drift exists in drift.yml

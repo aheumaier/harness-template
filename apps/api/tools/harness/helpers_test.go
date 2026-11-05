@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +16,28 @@ import (
 	"sync"
 	"testing"
 )
+
+// payload is a PreToolUse payload: Bash's command, NotebookEdit's notebook_path or another file tool's file_path.
+func payload(t *testing.T, cwd, tool, arg string) string {
+	t.Helper()
+	key := map[string]string{"Bash": "command", "NotebookEdit": "notebook_path"}[tool]
+	if key == "" {
+		key = "file_path"
+	}
+	b, err := json.Marshal(map[string]any{"cwd": cwd, "tool_name": tool, "tool_input": map[string]string{key: arg}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// runHook runs `harness <hook> root` in-process on a PreToolUse payload and returns the exit code and stderr.
+func runHook(t *testing.T, hook, root, stdin string) (int, string) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	code := run([]string{hook, root}, strings.NewReader(stdin), &stdout, &stderr)
+	return code, stderr.String()
+}
 
 // TestMain runs the test binary as the harness when a sandbox links it in as .bin/harness (linkHarness), so a
 // test of a wrapper runs the code under test, not whatever .bin/harness was last built. After the tests it fails
@@ -173,14 +196,20 @@ func copyFile(src, dst string, mode os.FileMode) error {
 }
 
 // execIn runs a file in dir with env added to the environment (env wins) and returns its exit code and combined
-// output. The environment has no latency budgets (a loaded machine must not add warnings to tested output) and
-// no scope or stack override, like scripts/test/helpers.bash.
+// output. The environment has no latency budgets (a loaded machine must not add warnings to tested output), no
+// scope or stack override, like scripts/test/helpers.bash, and no HARNESS_EDIT (a human's session would let every
+// protect-harness case through). execInput also gives it stdin.
 func execIn(t *testing.T, dir string, env []string, name string, args ...string) (int, string) {
+	t.Helper()
+	return execInput(t, dir, env, "", name, args...)
+}
+
+func execInput(t *testing.T, dir string, env []string, stdin, name string, args ...string) (int, string) {
 	t.Helper()
 	var all []string
 	for _, kv := range os.Environ() {
 		switch k, _, _ := strings.Cut(kv, "="); k {
-		case "HARNESS_BUDGETS", "HARNESS_SCOPE", "HARNESS_STACK":
+		case "HARNESS_BUDGETS", "HARNESS_SCOPE", "HARNESS_STACK", "HARNESS_EDIT":
 		default:
 			all = append(all, kv)
 		}
@@ -188,7 +217,7 @@ func execIn(t *testing.T, dir string, env []string, name string, args ...string)
 	env = append(append(all, "HARNESS_BUDGETS=/dev/null"), env...)
 	var out bytes.Buffer
 	cmd := exec.Command(name, args...)
-	cmd.Dir, cmd.Env, cmd.Stdout, cmd.Stderr = dir, env, &out, &out
+	cmd.Dir, cmd.Env, cmd.Stdin, cmd.Stdout, cmd.Stderr = dir, env, strings.NewReader(stdin), &out, &out
 	var exit *exec.ExitError
 	switch err := cmd.Run(); {
 	case err == nil:
