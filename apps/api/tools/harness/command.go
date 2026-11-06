@@ -6,6 +6,9 @@ import (
 	"io"
 	"maps"
 	"math"
+	"path"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 )
@@ -16,6 +19,8 @@ type command struct {
 	usage string // its part of the usage text, starting with `harness <name>`; alternatives joined with " | "
 	about string // what it checks and who calls it, for `harness help`
 	run   func(w world, args []string) int
+	file  string // the base name of the Go file that registers it, and the line: set by register
+	line  int
 }
 
 // exitBadArgs from a command's run makes dispatch print the usage text and exit exitUsage. No child process
@@ -45,10 +50,14 @@ func newRegistry() registry {
 	return r
 }
 
-// register adds c; a second command with the same name panics at start-up.
+// register adds c, recording where its caller is (repo-no-orphan-subcommands points there); a second command
+// with the same name panics at start-up.
 func (r registry) register(c command) {
 	if _, dup := r[c.name]; dup {
 		panic("harness: subcommand " + c.name + " registered twice")
+	}
+	if _, file, line, ok := runtime.Caller(1); ok {
+		c.file, c.line = path.Base(filepath.ToSlash(file)), line
 	}
 	r[c.name] = c
 }

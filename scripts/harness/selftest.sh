@@ -3,8 +3,8 @@
 #
 #   scripts/harness/selftest.sh [fixture-name...]     (make harness-selftest [FIXTURE=name])
 #
-# Copies the repo (tracked + untracked, not ignored; node_modules and .bin are linked, not copied) into a
-# temp git repo, then for each scripts/harness/fixtures/<name>/:
+# Copies the repo (tracked + untracked, not ignored; node_modules and the tools in .bin are linked, not copied;
+# the copy builds its own .bin/harness) into a temp git repo, then for each scripts/harness/fixtures/<name>/:
 #   base/      optional overlay committed on `main` first (e.g. a table a later migration drops)
 #   files/     overlay committed on branch `fixture` (the violation)
 #   apply.sh   optional script run in the copy root after files/ (edits that are not whole files)
@@ -78,7 +78,13 @@ mkdir -p "$work"
 git ls-files -co --exclude-standard | while read -r f; do [[ -e "$f" ]] && printf '%s\0' "$f"; done |
   tar -cf - --null -T - | tar -xf - -C "$work"
 ln -s "$ROOT/node_modules" "$work/node_modules"
-ln -s "$ROOT/.bin" "$work/.bin"
+# The tools are linked one by one, all but .bin/harness: the copy builds its own, so a fixture's Go never lands
+# in the caller's binary (an orphan subcommand there would turn the caller's make orphans red).
+mkdir "$work/.bin"
+for f in "$ROOT"/.bin/* "$ROOT"/.bin/.[!.]*; do
+  [[ (-e "$f" || -L "$f") && "${f##*/}" != harness ]] || continue
+  ln -s "$f" "$work/.bin/"
+done
 if harness_stack_has web; then # pnpm workspace links are relative: copy them
   for ws in "${WEB_DIRS[@]}"; do
     for nm in "$ws"/*/node_modules; do
@@ -128,7 +134,7 @@ host_lacks() {
   fi
 }
 
-pass=0 fail=0 skip=0
+pass=0 fail=0 skip=0 harness_stale=0
 for name in "${names[@]}"; do
   dir="$FIXTURES/$name"
   [[ -f "$dir/fixture.conf" ]] || {
@@ -205,7 +211,7 @@ for name in "${names[@]}"; do
   # .tmp/ is gitignored, so clean keeps it: drop it too, or one fixture's scratch (harness-behind-upstream's
   # clone in .tmp/upstream) is linted and scanned by every later fixture under HARNESS_SCOPE=full. One command
   # per line: set -e ignores a failure inside an && list. Other ignored state (.cache/, .turbo/, the linked
-  # .bin) still carries over: tech-debt TD-147.
+  # tools in .bin) still carries over: tech-debt TD-147.
   g checkout -qf -B main "$base"
   g clean -fdq
   rm -rf "$work/.tmp"
@@ -222,6 +228,13 @@ for name in "${names[@]}"; do
     fail=$((fail + 1))
     continue
   }
+  # Drop the copy's binary before a fixture that changes the harness module (make 3.81 compares whole seconds,
+  # so its new Go can share a second with the last build) and after it (a file it added is deleted by the reset,
+  # and make cannot see a removed prerequisite).
+  harness_changed=0
+  g diff --quiet "$base" HEAD -- "$API_DIR/tools/harness" || harness_changed=1
+  if ((harness_changed || harness_stale)); then rm -f "$work/.bin/harness"; fi
+  harness_stale=$harness_changed
 
   status=0
   # A fresh make in the copy: no HARNESS_STACK, and no command-line variables of the caller's make (MAKEFLAGS).

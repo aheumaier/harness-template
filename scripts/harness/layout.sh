@@ -133,4 +133,5 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   for key in $HARNESS_LAYOUT_KEYS; do printf '%s=%s\n' "$key" "${!key}"; done
   exit 0
 fi
-harness_layout_load "$(dirname "${BASH_SOURCE[0]}")/layout.env"
+# Under ||, so a sourcer's ERR trap (set -E) does not fire here; the sourcer's own `|| exit 2` handles the return.
+harness_layout_load "$(dirname "${BASH_SOURCE[0]}")/layout.env" || return 1

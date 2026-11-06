@@ -1,0 +1,3 @@
+# harness files (fixture: no entry for the harness module, only what layout-check reads this list for)
+scripts/harness/* config
+AGENTS.md

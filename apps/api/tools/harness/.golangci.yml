@@ -19,7 +19,8 @@ linters:
     - forbidigo # rules.md#harness-tests-exec-in-helpers
   settings:
     # ADR 0045: a second set of ADR 0024's thresholds, each the worst value of the tree that added lint-harness
-    # (2026-11-06, slice 2b). They only go down, until they meet apps/api/.golangci.yml's; never raise one.
+    # (2026-11-06, slice 2b; file length: slice 2c's). They only go down, until they meet apps/api/.golangci.yml's;
+    # never raise one.
     # rules.md#code-function-length: statements, not lines (worst: approvedcheck.go (*approvedChecker).check, 77)
     funlen:
       lines: -1
@@ -32,9 +33,9 @@ linters:
         # rules.md#code-parameters (worst: command.go and rename.go, 6; a variadic counts as one)
         - name: argument-limit
           arguments: [6]
-        # rules.md#code-file-length: every line, as wc -l counts (worst over all files, tests included: layout_test.go, 556)
+        # rules.md#code-file-length: every line, as wc -l counts (worst over all files, tests included: layout_test.go, 529 after slice 2c split it)
         - name: file-length-limit
-          arguments: [{ max: 556, skipComments: false, skipBlankLines: false }]
+          arguments: [{ max: 529, skipComments: false, skipBlankLines: false }]
     # rules.md#harness-tests-exec-in-helpers: tests start processes only through helpers_test.go (see exclusions)
     forbidigo:
       analyze-types: true # match by package path, so a renamed import is judged by its type

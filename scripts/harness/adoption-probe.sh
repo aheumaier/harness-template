@@ -16,7 +16,7 @@
 #      the Makefile; make .bin/harness
 #   3  copy the harness; merge AGENTS.md/CLAUDE.md, .claude/, .specify/, .gitignore (none exist yet)
 #   4  git add, make rename (dry run, then WRITE=1)
-#   5  layout.env, make layout-check, re-point the files of step 5's table that exist in this layout
+#   5  layout.env, re-point the files of step 5's table that exist in this layout, make layout-check
 #   6  drop what the layout lacks (web and db links, make new-domain, drop.txt) and this probe's own files and
 #      rule, declined in .harness-version (its CI job, target and required check stay); port fixtures
 #   7  make setup check harness-selftest, as README writes them (the skeleton's layout.env has STACK=go)
@@ -314,7 +314,6 @@ step 4 "commit" g commit -qm "chore(harness): adopt the harness"
 
 # --- 5 layout and re-pointed files --------------------------------------------------------------------------
 step 5 "write layout.env" cp "$SKEL/layout.env" "$DST/scripts/harness/layout.env"
-step 5 "make layout-check" in_dst make layout-check
 up="" # the repo root seen from API_DIR: one ../ per directory
 IFS=/ read -ra parts <<<"${API_PREFIX%/}"
 for _ in ${parts[@]+"${parts[@]}"}; do up="$up../"; done
@@ -328,6 +327,7 @@ step5() {
   hand_edit docs/harness/rules.md "s|apps/api/tools/|${API_PREFIX}tools/|g"
 }
 step 5 "re-point the files that cannot read layout.env" step5
+step 5 "make layout-check" in_dst make layout-check # after protected-paths.txt names API_DIR's harness module
 
 # --- 6 rules ------------------------------------------------------------------------------------------------
 # STACK=go drops the web and db sets; their area links, the orval reference and the skills step 3 left out go

@@ -305,9 +305,12 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      `CONTRACT_CONSUMERS` ([ADR 0037](docs/adr/0037-upstream-spec-drift-is-a-drift-report.md)). The scripts
      in `scripts/harness/`, the Makefile, `.bin/harness`, the domainiso analyzer and the CI workflows read it
      ([ADR 0030](docs/adr/0030-one-layout-file-for-every-sensor.md)), so this one file re-points them.
-     `make layout-check` (in `make check`, [harness-layout-valid](docs/harness/rules.md#harness-layout-valid))
-     fails while a path it names does not exist, `LAYER_GLOB` matches no Go package, or a flat `<dir>/<pkg>`
-     package sits beside the layers (`<dir>/platform` excepted). `LAYER_GLOB` must end
+     Then re-point `protected-paths.txt` (table below) and run `make layout-check` (in `make check`,
+     [harness-layout-valid](docs/harness/rules.md#harness-layout-valid)). It fails while a path layout.env names
+     does not exist, `LAYER_GLOB` matches no Go package, or a flat `<dir>/<pkg>` package sits beside the layers
+     (`<dir>/platform` excepted), or while no `config` entry of `protected-paths.txt` matches the harness's own
+     module in `<API_DIR>/tools/harness/` (a symlink on the way to it or inside it, or a path naming it in
+     another case, fails too). `API_DIR` is written plainly, `apps/api` or `.`, not `apps/api/` or `./apps/api`. `LAYER_GLOB` must end
      in two levels, `<dir>/*/*` (domain, then layer; `<dir>` may be nested, such as `pkg/domains`): a flat `internal/<pkg>` layout has no layer, so either
      restructure or drop [go-domain-isolation](docs/harness/rules.md#go-domain-isolation) and `go-layers` in
      step 6. `layout.env` is itself protected harness config: your first edit needs the
@@ -321,8 +324,8 @@ template changed since. Adopt by hand, in one reviewed harness PR:
 
      | File | Hard-codes | Left alone |
      |------|------------|------------|
-     | [protected-paths.txt](scripts/harness/protected-paths.txt) | `apps/api/tools/analyzers/*`, `apps/api/tools/harness/*`, `apps/api/internal/platform/approvaltest/*`, `apps/web/e2e/global-setup.ts` | with the tools at `<API_DIR>/tools/`, the harness's own Go code is unprotected: protect-harness lets edits through and [harness-config-not-loosened](docs/harness/rules.md#harness-config-not-loosened) never asks for the label. Fix this one first |
-     | [CODEOWNERS](.github/CODEOWNERS) | `/api/openapi.yaml`, `/apps/api/db/migrations/`, `/apps/api/tools/*` | contract and migration reviews never trigger |
+     | [protected-paths.txt](scripts/harness/protected-paths.txt) | `apps/api/tools/analyzers/*`, `apps/api/tools/harness/*`, `apps/api/internal/platform/approvaltest/*`, `apps/web/e2e/global-setup.ts` | with the tools at `<API_DIR>/tools/`, the harness's own Go code is unprotected: protect-harness lets edits through and [harness-config-not-loosened](docs/harness/rules.md#harness-config-not-loosened) never asks for the label. `make layout-check` fails until a `config` entry matches `<API_DIR>/tools/harness/`; it does not check the analyzers (tracker TD-130). Fix this one first |
+     | [CODEOWNERS](.github/CODEOWNERS) | `/api/openapi.yaml`, `/apps/api/db/migrations/`, `/apps/api/tools/*` | contract and migration reviews never trigger (not checked by `make layout-check`, tracker TD-130) |
      | [fast-check.sh](.claude/hooks/fast-check.sh) | its per-file branches keyed on `apps/api`, `api/openapi.yaml`, `packages/` | edits to your code get no per-file check (tracker TD-66) |
      | [.custom-gcl.yml](apps/api/.custom-gcl.yml) | `destination: ../../.bin`, `path: ./tools/analyzers` | move it, `.golangci.yml` and `.go-arch-lint.yml` next to your `go.mod` (`API_DIR`) and fix both paths, or the custom golangci-lint build lands outside `.bin/` |
      | [.golangci.yml](apps/api/.golangci.yml) | depguard paths `**/internal/*/store/**`, `**/internal/*/api/**`; forbidigo exclusion `internal/platform/` | go-db-only-in-store and go-http-only-in-api judge the wrong files |
@@ -341,6 +344,7 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      | [setup-worktree.sh](scripts/setup-worktree.sh) | `make tools deps`, with `db` in `STACK` compose `db` and `atlas migrate apply` in `API_DIR` | `make setup` fails in `pnpm install` without a lockfile (with `web`) or without Docker (with `db`) |
      | `make new-domain`: [new-domain.sh](scripts/new-domain.sh) and `scripts/templates/new-domain/*` | `apps/api/internal/<name>`, `apps/api/db/queries`, `apps/api/db/migrations`, `apps/api/cmd/api/routes.go`, `apps/api/sqlc.yaml` | it writes the template layout, and CI's `make new-domain` probe job fails; rewrite it for your layout, or in step 6 drop its `Makefile` target, CI's `generator-probe` job and required check, that job's `ci.md` row and the skill (tracker TD-67) |
      | `scripts/test/*.bats`, for example [affected.bats](scripts/test/affected.bats) | template paths and the template's identity in the test cases; tests of scripts step 3 does not copy (`new-domain.bats`, `obs-query.bats`, `scaffold-tests.bats`) | `make check`'s bats fails; update each with the script it tests, or drop it as in step 6 ([drop.txt](scripts/templates/adoption-probe/drop.txt) lists them for a root module, tracker TD-99) |
+     | [shell-allowlist.txt](scripts/harness/shell-allowlist.txt) | the template's shell scripts under `scripts/` and `.claude/hooks/` | [harness-no-new-shell](docs/harness/rules.md#harness-no-new-shell) fails on each of your own shell scripts there (`scripts/deploy.sh`); list each as `<path> unported` in one harness PR and keep those lines when you merge a template sync |
      | [rules.md](docs/harness/rules.md) | test paths on `**Fixture:**` lines, `apps/api/tools/...` | [rules-fixture-claims](docs/harness/rules.md#rules-fixture-claims) fails; replace `apps/api/` by `<API_DIR>/` |
      | `<API_DIR>/internal/AGENTS.md` | links `../../../docs/`, relative to `apps/api/internal/` | [docs-links-resolve](docs/harness/rules.md#docs-links-resolve) fails |
      | [QUALITY.md](docs/QUALITY.md) | no rows: the template has no domain | `make check-all`'s [docs-quality-rows-match-domains](docs/harness/rules.md#docs-quality-rows-match-domains) fails; add one row per domain under `LAYER_GLOB`, linking its `AGENTS.md` |
@@ -470,14 +474,16 @@ Template sync reports drift and never applies anything ([ADR 0026](docs/adr/0026
 - `make harness-sync-check` fetches the upstream's default branch anonymously into a temp repo and lists each
   protected path (except `.harness-version`) that changed there since the marker and differs here, marking
   files you changed too or no longer have. The script exits 0 when in sync, 1 when behind, and 2 when it
-  cannot check (a malformed marker, a refused URL such as one with credentials in it, a failed fetch, a marker
+  cannot check (a malformed marker, a refused URL such as one with credentials in it, a missing or malformed
+  `layout.env` here, an upstream `layout.env` without a single clean `API_DIR` line, a failed fetch, a marker
   not in upstream's history); make reports 1 and 2 alike as its exit 2. It reads the network, so it is not
   in `make check` or `check-all`; the weekly drift run includes it, where a private template exits 2 (run it
   locally with your credentials).
 
-A repo whose `API_DIR` is not `apps/api` sees the template's files under `apps/api/` listed as files it no
-longer has: port each change by hand to its copy under `API_DIR` after the bump, and do not decline them, or
-later changes there stop counting as behind (tracker TD-129).
+When your `API_DIR` differs from the template's (`apps/api`, read from the template's `layout.env`), the
+template's files under its `API_DIR` are compared with their copies under yours, and your `protected-paths.txt`
+entries written under your `API_DIR` also select the template's copies. The report names your path and the
+template's, as in `tools/harness/go.mod (upstream apps/api/tools/harness/go.mod)`. Decline such a file by your path.
 
 To catch up, port the listed files (or decline them) in a harness PR, then write the upstream commit the
 report names to `.harness-version`.

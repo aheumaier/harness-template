@@ -20,6 +20,13 @@ has() {
   return 1
 }
 
+# lacks <text>: $output does not contain text (has's opposite).
+lacks() {
+  [[ "$output" != *"$1"* ]] && return 0
+  printf 'expected output not to contain: %s\nactual output:\n%s\n' "$1" "$output" >&2
+  return 1
+}
+
 # hook <script> <command> [cwd]: feeds a PreToolUse Bash payload to .claude/hooks/<script>.
 hook() {
   node -e 'process.stdout.write(JSON.stringify({ cwd: process.argv[2], tool_input: { command: process.argv[1] } }))' \

@@ -10,10 +10,15 @@
 # make check or check-all). Harness files are the globs in protected-paths.txt, this repo's and upstream's,
 # except .harness-version itself. A path is reported when upstream's mode and content differ from both
 # .harness-version's commit and this working tree; `# declined <path>: <why>` lines in .harness-version skip it.
+# Upstream paths under upstream's API_DIR (the API_DIR line of its layout.env at the fetched commit; nothing
+# else there is read) are compared with, reported and declined as their copy under this repo's API_DIR, and
+# this repo's entries written under its API_DIR also select upstream's copy. An upstream with API_DIR=. maps
+# nothing: which of its root paths belong to the API is not known.
 #
 # Exit 0: in sync (or the template). 1: behind, one line per file. 2: cannot check (a missing or malformed
-# .harness-version, a refused URL, a failed or timed-out fetch, a marker commit not in upstream's history, any
-# unexpected error): fails closed, never passes.
+# .harness-version, a refused URL, a missing or malformed layout.env here, an upstream layout.env that is
+# missing or has no single clean API_DIR line, a failed or timed-out fetch, a marker commit not in upstream's
+# history, any unexpected error): fails closed, never passes.
 set -Eeuo pipefail
 
 RULE=harness-upstream-in-sync
@@ -43,12 +48,15 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   declined_paths+=("${rest%%: *}")
   declined_whys+=("${rest#*: }")
 done <.harness-version
-declined() { # path → prints the reason and succeeds when the path is declined
+declined() { # path → prints the reason (never empty) when the path is declined, else nothing
   local i
   for ((i = 0; i < ${#declined_paths[@]}; i++)); do
-    [[ "${declined_paths[i]}" == "$1" ]] && echo "${declined_whys[i]}" && return 0
+    [[ "${declined_paths[i]}" != "$1" ]] || {
+      printf '%s\n' "${declined_whys[i]}"
+      break
+    }
   done
-  return 1
+  return 0 # called as a plain why="$(declined …)": a non-zero status would stop the script
 }
 
 # --- the upstream URL -------------------------------------------------------------------------------------
@@ -62,6 +70,8 @@ fi
 if [[ "$url" =~ ://[^/@]*:[^/@]*@ || "$url" =~ ^https?://[^/@]+@ ]]; then
   die "HARNESS_UPSTREAM embeds credentials: remove them from the URL and use a git credential helper or a deploy key"
 fi
+# shellcheck source=layout.sh
+source scripts/harness/layout.sh || exit 2 # API_PREFIX
 
 # --- fetch upstream's default branch, anonymously and bounded ---------------------------------------------
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/harness-sync.XXXXXX")"
@@ -84,16 +94,33 @@ tip="$(up rev-parse --verify -q FETCH_HEAD || true)"
 [[ -n "$tip" ]] || die "upstream $url has no HEAD commit"
 up merge-base --is-ancestor "$base" "$tip" 2>/dev/null ||
   die ".harness-version: $base is not in the history of $url (is HARNESS_UPSTREAM the template? set it in scripts/tool-versions.env)"
+up show "$tip:scripts/harness/layout.env" >"$tmp/upstream-layout.env" 2>/dev/null ||
+  die "upstream $url has no scripts/harness/layout.env at ${tip:0:12}, so its API_DIR is unknown"
+# Only its API_DIR line, not layout.sh: a newer upstream may have keys or STACK groups this repo does not know yet.
+# Two API_DIR lines leave a newline in up_api, which the charset refuses.
+up_api="$(sed -n 's/^API_DIR=//p' "$tmp/upstream-layout.env")"
+if [[ "$up_api" != . ]] && [[ ! "$up_api" =~ ^[A-Za-z0-9_.@+-]+(/[A-Za-z0-9_.@+-]+)*$ ||
+  "/$up_api/" == */./* || "/$up_api/" == */../* ]]; then
+  die "upstream's scripts/harness/layout.env at ${tip:0:12} has no single API_DIR line with a clean relative path"
+fi
+up_prefix="$up_api/"
+[[ "$up_api" != . ]] || up_prefix=""
 
 # --- harness paths that changed upstream since the marker -------------------------------------------------
 specs=()
-add_specs() { # protected-paths.txt on stdin → specs
+# add_specs [here] <protected-paths.txt → specs. With `here` (this repo's list), an entry written under this
+# repo's API_DIR also selects upstream's copy under upstream's API_DIR; local_path maps the result back.
+add_specs() {
   local spec rest
   while read -r spec rest || [[ -n "$spec" ]]; do
-    [[ -z "$spec" || "$spec" == \#* ]] || specs+=("$spec")
+    [[ -n "$spec" && "$spec" != \#* ]] || continue
+    specs+=("$spec")
+    if [[ "${1:-}" == here && -n "$up_prefix" && "$up_prefix" != "$API_PREFIX" && "$spec" == "$API_PREFIX"* ]]; then
+      specs+=("$up_prefix${spec#"$API_PREFIX"}")
+    fi
   done
 }
-if [[ -f scripts/harness/protected-paths.txt ]]; then add_specs <scripts/harness/protected-paths.txt; fi
+if [[ -f scripts/harness/protected-paths.txt ]]; then add_specs here <scripts/harness/protected-paths.txt; fi
 add_specs <<<"$(up show "$tip:scripts/harness/protected-paths.txt" 2>/dev/null || true)"
 ((${#specs[@]} > 0)) || die "no harness paths: scripts/harness/protected-paths.txt is missing here and upstream"
 up diff -z --name-only --no-renames "$base" "$tip" -- "${specs[@]}" ':(exclude).harness-version' >"$tmp/changed"
@@ -113,13 +140,25 @@ local_entry() { # path → "mode blob" of the working tree, empty when absent
   fi
 }
 
+local_path() { # upstream path → this repo's path: upstream's API_DIR becomes this repo's
+  if [[ -n "$up_prefix" && "$1" == "$up_prefix"* ]]; then
+    printf '%s\n' "$API_PREFIX${1#"$up_prefix"}"
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
 behind=0
 while IFS= read -r -d '' path; do
+  local_file="$(local_path "$path")"
   theirs="$(entry "$tip" "$path")"
-  ours="$(local_entry "$path")"
+  ours="$(local_entry "$local_file")"
   [[ "$theirs" != "$ours" ]] || continue # already taken
-  if why="$(declined "$path")"; then
-    echo "$path: declined ($why), changed upstream since ${base:0:12}"
+  subject="$local_file"
+  [[ "$local_file" == "$path" ]] || subject="$local_file (upstream $path)"
+  why="$(declined "$local_file")"
+  if [[ -n "$why" ]]; then
+    echo "$subject: declined ($why), changed upstream since ${base:0:12}"
     continue
   fi
   was="$(entry "$base" "$path")"
@@ -137,10 +176,10 @@ while IFS= read -r -d '' path; do
   elif [[ -n "$ours" && "$ours" != "$was" ]]; then
     what="$what, changed here too (merge by hand)"
   fi
-  echo "$path: $what since ${base:0:12} [$RULE]"
+  echo "$subject: $what since ${base:0:12} [$RULE]"
   behind=$((behind + 1))
 done <"$tmp/changed"
 ((behind > 0)) || exit 0
-echo "$behind harness file(s) behind $url at ${tip:0:12}: review with git fetch $url HEAD && git diff ${base:0:12} FETCH_HEAD -- <path>;" \
+echo "$behind harness file(s) behind $url at ${tip:0:12}: review with git fetch $url HEAD && git diff ${base:0:12} FETCH_HEAD -- <upstream path>;" \
   "after porting them (or declining them in .harness-version) in a harness PR, write $tip to .harness-version"
 exit 1

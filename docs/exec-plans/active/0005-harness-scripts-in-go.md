@@ -60,7 +60,7 @@ nothing in run time. The evidence, re-measured here at `750c094` on 2026-11-02 o
 | 0 | Write this plan and ADR 0045 | both reviewed here, findings fixed or rejected below | this PR |
 | 1 | The user rules on R1–R4 | each has a dated ruling in this file; ADR 0045 accepted; the status lines of ADRs 0012, 0024 and 0031 say "amended by ADR 0045" | done (2026-11-02, ruled on the product's copy, recorded here) |
 | 2 | Slice 1, pilot: `check-commits` and `protect-harness` (2 PRs) | the [pilot acceptance criteria](#pilot-acceptance-criteria) hold, measured and written into the [Log](#log) | done (2026-11-03, 2026-11-05) |
-| 3 | Slice 2, base: lint, layout, helpers, scope fixes | the [slice 2 list](#port-order) is done, `make check` green | open |
+| 3 | Slice 2, base: lint, layout, helpers, scope fixes | the [slice 2 list](#port-order) is done, `make check` green | done (2026-11-06, slices 2a–2c) |
 | 4 | Slices 3–10: the rest of `scripts/` in the [port order](#port-order) | each slice's bats files deleted, its Go tests green, its docs updated | open |
 | 5 | Slice 11, exit: bats removed | the [exit criteria](#exit-criteria) hold | open |
 
@@ -79,6 +79,8 @@ nothing in run time. The evidence, re-measured here at `750c094` on 2026-11-02 o
 | 2026-11-05 | C: the iOS follow-ups ride in slice 2 as a `docs(ios)` commit: an `xcodebuild` row in `budgets.txt`, TD-151 and TD-155 closed, NFR-R5 dated (the user) | this file, slice 2a PR |
 | 2026-11-05 | D: slice 2 is three PRs, each opened after the one before merges: 2a registry, world, shared files and parallel tests; 2b `lint-harness`; 2c TD-129, `layout-check` and three rules (the user) | this file |
 | 2026-11-06 | `lint-harness` runs `paralleltest` next to `tparallel` (only `paralleltest` catches a test with no subtests and no `t.Parallel()`), and its process ban is on a use of `exec.Command`, `exec.CommandContext` or the type `exec.Cmd`, by package, not on the import (`world_test.go` needs `exec.ErrNotFound`) (agent) | this file, `docs/harness/rules.md` |
+| 2026-11-06 | Slice 2c closes TD-129: sync-check maps upstream's own `API_DIR` (read from the single `API_DIR` line of upstream's `layout.env`, so a newer upstream with more keys still reads; it fails closed without one) and this repo's entries under its `API_DIR` also select upstream's copy. `layout-check` refuses an unclean `API_DIR` and a harness module that no `config` entry protects or that a symlink or case variant hides. `lint-harness`'s file length goes from 556 to 529, the longest file after `layout_test.go` was split; the 556 below is the start value (agent) | this file, `docs/harness/rules.md`, ADR 0045 |
+| 2026-11-06 | Slice 2c's three rules (`repo-no-orphan-subcommands`, `harness-no-new-shell`, `harness-go-runs-no-script`) are team-convention under ADR 0015, from ADR 0045's "new harness logic is Go"; ADR 0045 stays as accepted. `harness-no-new-shell` keeps the plan's scope, all of `scripts/` and `.claude/hooks/`: a product lists its own shell scripts as `unported` in a harness PR (ADR 0045: products port theirs after the template's slices) (agent; the user chose this adopter scope, option (a), over narrowing the rule to `scripts/harness/` and `.claude/hooks/`) | this file, `docs/harness/rules.md`, README |
 
 ## Rulings
 
@@ -168,7 +170,8 @@ each in ADR 0045's Alternatives; the product's copy has them in full.
     slice 4's `merge-base` subcommand wraps the same function, so the "kept in step by hand" of ADR 0012 ends.
   - `fast-check.sh` runs `run.sh` (`:19`) and the slice 6 sensors `migrations-append-only.sh`, `squawk.sh`,
     `swiftlint.sh` and `swift-format.sh`, and sources `file-sensors.sh`. Its slice 5 subcommand only prints the
-    routing decision; the wrapper, which stays bash (R2), runs `$RUN` on what it prints.
+    routing decision; the wrapper, which stays bash (R2), runs `$RUN` on what it prints. That decision names make
+    targets or rule ids, never a script path: harness-go-runs-no-script flags a literal naming an unported script.
   - `pre-commit.sh` runs `run.sh` (`:30`): it ports in slice 9 with `run.sh`. It also sources `file-sensors.sh`
     (`:27`) for `harness_file_kind` (`:51`) and runs `trivy.sh secret --staged` (`:65`). The slice 6 PR that
     ports those two swaps both calls for their subcommands (`harness file-kind <path>` gives
@@ -276,18 +279,24 @@ or stays, because deleting it touches every caller.
      protects more paths keeps them green; its blocked rows still run on the repo's list, so dropping an entry
      they name fails the test.
    - Done in 2a: the sandbox helper from the pilot, generalised (`place`, `gitRepo`, `writeLines`).
-   - Fix TD-129 (`sync-check` literal `apps/api` paths) and extend `harness-layout-valid` (`layout-check`) to
-     fail when no protected glob matches `<API_DIR>/tools/harness/*` (fixture
+   - Done in 2c: TD-129 (`sync-check` literal `apps/api` paths) is fixed, and `harness-layout-valid`
+     (`layout-check`) fails when no protected glob matches `<API_DIR>/tools/harness/*` (fixture
      `harness-layout-module-unprotected`): after the port, all harness logic lives under `API_DIR`, so an adopter
      with another `API_DIR` who skipped README's "fix this one first" would have none of it protected.
-   - Propose two rules for `rules.md`, each with a fixture: `repo-no-orphan-subcommands` (every key of the
-     subcommand registry has an executable caller under ADR 0031, because Go code is never a referencer and
-     `deadcode` sees a dispatched subcommand as alive; it reads the keys from the registry in-process) and
-     `harness-go-runs-no-script` (non-test harness Go names no `scripts/**/*.sh` outside the bootstrap).
-   - Propose `harness-no-new-shell` (ADR 0045's "new harness logic is Go"): no `.sh` under `scripts/` or
-     `.claude/hooks/` outside a protected allowlist that holds the bootstrap and the scripts not yet ported and
-     only shrinks; fixture data under `scripts/harness/fixtures/` and `scripts/templates/` is exempt. Fixture
-     `harness-new-shell-script`.
+   - Done in 2c: `repo-no-orphan-subcommands` (every key of the subcommand registry but `help` has an executable
+     caller under ADR 0031, because Go code is never a referencer and `deadcode` sees a dispatched subcommand as
+     alive; `orphans` reads the keys from the registry in-process and points at the line that registers each,
+     fixture `repo-orphan-subcommand`) and `harness-go-runs-no-script` (non-test harness Go names no shell
+     script outside the bootstrap, fixture `harness-go-runs-script`).
+   - Done in 2c: `harness-no-new-shell` (ADR 0045's "new harness logic is Go"): no shell script under
+     `scripts/` or `.claude/hooks/` outside the protected `scripts/harness/shell-allowlist.txt`, which holds the
+     bootstrap (12) and the scripts not yet ported (35); fixture data under `scripts/harness/fixtures/` and
+     `scripts/templates/` is exempt. Fixture `harness-new-shell-script`. A listed script that is missing is no
+     finding, since an adopted repo copies only part of `scripts/`; so a port takes its line out by hand, and
+     only protection keeps a line from being added. Both rules run as `make no-new-shell`, in `make check`.
+   - Done in 2c: the selftest copy builds its own `.bin/harness` and rebuilds it around each fixture that
+     changes the harness module. Before, a fixture's Go landed in the caller's binary (TD-147), and GNU make
+     3.81's whole-second times could skip the rebuild, so `repo-orphan-subcommand` failed in one run of two.
 3. **Coverage:** `coverage.sh`. Products that extend it port their part after this slice.
 4. **Scope machinery:** `unchanged`, `affected`, `merge-base`, `gen-check`. These decide what `make check` skips
    ([ADR 0014](../../adr/0014-make-check-scoped-to-the-change.md)), so they keep every fail-closed case of their
@@ -658,3 +667,22 @@ template's subcommand uncalled; the analyzers plugin already registers from `ini
   because warm caches finish `lint-go` inside those 5 s; with a cold Go build cache it reproduces locally. Fix:
   `--allow-serial-runners` on both targets and on fast-check's golangci-lint call, and a 3-minute `run.timeout`
   in the harness config. `lint-go`'s measured time can now include the wait (NFR-H3, NFR-H5).
+- 2026-11-06: slice 2c (TD-129, `layout-check`, three rules), measured on an Apple Silicon Mac (load avg 5–6).
+  Slice 2 is done.
+  - **New sensors.** `no-new-shell` takes 0.02–0.04 s and `orphans` 0.05–0.07 s on the repo; neither needs a
+    `budgets.txt` row.
+  - **`make check` after a harness change: 161–163 s** (at `0f5dc77`, two runs). The bats suite is 158–159 s of it;
+    no other sensor over budget is new.
+  - **Lines.** Go code +416 −11, Go tests +399 −44, the shell scripts, bats files and `Makefile` +172 −25, four
+    fixtures +35 −1, and `shell-allowlist.txt` (12 bootstrap and 35 unported scripts).
+  - **Selftest:** 99 passed, 0 failed, 2 skipped (they need Xcode); the four new fixtures each fail as expected.
+    The copy now builds its own `.bin/harness`: with the caller's `.bin` linked, the `repo-orphan-subcommand`
+    fixture's Go landed in the caller's binary and turned the caller's `make orphans` red (TD-147 updated).
+  - **Scope.** `harness-no-new-shell` keeps the plan's scope (all of `scripts/` and `.claude/hooks/`, fixtures
+    aside); a product lists its own scripts as `unported` ([Decisions taken](#decisions-taken)). An allowlist
+    entry whose file is missing is no finding, since an adopted repo copies only part of `scripts/`.
+  - **Review.** Go, code, architecture, reuse, evasion and shell reviewers; Go, evasion and shell re-ran once.
+    The evasion review found 13 ways past the new rules over two passes. Nine are fixed and pinned in
+    `noshell_test.go` (among them a link to `/dev/zero`, dotfiles, `.SH`, no or an empty `#!` line, a shell name
+    after byte 256, harness Go running a script kept beside it). The rest are declared under "Not caught" in
+    `rules.md`; the three ways past `orphans` only keep a dead subcommand alive.

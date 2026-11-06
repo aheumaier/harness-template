@@ -60,16 +60,6 @@ func namesPath(s string, p []string) bool {
 	return false
 }
 
-// constString folds a string literal, or a parenthesized one, to its value.
-func constString(e ast.Expr) (string, bool) {
-	lit, ok := ast.Unparen(e).(*ast.BasicLit)
-	if !ok || lit.Kind != token.STRING {
-		return "", false
-	}
-	s, err := strconv.Unquote(lit.Value)
-	return s, err == nil
-}
-
 // constRuns joins each run of consecutive constant operands with sep: the paths a `+` chain (sep "") or a
 // filepath.Join or path.Join call (sep "/") builds from literals, whatever non-constant operands surround them.
 func constRuns(operands []ast.Expr, sep string) []string {

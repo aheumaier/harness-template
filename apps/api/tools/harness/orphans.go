@@ -22,19 +22,30 @@ package main
 // Claude hook, setting, skill or agent, a guide or a named script. Variable-named, file and double-colon
 // targets and included makefiles are skipped; a target-specific variable line is not a call.
 //
-// Run from `make orphans` (make check-all). Fails closed (exit 2) when the Makefile is missing or git fails.
+// Subcommands (repo-no-orphan-subcommands): every subcommand in the registry but help is run by the code of an
+// executable referencer as `$(HARNESS) <name>`, `.bin/harness <name>` (also `"$ROOT/.bin/harness" <name>`) or
+// `"$HARNESS" <name>`. Go code is no referencer, and deadcode sees a dispatched subcommand as alive, so nothing
+// else notices one whose caller went. The finding points at the line of <API_DIR>/tools/harness that registers it.
+//
+// Run from `make orphans` (make check-all). Fails closed (exit 2) when the Makefile is missing or git fails, or,
+// with an orphan subcommand, when the layout cannot be read.
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
 
-const orphanRule = "repo-no-orphan-scripts"
+const (
+	orphanRule    = "repo-no-orphan-scripts"
+	orphanSubRule = "repo-no-orphan-subcommands"
+)
 
 // runnerDirs are the directories whose files a tool runs by naming the directory.
 var runnerDirs = map[string]bool{"scripts/test": true, "scripts/git-hooks": true}
@@ -53,6 +64,9 @@ var (
 	// What may precede the `/` before a repo path: `.`, `..` or a variable expansion (`$ROOT`, `$1`, `${ROOT}`,
 	// `${{ github.workspace }}`, `$(CURDIR)`, `"$root"`).
 	pathLeadRE = regexp.MustCompile(`(?:(?:^|[^A-Za-z0-9_.-])\.\.?|\$[A-Za-z0-9_]+|\$\{\{[^}]*\}\}|\$\{[^}]*\}|\$\([^)]*\)|"\$(?:[A-Za-z0-9_]+|\{[^}]*\}|\([^)]*\))")$`)
+	// The binary run with a subcommand: `$(HARNESS) x`, `"$HARNESS" x`, `${HARNESS} x`, `.bin/harness x`,
+	// `"$ROOT/.bin/harness" x`.
+	harnessCallRE = regexp.MustCompile(`(?:\$\(HARNESS\)|"\$\{?HARNESS\}?"|\$\{?HARNESS\}?|\.bin/harness"?)[ \t]+([a-z0-9][a-z0-9-]*)`)
 )
 
 // referencer is the text of a file that can name a script or a make target.
@@ -85,11 +99,13 @@ func stripComments(text string) string {
 }
 
 func init() {
-	commands.register(rootSensor("orphans", "repo-no-orphan-scripts (make orphans, check-all)", orphans))
+	commands.register(rootSensor("orphans", "repo-no-orphan-scripts, repo-no-orphan-subcommands (make orphans, check-all)",
+		func(w world, root string) (bool, error) { return orphans(w, root, commands) }))
 }
 
-// orphans prints one line per finding to stdout and reports whether there was any. root is the repo.
-func orphans(w world, root string) (bool, error) {
+// orphans prints one line per finding to stdout and reports whether there was any. root is the repo; reg holds
+// the subcommands to check.
+func orphans(w world, root string, reg registry) (bool, error) {
 	mk, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		return false, err
@@ -109,7 +125,50 @@ func orphans(w world, root string) (bool, error) {
 	for _, t := range uncalled {
 		fmt.Fprintf(w.stdout, "Makefile:%d: make target %s has no '##' help comment and nothing calls it; document it for make help, call it or delete it [%s]\n", t.line, t.name, orphanRule)
 	}
-	return len(orphaned)+len(uncalled) > 0, nil
+	subs, err := orphanSubcommands(w, root, reg, refs)
+	if err != nil {
+		return false, err
+	}
+	return len(orphaned)+len(uncalled) > 0 || subs, nil
+}
+
+// orphanSubcommands prints each subcommand of reg but help that no executable referencer runs.
+func orphanSubcommands(w world, root string, reg registry, refs []referencer) (bool, error) {
+	called := harnessCalls(refs)
+	dir := ""
+	bad := false
+	for _, name := range slices.Sorted(maps.Keys(reg)) {
+		if name == "help" || called[name] {
+			continue
+		}
+		if dir == "" {
+			l, err := loadLayout(w, root)
+			if err != nil {
+				return false, err
+			}
+			dir = l.apiPath("tools/harness")
+		}
+		printFinding(w.stdout, path.Join(dir, reg[name].file), reg[name].line, orphanSubRule,
+			"harness subcommand %s has no caller: no Makefile target, workflow, hook or named script runs it as $(HARNESS) %s or .bin/harness %s; call it or delete it", name, name, name)
+		bad = true
+	}
+	return bad, nil
+}
+
+// harnessCalls returns the subcommand names the code of the executable referencers runs the binary with.
+func harnessCalls(refs []referencer) map[string]bool {
+	called := map[string]bool{}
+	for _, r := range refs {
+		if !r.exec {
+			continue
+		}
+		for _, m := range harnessCallRE.FindAllStringSubmatchIndex(r.text, -1) {
+			if end := m[3]; end == len(r.text) || !isNameByte(r.text[end]) {
+				called[r.text[m[2]:end]] = true
+			}
+		}
+	}
+	return called
 }
 
 // collectReferencers reads the Makefile (given), workflows, actions, Claude hooks, settings, skills and agents,

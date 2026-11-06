@@ -1,0 +1,61 @@
+# Harness file (protected). The only shell scripts allowed under scripts/ and .claude/hooks/
+# (rules.md#harness-no-new-shell, ADR 0045: new harness logic is Go); scripts/harness/fixtures/ holds data and
+# is exempt. `make no-new-shell` (make check) fails on a shell file not listed here; a listed file may be missing
+# (an adopted repo copies only part of scripts/).
+#
+# <path> <kind>: `bootstrap` runs before .bin/harness exists or must work without it (ADR 0045 R2) and stays
+# shell; Go may name it (rules.md#harness-go-runs-no-script). `unported` waits for its slice of exec plan 0005
+# and leaves this list in the change that deletes it. The template only takes lines out (or adds a bootstrap
+# script); a product adds its own scripts as `unported` (harness PR, approval label) and keeps those lines when
+# it merges a template sync.
+
+# Bootstrap.
+.claude/hooks/fast-check.sh bootstrap
+.claude/hooks/guard-bash.sh bootstrap
+.claude/hooks/only-make-check.sh bootstrap
+.claude/hooks/only-test-files.sh bootstrap
+.claude/hooks/protect-harness.sh bootstrap
+scripts/git-hooks/commit-msg bootstrap
+scripts/git-hooks/pre-commit bootstrap
+scripts/harness/hook-bootstrap.sh bootstrap
+scripts/harness/layout.sh bootstrap
+scripts/harness/timing.sh bootstrap
+scripts/install-tools.sh bootstrap
+scripts/setup-worktree.sh bootstrap
+
+# Not ported yet.
+scripts/gen-schema-doc.sh unported
+scripts/github-branch-protection.sh unported
+scripts/harness/adoption-probe.sh unported
+scripts/harness/affected.sh unported
+scripts/harness/agent-gc.sh unported
+scripts/harness/check-specs.sh unported
+scripts/harness/ci-agent.sh unported
+scripts/harness/ci-timings.sh unported
+scripts/harness/contract-check.sh unported
+scripts/harness/coverage.sh unported
+scripts/harness/determinism.sh unported
+scripts/harness/file-sensors.sh unported
+scripts/harness/gen-check.sh unported
+scripts/harness/merge-base.sh unported
+scripts/harness/migrations-append-only.sh unported
+scripts/harness/mutation.sh unported
+scripts/harness/nfr-report.sh unported
+scripts/harness/obs-e2e.sh unported
+scripts/harness/pr-review.sh unported
+scripts/harness/pre-commit.sh unported
+scripts/harness/rule-fires.sh unported
+scripts/harness/run.sh unported
+scripts/harness/scaffold-tests.sh unported
+scripts/harness/scheduled-review.sh unported
+scripts/harness/selftest.sh unported
+scripts/harness/squawk.sh unported
+scripts/harness/swift-format.sh unported
+scripts/harness/swiftlint.sh unported
+scripts/harness/sync-check.sh unported
+scripts/harness/trivy.sh unported
+scripts/harness/unchanged.sh unported
+scripts/harness/upstream-drift.sh unported
+scripts/new-domain.sh unported
+scripts/obs-query.sh unported
+scripts/test/helpers.bash unported

@@ -128,7 +128,7 @@ db-reset: ## Drop this worktree's database volume (and the obs stack), recreate,
 check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=60s any: NFR-H3/H4): format, lint, arch, unit tests, secrets, gen-check
 	@$(if $(STACK_OFF),echo "STACK=$(STACK) leaves out: $(sort $(STACK_OFF)) (ADR 0033)" >&2,true)
 	@$(if $(and $(call stack_has,ios),$(HOST_OFF)),echo "this host (not macOS) leaves out: $(HOST_OFF) (ADR 0042)" >&2,true)
-	@$(MAKE) -k -j4 $(call stacked,layout-check lint-go lint-harness arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned swift-resolved fixture-claims rule-lists approved-check specs-tested lint-web arch-web typecheck-web test-web $(IOS_SWIFT_TARGETS))
+	@$(MAKE) -k -j4 $(call stacked,layout-check no-new-shell lint-go lint-harness arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned swift-resolved fixture-claims rule-lists approved-check specs-tested lint-web arch-web typecheck-web test-web $(IOS_SWIFT_TARGETS))
 	@$(MAKE) gen-check
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
@@ -502,18 +502,21 @@ swift-resolved: $(HARNESS) ## A Swift package with remote dependencies has its P
 	@$(RUN) swift-resolved deps-swift-resolved -- $(HARNESS) swift-resolved .
 
 ##@ CI and harness integrity (.github/, protected harness files)
-.PHONY: lint-ci layout-check harness-integrity orphans harness-sync-check adoption-probe commits specs specs-tested
+.PHONY: lint-ci layout-check no-new-shell harness-integrity orphans harness-sync-check adoption-probe commits specs specs-tested
 lint-ci: ## actionlint (+ shellcheck on run: blocks) on .github/workflows
 	@$(RUN) actionlint ci-workflows-valid -- actionlint -no-color
 
 layout-check: $(HARNESS) ## scripts/harness/layout.env parses, its paths exist and LAYER_GLOB matches a Go package
 	@$(RUN) layout-check harness-layout-valid -- $(HARNESS) layout-check .
 
+no-new-shell: $(HARNESS) ## Every shell script under scripts/ and .claude/hooks/ is in scripts/harness/shell-allowlist.txt; harness Go runs no unported script
+	@$(RUN) no-new-shell harness-no-new-shell,harness-go-runs-no-script -- $(HARNESS) no-new-shell .
+
 harness-integrity: $(HARNESS) ## Added suppressions carry a reason; harness configs are not loosened (vs BASE_REF)
 	@$(RUN) integrity harness-suppression-reason,harness-config-not-loosened -- env BASE_REF="$(BASE_REF)" $(HARNESS) integrity-check .
 
-orphans: $(HARNESS) ## Every file under scripts/ is named by a target, workflow, hook, skill, agent or guide; every make target is in make help or called
-	@$(RUN) orphans repo-no-orphan-scripts -- $(HARNESS) orphans .
+orphans: $(HARNESS) ## Every file under scripts/ is named by a target, workflow, hook, skill, agent or guide; every make target is in make help or called; every .bin/harness subcommand is run
+	@$(RUN) orphans repo-no-orphan-scripts,repo-no-orphan-subcommands -- $(HARNESS) orphans .
 
 # Reads the network (fetches HARNESS_UPSTREAM), so not in check or check-all: drift.yml runs it weekly. The URL
 # comes from scripts/tool-versions.env; a command-line HARNESS_UPSTREAM=<url> reaches the script by make's export.
