@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -166,7 +167,7 @@ func TestOrphans(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
-			bad, err := orphans(testWorld(t, &out), linkRepo(t, tt.files))
+			bad, err := orphans(testWorld(t, &out), linkRepo(t, tt.files), newRegistry()) // help needs no caller
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -183,10 +184,53 @@ func TestOrphans(t *testing.T) {
 
 func TestOrphansFailsClosed(t *testing.T) {
 	t.Parallel()
-	if _, err := orphans(testWorld(t, io.Discard), linkRepo(t, map[string][]string{"scripts/a.sh": {"echo"}})); err == nil {
+	if _, err := orphans(testWorld(t, io.Discard), linkRepo(t, map[string][]string{"scripts/a.sh": {"echo"}}), registry{}); err == nil {
 		t.Error("no Makefile: want an error")
 	}
-	if _, err := orphans(testWorld(t, io.Discard), t.TempDir()); err == nil {
+	if _, err := orphans(testWorld(t, io.Discard), t.TempDir(), registry{}); err == nil {
 		t.Error("not a git repo: want an error")
+	}
+	// An orphan subcommand needs the layout to say where it lives.
+	reg := registry{"lonely": {name: "lonely", file: "lonely.go", line: 1}}
+	if _, err := orphans(testWorld(t, io.Discard), linkRepo(t, map[string][]string{"Makefile": {"ok: ## x"}}), reg); err == nil {
+		t.Error("orphan subcommand, no layout.env: want an error")
+	}
+}
+
+func TestOrphanSubcommands(t *testing.T) {
+	t.Parallel()
+	reg := registry{}
+	for i, name := range []string{"mk-call", "env-call", "hook-call", "bare-call", "var-call", "brace-call", "script-call",
+		"guide-only", "comment-only", "test-only", "prefix-only"} {
+		reg[name] = command{name: name, file: name + ".go", line: i + 1}
+	}
+	root := linkRepo(t, map[string][]string{
+		layoutFile: withLayout("API_DIR", "svc"),
+		"Makefile": {
+			"ok: ## Runs them", "\t@$(HARNESS) mk-call .", "\t@env X=1 $(HARNESS) env-call", "\t@scripts/s.sh",
+			"\t@$(HARNESS) prefix-only_x", "\tbats scripts/test",
+		},
+		".claude/hooks/h.sh": {
+			`"$ROOT/.bin/harness" hook-call "$ROOT"`, `x="$(.bin/harness bare-call target)"`, "# .bin/harness comment-only",
+		},
+		"scripts/s.sh":        {`"$HARNESS" var-call x`, "${HARNESS} brace-call", `"$ROOT/.bin/harness" script-call`},
+		"scripts/test/x.bats": {"run .bin/harness test-only"},
+		"docs/guide.md":       {"Run `.bin/harness guide-only`.", "Edit scripts/harness/layout.env."},
+	})
+	finding := func(name string, line int) string {
+		return fmt.Sprintf("svc/tools/harness/%s.go:%d: harness subcommand %s has no caller: no Makefile target, workflow, hook or named script runs it as $(HARNESS) %s or .bin/harness %s; call it or delete it [repo-no-orphan-subcommands]", name, line, name, name, name)
+	}
+	wantFindings(t, func(out io.Writer) (bool, error) { return orphans(testWorld(t, out), root, reg) }, []string{
+		finding("comment-only", 9), finding("guide-only", 8), finding("prefix-only", 11), finding("test-only", 10),
+	})
+}
+
+func TestRegisterRecordsCaller(t *testing.T) {
+	t.Parallel()
+	r := registry{}
+	r.register(command{name: "x"}) // the line below must stay next to this one
+	_, _, line, _ := runtime.Caller(0)
+	if c := r["x"]; c.file != "orphans_test.go" || c.line != line-1 {
+		t.Errorf("registered at %s:%d, want orphans_test.go:%d", c.file, c.line, line-1)
 	}
 }
