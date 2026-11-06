@@ -38,11 +38,6 @@ type headerField struct {
 	value string
 }
 
-type finding struct {
-	line int
-	msg  string
-}
-
 func init() {
 	commands.register(rootSensor("references-pinned", "docs-references-pinned (make references-pinned)", referencesPinned))
 }

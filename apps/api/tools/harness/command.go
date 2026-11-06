@@ -120,6 +120,12 @@ func rootSensor(name, about string, check func(w world, root string) (bool, erro
 	})
 }
 
+// finding is one sensor finding at a line of the file being checked, before it is printed.
+type finding struct {
+	line int
+	msg  string
+}
+
 // printFinding prints one sensor finding as `<file>:<line>: <message> [<rule>]`, the line run.sh maps to the rule.
 func printFinding(out io.Writer, file string, line int, rule, format string, a ...any) {
 	fmt.Fprintf(out, "%s:%d: %s [%s]\n", file, line, fmt.Sprintf(format, a...), rule)

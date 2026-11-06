@@ -8,7 +8,6 @@ package main
 // External links (scheme:) are not checked: they are not deterministic. Anchors are GitHub's heading slugs.
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -18,9 +17,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/text"
 )
 
@@ -28,7 +25,6 @@ var (
 	// Vendored spec-kit (ADR 0011) is not ours to fix; gitFiles skips fixtures (skippedPath).
 	mdSpec   = []string{"*.md", ":!:.specify/templates/*", ":!:.claude/skills/speckit-*"}
 	schemeRE = regexp.MustCompile(`^[a-z][a-z0-9+.-]*:`)
-	markdown = goldmark.New(goldmark.WithExtensions(extension.GFM))
 )
 
 func init() {
@@ -149,26 +145,6 @@ func (c *linkChecker) headingSlugs(file string) (slugs map[string]bool, ok bool,
 	return slugs, true, nil
 }
 
-// plainText is the rendered text of an inline tree: text, code spans, link and emphasis text; no raw HTML.
-func plainText(n ast.Node, src []byte) string {
-	var b strings.Builder
-	_ = ast.Walk(n, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		switch n := n.(type) {
-		case *ast.Text:
-			b.Write(n.Segment.Value(src))
-		case *ast.String:
-			b.Write(n.Value)
-		case *ast.RawHTML:
-			return ast.WalkSkipChildren, nil
-		}
-		return ast.WalkContinue, nil
-	})
-	return b.String()
-}
-
 // slug is GitHub's heading anchor (github-slugger): lower case, punctuation and symbols dropped except `-`
 // and `_`, every space a `-`.
 func slug(s string) string {
@@ -196,13 +172,4 @@ func uniqueSlug(s string, seen map[string]int) string {
 	}
 	seen[u] = 0
 	return u
-}
-
-func hasLine(b []byte, line string) bool {
-	for _, l := range bytes.Split(b, []byte("\n")) {
-		if string(l) == line {
-			return true
-		}
-	}
-	return false
 }

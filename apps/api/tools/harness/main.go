@@ -14,7 +14,7 @@
 // to any of them is a breaking change and says so in its PR:
 //
 //   - command.go: the command type (name, usage, about, run), commands.register, sensor and rootSensor,
-//     errUsage, exitBadArgs, printFinding. A wrong call returns exitBadArgs (dispatch prints the usage text);
+//     errUsage, exitBadArgs, the finding type, printFinding. A wrong call returns exitBadArgs (dispatch prints the usage text);
 //     exitUsage (main.go) directly is only for a command that prints its own reason, as hook-input does;
 //   - world.go: the world type (stdin, stdout, stderr, lookupEnv, environ, cwd), lookupIn, and the methods
 //     getenv, harnessRoot, abs, command, git, gitFiles, gitKnown, lsFiles, mergeBase. A subcommand reads the
@@ -24,9 +24,14 @@
 //   - layout.go: loadLayout and parseLayout, the layout type and its methods get, list, has, apiPath and
 //     domainsDir, and isDomainDir;
 //   - hookinput.go: parseHookInput and the hookInput type; hook.go: hookGuard and blockf;
-//   - paths.go: rulesFile, skippedPath, commentRE, the protectedPath type, protectedPaths, pathspecMatch,
-//     pathspecMatchFold, matchesAny, matchesAnyFold, resolveExisting;
+//   - paths.go: rulesFile, protectedPathsFile, fixturesDir, skippedPath, commentRE, the protectedPath type,
+//     protectedPaths, pathspecMatch, pathspecMatchFold, matchesAny, matchesAnyFold, isRegular, resolveExisting;
+//   - markdown.go: markdown, plainText, hasLine, the ruleHeading type and ruleHeadings;
 //   - in tests, testWorld and the sandbox helper of helpers_test.go.
+//
+// A name two subcommands use lives in one of these shared files, not in either subcommand's file. The exceptions
+// are a subcommand's own subject that others read: layout.go's layout, and testfile.go's productTests,
+// loadProductTests and testFilePathspecs (the one test-file predicate, ADR 0036).
 package main
 
 import (

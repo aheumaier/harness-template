@@ -216,15 +216,6 @@ func scenarioIDs(b []byte) []string {
 	return ids
 }
 
-// isRegular reports whether the repo-relative file f is a regular file, not a link or a directory.
-func isRegular(root, f string) (bool, error) {
-	fi, err := os.Lstat(filepath.Join(root, f))
-	if err != nil {
-		return false, err
-	}
-	return fi.Mode().IsRegular(), nil
-}
-
 // specParser holds what parseScenarios needs while it walks one spec.
 type specParser struct {
 	src        []byte

@@ -9,14 +9,16 @@ import (
 	"strings"
 )
 
-// The path helpers the hooks and sensors share: protected-paths.txt entries, git-style pathspec matching and
-// symlink resolution.
+// The path helpers the hooks and sensors share: harness file names, protected-paths.txt entries, git-style
+// pathspec matching, file-type checks and symlink resolution.
 
 const (
 	// rulesFile is the rule catalogue (fixture-claims, rule-lists, integrity-check).
 	rulesFile = "docs/harness/rules.md"
 	// protectedPathsFile lists the harness files (protect-harness, integrity-check, test-file).
 	protectedPathsFile = "scripts/harness/protected-paths.txt"
+	// fixturesDir holds the selftest fixtures (fixture-claims, orphans).
+	fixturesDir = "scripts/harness/fixtures"
 )
 
 var (
@@ -85,6 +87,15 @@ func pathspecMatch(p, rel string) bool {
 	}
 	ok, err := regexp.MatchString("^"+strings.ReplaceAll(regexp.QuoteMeta(p), `\*`, ".*")+"$", rel)
 	return ok && err == nil
+}
+
+// isRegular reports whether the repo-relative file f is a regular file, not a link or a directory.
+func isRegular(root, f string) (bool, error) {
+	fi, err := os.Lstat(filepath.Join(root, f))
+	if err != nil {
+		return false, err
+	}
+	return fi.Mode().IsRegular(), nil
 }
 
 // resolveExisting resolves symlinks in the longest existing prefix of the absolute path p (world.abs makes one);

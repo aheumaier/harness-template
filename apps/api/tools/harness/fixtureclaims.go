@@ -14,7 +14,6 @@ package main
 // check). Fails closed (exit 2) when rules.md is missing or holds no rules.
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path"
@@ -22,8 +21,6 @@ import (
 	"regexp"
 	"strings"
 )
-
-const fixturesDir = "scripts/harness/fixtures"
 
 var (
 	fixtureDirRE = regexp.MustCompile(`^fixtures/([a-z0-9][a-z0-9-]*)$`)
@@ -42,38 +39,6 @@ type claimChecker struct {
 func (c *claimChecker) report(line int, format string, a ...any) {
 	printFinding(c.out, rulesFile, line, "rules-fixture-claims", format, a...)
 	c.bad = true
-}
-
-// ruleHeading is one `### <rule-id>` heading of rules.md: the id, the `## ` section it sits in (that heading's
-// text before any ` (`), its line, and first: the line of an earlier heading with the same id (0 for none).
-type ruleHeading struct {
-	id, section string
-	line, first int
-}
-
-// ruleHeadings lists rules.md's `### <rule-id>` headings in order; an error when there is none.
-func ruleHeadings(src []byte) ([]ruleHeading, error) {
-	var (
-		rules   []ruleHeading
-		section string
-		seen    = map[string]int{} // rule id → line of its first heading
-	)
-	for i, line := range strings.Split(string(src), "\n") {
-		switch {
-		case strings.HasPrefix(line, "### "):
-			id := strings.TrimSpace(line[4:])
-			rules = append(rules, ruleHeading{id: id, section: section, line: i + 1, first: seen[id]})
-			if seen[id] == 0 {
-				seen[id] = i + 1
-			}
-		case strings.HasPrefix(line, "## "):
-			section, _, _ = strings.Cut(strings.TrimSpace(line[3:]), " (")
-		}
-	}
-	if len(rules) == 0 {
-		return nil, fmt.Errorf("%s has no `### <rule-id>` sections", rulesFile)
-	}
-	return rules, nil
 }
 
 func init() {
