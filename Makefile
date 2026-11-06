@@ -128,7 +128,7 @@ db-reset: ## Drop this worktree's database volume (and the obs stack), recreate,
 check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=60s any: NFR-H3/H4): format, lint, arch, unit tests, secrets, gen-check
 	@$(if $(STACK_OFF),echo "STACK=$(STACK) leaves out: $(sort $(STACK_OFF)) (ADR 0033)" >&2,true)
 	@$(if $(and $(call stack_has,ios),$(HOST_OFF)),echo "this host (not macOS) leaves out: $(HOST_OFF) (ADR 0042)" >&2,true)
-	@$(MAKE) -k -j4 $(call stacked,layout-check lint-go arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned swift-resolved fixture-claims rule-lists approved-check specs-tested lint-web arch-web typecheck-web test-web $(IOS_SWIFT_TARGETS))
+	@$(MAKE) -k -j4 $(call stacked,layout-check lint-go lint-harness arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned swift-resolved fixture-claims rule-lists approved-check specs-tested lint-web arch-web typecheck-web test-web $(IOS_SWIFT_TARGETS))
 	@$(MAKE) gen-check
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
@@ -258,7 +258,7 @@ $(HARNESS): $(HARNESS_SRC) scripts/tool-versions.env
 	(cd $(API_DIR)/tools/harness && go build -o "$$tmp" .) && "$$tmp" help >/dev/null && mv "$$tmp" $@
 
 ##@ Go sensors
-.PHONY: fmt lint-go arch-go test-go test-analyzers test-harness vuln-go deadcode-go
+.PHONY: fmt lint-go lint-harness arch-go test-go test-analyzers test-harness vuln-go deadcode-go
 fmt: $(GCL) ## Auto-format Go, shell and (ios in STACK, on macOS) Swift code
 	@cd $(API_DIR) && $(CURDIR)/$(GCL) fmt ./...
 	@shfmt -w $(SH_FILES)
@@ -266,6 +266,13 @@ fmt: $(GCL) ## Auto-format Go, shell and (ios in STACK, on macOS) Swift code
 
 lint-go: $(GCL)
 	@$(call scoped,go,./...) $(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-test-helpers-only-in-tests,go-domain-isolation,go-structured-logging,go-sec,go-format,$(SIZE_RULES),repo-no-clones --dir $(API_DIR) -- $(CURDIR)/$(GCL) run $$scope
+
+# The .bin/harness module under its own config (tools/harness/.golangci.yml, ADR 0045): lint-go's ./... stops at
+# the module boundary (fmt's does not, so make fmt formats it). In make check it runs only when a harness file
+# changed: unchanged.sh also counts every protected path, and the module is one.
+lint-harness: $(GCL)
+	@if scripts/harness/unchanged.sh $(API_DIR)/tools/harness; then echo "$@: skipped, no harness file changed (make check-all runs it)"; \
+	else $(RUN) golangci-lint-harness harness-tests-parallel,harness-tests-exec-in-helpers,go-format,$(SIZE_RULES) --dir $(API_DIR)/tools/harness -- $(CURDIR)/$(GCL) run ./...; fi
 
 arch-go:
 	@$(RUN) go-arch-lint go-layers --dir $(API_DIR) -- go-arch-lint check --output-color=false

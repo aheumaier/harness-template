@@ -1,0 +1,68 @@
+# Harness file (protected). Every rule here is documented in docs/harness/rules.md.
+# Change only via PR with "Harness change: Y" and a rationale.
+# The .bin/harness module's own config (make lint-harness, ADR 0045): apps/api/.golangci.yml never sees this
+# module, a Go module of its own. Only ADR 0024's size rules, the test rules and the formatters so far; the other
+# linters of apps/api/.golangci.yml wait in TD-3.
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - funlen # rules.md#code-function-length (ADR 0024)
+    - gocognit # rules.md#code-complexity (ADR 0024)
+    - revive # rules.md#code-parameters, rules.md#code-file-length (ADR 0024): only the two rules below
+    - tparallel # rules.md#harness-tests-parallel
+    - paralleltest # rules.md#harness-tests-parallel
+    - forbidigo # rules.md#harness-tests-exec-in-helpers
+  settings:
+    # ADR 0045: a second set of ADR 0024's thresholds, each the worst value of the tree that added lint-harness
+    # (2026-11-06, slice 2b). They only go down, until they meet apps/api/.golangci.yml's; never raise one.
+    # rules.md#code-function-length: statements, not lines (worst: approvedcheck.go (*approvedChecker).check, 77)
+    funlen:
+      lines: -1
+      statements: 77
+    # rules.md#code-complexity: cognitive complexity (worst: scenarios.go parseScenarios, 41)
+    gocognit:
+      min-complexity: 41
+    revive:
+      rules:
+        # rules.md#code-parameters (worst: command.go and rename.go, 6; a variadic counts as one)
+        - name: argument-limit
+          arguments: [6]
+        # rules.md#code-file-length: every line, as wc -l counts (worst over all files, tests included: layout_test.go, 556)
+        - name: file-length-limit
+          arguments: [{ max: 556, skipComments: false, skipBlankLines: false }]
+    # rules.md#harness-tests-exec-in-helpers: tests start processes only through helpers_test.go (see exclusions)
+    forbidigo:
+      analyze-types: true # match by package path, so a renamed import is judged by its type
+      forbid:
+        # exec.Cmd also catches &exec.Cmd{…} and new(exec.Cmd), which start a process without exec.Command
+        - pattern: ^exec\.(Command(Context)?|Cmd)$
+          pkg: ^os/exec$
+          msg: "[harness-tests-exec-in-helpers] a test starts a process outside helpers_test.go. Fix: call gitT, execIn or execInput from helpers_test.go, or run the subcommand in-process with runTest or runHook. See docs/harness/rules.md#harness-tests-exec-in-helpers"
+  exclusions:
+    # The module has no generated code, so a "Code generated … DO NOT EDIT." header must not hide a file from linting;
+    # revive skips such a file anyway and cannot be told otherwise (rules.md, Size and complexity: for review)
+    generated: disable
+    rules:
+      # ADR 0024: tests are exempt from the per-function limits and stay under code-file-length
+      - path: _test\.go$
+        linters: [funlen, gocognit]
+      - path: _test\.go$
+        linters: [revive]
+        text: "argument-limit"
+      # rules.md#harness-tests-exec-in-helpers: only tests are held to it, and the module's own helpers_test.go is
+      # the one place (paths are relative to this file)
+      - path-except: _test\.go$
+        linters: [forbidigo]
+      - path: ^helpers_test\.go$
+        linters: [forbidigo]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/aheumaier/harness-template
