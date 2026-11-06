@@ -99,6 +99,7 @@ func TestSwiftResolved(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			root := linkRepo(t, tt.files)
 			for _, f := range tt.staged {
 				gitT(t, root, "add", "--", f)

@@ -122,6 +122,7 @@ func TestLayoutCheck(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var out bytes.Buffer
 			bad, err := layoutCheck(testWorld(t, &out), layoutTree(t, tt.lines))
 			if err != nil {
@@ -163,6 +164,7 @@ func TestLayoutStack(t *testing.T) {
 		{"go,web,go", []string{"HARNESS_STACK=go,web,go: go named twice [harness-layout-valid]"}},
 	} {
 		t.Run(tt.env, func(t *testing.T) {
+			t.Parallel()
 			var out bytes.Buffer
 			bad, err := layoutCheck(testWorld(t, &out, "HARNESS_STACK="+tt.env), withoutIOSApp(t, layoutTree(t, lines)))
 			want := strings.Join(append(tt.want, ""), "\n")
@@ -175,6 +177,7 @@ func TestLayoutStack(t *testing.T) {
 		})
 	}
 	t.Run("loadLayout sees the override", func(t *testing.T) {
+		t.Parallel()
 		l, err := loadLayout(testWorld(t, io.Discard, "HARNESS_STACK=go,db"), layoutTree(t, templateLayout))
 		if err != nil || l.get("STACK") != "go:db" || !l.has("db") || l.has("web") {
 			t.Errorf("STACK=%q err=%v", l.get("STACK"), err)
@@ -274,6 +277,7 @@ func TestLayoutStackHides(t *testing.T) {
 		}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			files := maps.Clone(base)
 			maps.Copy(files, tt.add)
 			files[layoutFile] = append([]string{"# layout", ""}, withLayout("STACK", tt.stack)...)
@@ -302,6 +306,7 @@ func TestLayoutHidesSwiftWhateverTheProductGlobs(t *testing.T) {
 	t.Parallel()
 	for _, globs := range []string{"apps/ios:api/*", "apps:api"} {
 		t.Run(globs, func(t *testing.T) {
+			t.Parallel()
 			root := linkRepo(t, map[string][]string{
 				"apps/api/go.mod":                         {"module example.com/api"},
 				"apps/api/internal/health/api/h.go":       {"package api"},
@@ -401,6 +406,7 @@ func TestLayoutCheckIOSPackage(t *testing.T) {
 	t.Parallel()
 	for _, app := range []string{"apps/pkg/Package.swift", "apps/pkg/Project.yml"} {
 		t.Run(app, func(t *testing.T) {
+			t.Parallel()
 			root := layoutTree(t, withLayout("IOS_DIR", "apps/pkg"))
 			writeLines(t, root, app, "// swift-tools-version: 6.0")
 			var out bytes.Buffer
@@ -437,6 +443,7 @@ func TestLayoutCheckIOSPackageIsARegularFile(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			root := layoutTree(t, withLayout("IOS_DIR", "apps/fake"))
 			plant(t, root)
 			var out bytes.Buffer
@@ -511,6 +518,7 @@ func TestLayoutCheckPlatformIsNoDomain(t *testing.T) {
 			layoutFile + ":9: LAYER_GLOB=internal/*/*: apps/api/internal/billing is a package with no layer (expected apps/api/internal/<domain>/<layer>): the domain-isolation analyzer skips it [harness-layout-valid]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			all := maps.Clone(files)
 			maps.Copy(all, tc.add)
 			root := linkRepo(t, all)

@@ -65,6 +65,7 @@ func TestRuleLists(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			root := linkRepo(t, map[string][]string{rulesFile: listRules, skillFile: tt.skill, agentFile: listAgent})
 			var out bytes.Buffer
 			bad, err := checkRuleLists(testWorld(t, &out), root, map[string][]string{skillFile: tt.required, agentFile: nil})
@@ -99,6 +100,7 @@ func TestRuleListsFailsClosed(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var out bytes.Buffer
 			if _, err := checkRuleLists(testWorld(t, &out), linkRepo(t, tt.files), tt.required); err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want it to contain %q", err, tt.want)

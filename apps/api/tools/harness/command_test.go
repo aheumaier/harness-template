@@ -12,6 +12,7 @@ import (
 func TestRegistry(t *testing.T) {
 	t.Parallel()
 	t.Run("a second registration panics", func(t *testing.T) {
+		t.Parallel()
 		r := newRegistry()
 		defer func() {
 			if recover() == nil {
@@ -22,6 +23,7 @@ func TestRegistry(t *testing.T) {
 	})
 
 	t.Run("usage and help name every command", func(t *testing.T) {
+		t.Parallel()
 		usage := commands.usage()
 		if !strings.HasPrefix(usage, "usage: harness ") {
 			t.Errorf("usage text %q does not start with `usage: harness ` (protect-harness.sh and commit-msg match it)", usage)
@@ -49,6 +51,7 @@ func TestRegistry(t *testing.T) {
 		}})
 
 	t.Run("a wrong call prints the usage text", func(t *testing.T) {
+		t.Parallel()
 		for _, args := range [][]string{nil, {"no-such-command"}, {"help", "extra"}, {"stub"}, {"stub", "a", "b"}} {
 			var stdout, stderr bytes.Buffer
 			w := testWorld(t, &stdout)
@@ -61,6 +64,7 @@ func TestRegistry(t *testing.T) {
 	})
 
 	t.Run("an exit code outside 0..255 is 2", func(t *testing.T) {
+		t.Parallel()
 		for arg, want := range map[string]int{"killed": 2, "wraps": 2, "fails": 1} {
 			var stderr bytes.Buffer
 			w := testWorld(t, io.Discard)

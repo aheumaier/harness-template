@@ -96,6 +96,7 @@ func TestProtectHarness(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			at := fixed
 			if tt.blocked {
 				at = root
@@ -105,16 +106,19 @@ func TestProtectHarness(t *testing.T) {
 	}
 
 	t.Run("fails closed on a path it cannot resolve", func(t *testing.T) {
-		if err := os.Symlink(tmp+"/nowhere/x", tmp+"/dangling"); err != nil {
+		t.Parallel()
+		dangling := filepath.Join(t.TempDir(), "dangling") // not in the rows' shared tmp
+		if err := os.Symlink(tmp+"/nowhere/x", dangling); err != nil {
 			t.Fatal(err)
 		}
-		if code, out := protect(t, root, payload(t, root, "Edit", tmp+"/dangling")); code != 2 ||
+		if code, out := protect(t, root, payload(t, root, "Edit", dangling)); code != 2 ||
 			!strings.Contains(out, "protect-harness: blocked: cannot resolve") {
 			t.Errorf("exit %d, want 2 with cannot resolve; stderr:\n%s", code, out)
 		}
 	})
 
 	t.Run("fails closed on unparseable input", func(t *testing.T) {
+		t.Parallel()
 		if code, out := protect(t, root, "not json"); code != 2 || !strings.Contains(out, "protect-harness: blocked: cannot parse") {
 			t.Errorf("exit %d, want 2 with cannot parse; stderr:\n%s", code, out)
 		}
@@ -137,6 +141,7 @@ func worktreeSandbox(t *testing.T) (repo, tmp string) {
 func TestProtectHarnessWorktrees(t *testing.T) {
 	t.Parallel()
 	t.Run("guards every worktree of the repo with this checkout's list: a sibling lane, a nested agent worktree", func(t *testing.T) {
+		t.Parallel()
 		repo, tmp := worktreeSandbox(t)
 		lane, agent, other := tmp+"/lane", repo+"/.claude/worktrees/agent", tmp+"/other"
 		gitT(t, repo, "worktree", "add", "-q", "-b", "lane", lane)
@@ -156,6 +161,7 @@ func TestProtectHarnessWorktrees(t *testing.T) {
 	})
 
 	t.Run("a worktree registered inside this checkout does not hide its harness files", func(t *testing.T) {
+		t.Parallel()
 		repo, tmp := worktreeSandbox(t)
 		gitT(t, repo, "worktree", "add", "-q", "-b", "fake", tmp+"/fake")
 		// Repoint the fake worktree's admin entry at scripts/, so git lists repo/scripts as a worktree.
@@ -172,6 +178,7 @@ func TestProtectHarnessWorktrees(t *testing.T) {
 	})
 
 	t.Run("moving this checkout's .git away does not unprotect it", func(t *testing.T) {
+		t.Parallel()
 		repo, _ := worktreeSandbox(t)
 		if err := os.Rename(repo+"/.git", repo+"/.git.x"); err != nil {
 			t.Fatal(err)
@@ -181,6 +188,7 @@ func TestProtectHarnessWorktrees(t *testing.T) {
 	})
 
 	t.Run("fails closed when git cannot list the worktrees a path needs", func(t *testing.T) {
+		t.Parallel()
 		repo, tmp := worktreeSandbox(t)
 		gitT(t, repo, "worktree", "add", "-q", "-b", "lane", tmp+"/lane")
 		nogit := tmp + "/nogit"
@@ -203,6 +211,7 @@ func TestProtectHarnessWorktrees(t *testing.T) {
 	})
 
 	t.Run("fails closed without the list of protected paths", func(t *testing.T) {
+		t.Parallel()
 		repo, _ := worktreeSandbox(t)
 		if err := os.Remove(repo + "/scripts/harness/protected-paths.txt"); err != nil {
 			t.Fatal(err)
@@ -215,6 +224,7 @@ func TestProtectHarnessWorktrees(t *testing.T) {
 	})
 
 	t.Run("fails closed on a relative path without a working directory", func(t *testing.T) {
+		t.Parallel()
 		repo, _ := worktreeSandbox(t)
 		for tool, arg := range map[string]string{"Write": ".claude/settings.json", "Bash": "echo x > .claude/settings.json"} {
 			var stderr bytes.Buffer
@@ -229,6 +239,7 @@ func TestProtectHarnessWorktrees(t *testing.T) {
 	})
 
 	t.Run("a relative payload cwd counts as no working directory", func(t *testing.T) {
+		t.Parallel()
 		repo, _ := worktreeSandbox(t)
 		for cwd, file := range map[string]string{".": ".claude/settings.json", "docs": "../.claude/settings.json"} {
 			var stderr bytes.Buffer
@@ -294,6 +305,7 @@ func TestProtectHarnessHook(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			dir := sandbox(t, files...)
 			if tt.stub {
 				place(t, stub, filepath.Join(dir, ".bin", "harness"))

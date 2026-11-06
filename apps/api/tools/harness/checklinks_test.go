@@ -86,6 +86,7 @@ func TestCheckLinks(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var out bytes.Buffer
 			bad, err := checkLinks(testWorld(t, &out), linkRepo(t, tt.files))
 			if err != nil {

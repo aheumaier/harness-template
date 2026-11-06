@@ -36,6 +36,8 @@ SIZE=code-function-length,code-complexity,code-parameters,code-file-length
 GO_IDS=rule-a,go-sec,go-structured-logging,go-format,$SIZE,repo-no-clones # as lint-go passes them
 WEB_IDS=rule-a,web-lint,$SIZE                                             # as lint-web passes them
 IOS_IDS=ios-lint,$SIZE                                                    # as lint-ios passes them
+# as lint-harness passes them
+HARNESS_IDS=harness-tests-parallel,harness-tests-exec-in-helpers,go-format,$SIZE
 
 # remediations <ids>: a "Fix <id>." remediation in the sandbox rules.md for each id that has none yet.
 remediations() {
@@ -83,6 +85,14 @@ recipe_of() {
   recipe_of "$GO_IDS" 'internal/fx/service/f.go:6:50: key-value pairs and attributes should not be mixed (sloglint)' go-structured-logging
   recipe_of "$GO_IDS" 'internal/fx/service/g.go:5:1: File is not properly formatted (gofmt)' go-format
   recipe_of "$GO_IDS" 'internal/fx/service/service.go:10: 10-23 lines are duplicate of `internal/fx/service/service.go:26-39` (dupl)' repo-no-clones
+}
+
+@test "maps lint-harness's test findings to harness-tests-parallel; one naming no rule gets the exec rule's (ADR 0045)" {
+  recipe_of "$HARNESS_IDS" 'zz_fixture_test.go:8:1: Function TestFixtureSerial missing the call to method parallel (paralleltest)' harness-tests-parallel
+  recipe_of "$HARNESS_IDS" 'tp_test.go:5:6: TestFixtureTopSerial should call t.Parallel on the top level as well as its subtests (tparallel)' harness-tests-parallel
+  # harness-tests-exec-in-helpers is the list's one rule without a pattern, so it alone takes a failure naming no
+  # rule (rules.md says so); the split recipes stay out.
+  recipe_of "$HARNESS_IDS" 'x_test.go:1:1: undefined: foo (typecheck)' harness-tests-exec-in-helpers
 }
 
 @test "maps each ESLint finding to its rule alone; web-lint takes the unmapped ones (ADR 0024)" {

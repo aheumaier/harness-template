@@ -25,6 +25,7 @@ func TestSpecRefs(t *testing.T) {
 		{"not a string", "a:\n  $ref: [x]\n", "f.yaml:2: $ref (not a string) points outside this file (want '#/...')\n"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			if err := os.WriteFile(filepath.Join(dir, "f.yaml"), []byte(tt.doc), 0o600); err != nil {
 				t.Fatal(err)

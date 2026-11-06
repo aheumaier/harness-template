@@ -78,6 +78,7 @@ nothing in run time. The evidence, re-measured here at `750c094` on 2026-11-02 o
 | 2026-11-05 | B: the merged pilot branches `refactor/harness-check-commits-go` and `refactor/harness-protect-go` are deleted on the remote (the user) | this file |
 | 2026-11-05 | C: the iOS follow-ups ride in slice 2 as a `docs(ios)` commit: an `xcodebuild` row in `budgets.txt`, TD-151 and TD-155 closed, NFR-R5 dated (the user) | this file, slice 2a PR |
 | 2026-11-05 | D: slice 2 is three PRs, each opened after the one before merges: 2a registry, world, shared files and parallel tests; 2b `lint-harness`; 2c TD-129, `layout-check` and three rules (the user) | this file |
+| 2026-11-06 | `lint-harness` runs `paralleltest` next to `tparallel` (only `paralleltest` catches a test with no subtests and no `t.Parallel()`), and its process ban is on a use of `exec.Command`, `exec.CommandContext` or the type `exec.Cmd`, by package, not on the import (`world_test.go` needs `exec.ErrNotFound`) (agent) | this file, `docs/harness/rules.md` |
 
 ## Rulings
 
@@ -246,13 +247,22 @@ or stays, because deleting it touches every caller.
      its bats time) and the "Today" cells of NFR-H4 and NFR-H5 in `nfr.md`, with per-file bats timings measured
      here.
 2. **Base.** No script is ported; this slice makes the rest safe.
-   - `lint-harness` with its own protected config: size and complexity rules with starting numbers, `tparallel`,
-     and a `forbidigo` rule that bans `exec.Command` calls in `_test.go` files other than `helpers_test.go`
-     (the call, not the `os/exec` import: `world_test.go` imports it for `exec.ErrNotFound`). The existing
-     `exec.Command` calls in `checklinks_test.go`, `guardbash_test.go` and `integritycheck_test.go` moved to
-     `helpers_test.go`'s `gitT`, `execIn` and `execInput` in 2a. Test functions call `t.Parallel()` since 2a;
-     their subtests do not yet, so `tparallel` and `paralleltest` (a test without `t.Parallel()`) need them,
-     and `TestRunPhysicalCwd` a suppression with its reason (it sets the process's working directory).
+   - Done in 2b: `lint-harness` with its own protected config (`apps/api/tools/harness/.golangci.yml`): the size
+     and complexity rules with starting numbers (funlen 77, gocognit 41, 6 parameters, 556 lines), `tparallel`,
+     `paralleltest` and a `forbidigo` rule that bans `exec.Command`, `exec.CommandContext` and `exec.Cmd` in
+     `_test.go` files other than `helpers_test.go` (the use, by its package, not the `os/exec` import:
+     `world_test.go` imports it for `exec.ErrNotFound`); a generated-code header hides no file, except from
+     revive, which golangci cannot change (declared in rules.md). Rules
+     `harness-tests-parallel` and `harness-tests-exec-in-helpers`; one fixture per measure
+     (`harness-function-too-long`, `harness-function-too-complex`, `harness-too-many-params`,
+     `harness-file-too-long`) and per test rule (`harness-test-not-parallel`, `harness-test-exec-outside-helpers`,
+     `harness-test-exec-disguised`, which pins the evasion review's three closed bypasses). Every subtest now
+     calls `t.Parallel()`. `TestRunPhysicalCwd` needs no suppression: `paralleltest` skips a test that calls
+     `t.Chdir` or `t.Setenv`. The file-length start is 556, not the 548 measured at `1a1f4b7`: the subtests'
+     `t.Parallel()` lines grew `layout_test.go`. `make check` now checks the module's format (TD-171); `make fmt`
+     already formatted it, since `golangci-lint fmt ./...` walks into nested modules. The parameter limit stays
+     at 6 until the stable surface changes: `printFinding` (`command.go`, on the list in `main.go`'s package
+     comment) takes 6, and grouping them into the `finding` struct breaks every product file that calls it.
    - Done in 2a: the subcommand registry (`command.go`) and the stable surface for product files (Target shape,
      listed in `main.go`'s package comment), folding in all four lists of `main.go`; the "world as arguments"
      change (`world.go`) for the 5 calls including `layout.go`'s signature (the shared vectors keep it in step
@@ -274,9 +284,6 @@ or stays, because deleting it touches every caller.
      subcommand registry has an executable caller under ADR 0031, because Go code is never a referencer and
      `deadcode` sees a dispatched subcommand as alive; it reads the keys from the registry in-process) and
      `harness-go-runs-no-script` (non-test harness Go names no `scripts/**/*.sh` outside the bootstrap).
-   - Rule ids for the `lint-harness` limits (ADR 0024's ids, or new ones; each id prints its fix through
-     `run.sh`) and one fixture each: an over-limit function in the module, `exec.Command` in a `_test.go` outside
-     the sandbox helper, a test without `t.Parallel()`.
    - Propose `harness-no-new-shell` (ADR 0045's "new harness logic is Go"): no `.sh` under `scripts/` or
      `.claude/hooks/` outside a protected allowlist that holds the bootstrap and the scripts not yet ported and
      only shrinks; fixture data under `scripts/harness/fixtures/` and `scripts/templates/` is exempt. Fixture
@@ -631,3 +638,17 @@ template's subcommand uncalled; the analyzers plugin already registers from `ini
     The evasion review found that moving every `TestProtectHarness` row onto the fixed list let 12 entries of the
     repo's list be dropped with the test green; the blocked rows stay on the repo's list. Deferred items are
     TD-165 to TD-171 in the tech-debt tracker.
+- 2026-11-06: slice 2b (`lint-harness`), measured on an Apple Silicon Mac (load avg 10–19).
+  - **Go tests.** With every subtest parallel, the module's suite takes 6.8–7.0 s uncached and 0.46 s cached;
+    `-race -count=3` takes 19.4–21.0 s and is green, with no flaky test.
+  - **`lint-harness`:** 1.6 s warm, under the 5 s default budget, so `budgets.txt` has no row for it.
+  - **`make check` after a harness change: 206 s** (at `d3d6fd6`). The bats suite is 199 s of it, up from 151 s
+    in 2a with no bats file changed; the load average was about twice 2a's.
+  - **Lines.** Go tests +53 −2; the config, `Makefile`, `run.sh` and `run.bats` +88 −2; seven fixtures +862, 661
+    of them the `harness-file-too-long` file.
+  - **Selftest:** 95 passed, 0 failed, 2 skipped (they need Xcode); the seven new fixtures each fail as expected.
+  - **Review.** Go, code, architecture, reuse, evasion and shell reviewers, one re-run each. The evasion review
+    found nine ways past the new rules. Four are fixed in the config and pinned by fixtures (a generated-code
+    header, `zz_helpers_test.go`, `&exec.Cmd{}`, `zz_test.go_fixture.go`). The rest are declared under "Not
+    caught" in `rules.md`, as is revive's generated-code skip, which golangci cannot turn off. TD-171 is paid,
+    and TD-172 is new.
