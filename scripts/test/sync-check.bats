@@ -48,6 +48,7 @@ check() { HARNESS_UPSTREAM="${HARNESS_UPSTREAM-$UP}" run "$@" "$SANDBOX/scripts/
   has "Makefile: changed upstream since ${BASE:0:12} [harness-upstream-in-sync]"
   has "1 harness file(s) behind $UP"
   has "write $(git -C "$UP" rev-parse HEAD) to .harness-version"
+  lacks 'unexpected failure' # the ERR trap stays quiet on the way
 }
 
 @test "skips a file already taken here" {
@@ -111,6 +112,89 @@ check() { HARNESS_UPSTREAM="${HARNESS_UPSTREAM-$UP}" run "$@" "$SANDBOX/scripts/
   printf '# declined Makefile\n' >>"$SANDBOX/.harness-version"
   check -2
   has "write '# declined <path>: <why>'"
+}
+
+@test "maps upstream's apps/api/ to this repo's API_DIR to compare, report and decline" {
+  printf 'apps/api/tools/harness/* config\n' | tee -a "$UP/scripts/harness/protected-paths.txt" \
+    >>"$SANDBOX/scripts/harness/protected-paths.txt"
+  mkdir -p "$UP/apps/api/tools/harness"
+  printf 'package main\n' >"$UP/apps/api/tools/harness/a.go"
+  upstream_commit
+  edit scripts/harness/layout.env 's|^API_DIR=.*|API_DIR=.|'
+  check -1
+  has "tools/harness/a.go (upstream apps/api/tools/harness/a.go): added upstream since ${BASE:0:12} [harness-upstream-in-sync]"
+  has '-- <upstream path>;'
+  mkdir -p "$SANDBOX/tools/harness"
+  cp "$UP/apps/api/tools/harness/a.go" "$SANDBOX/tools/harness/a.go"
+  check -0
+  printf 'package ours\n' >"$SANDBOX/tools/harness/a.go"
+  printf '# declined tools/harness/a.go: kept ours\n' >>"$SANDBOX/.harness-version"
+  check -0
+  has 'tools/harness/a.go (upstream apps/api/tools/harness/a.go): declined (kept ours), changed upstream since'
+  rm "$SANDBOX/scripts/harness/layout.env"
+  check -2
+  has '[harness-layout-valid]'
+  lacks 'unexpected failure'
+}
+
+@test "maps upstream's own API_DIR, read alone, not apps/api/, and leaves look-alike directories alone" {
+  mkdir -p "$SANDBOX/svc/tools/harness" "$SANDBOX/svc/lib"
+  printf 'b\n' >"$SANDBOX/svc/tools/harness/b.go"
+  printf 'p\n' >"$SANDBOX/svc/lib/p.go"
+  # services/api/lib/* is this repo's entry only: upstream's list names no svc/lib/ path.
+  printf '%s\n' 'svc/tools/harness/* config' 'apps/apix/* config' 'svcx/lib/* config' 'services/api/lib/* config' \
+    >>"$SANDBOX/scripts/harness/protected-paths.txt"
+  base_and_upstream
+  # A newer upstream: a key this repo's layout.sh does not know yet is no reason to stop.
+  { sed 's|^API_DIR=.*|API_DIR=svc|' "$SANDBOX/scripts/harness/layout.env" && echo FUTURE_KEY=x; } \
+    >"$UP/scripts/harness/layout.env"
+  printf 'newer b\n' >"$UP/svc/tools/harness/b.go"
+  printf 'newer p\n' >"$UP/svc/lib/p.go"
+  mkdir -p "$UP/apps/apix" "$UP/svcx/lib"
+  printf 'x\n' >"$UP/apps/apix/x"
+  printf 'q\n' >"$UP/svcx/lib/q.go"
+  upstream_commit
+  edit scripts/harness/layout.env 's|^API_DIR=.*|API_DIR=services/api|' # need not exist to be read
+  check -1
+  has "services/api/tools/harness/b.go (upstream svc/tools/harness/b.go): changed upstream, missing here since ${BASE:0:12} [harness-upstream-in-sync]"
+  has "services/api/lib/p.go (upstream svc/lib/p.go): changed upstream, missing here since"
+  has "apps/apix/x: added upstream since"
+  lacks 'apps/apix/x (upstream'
+  has "svcx/lib/q.go: added upstream since"
+  lacks 'svcx/lib/q.go (upstream'
+}
+
+@test "an upstream with API_DIR=. maps nothing" {
+  printf 'lib/* config\n' >>"$SANDBOX/scripts/harness/protected-paths.txt"
+  base_and_upstream
+  sed 's|^API_DIR=.*|API_DIR=.|' "$SANDBOX/scripts/harness/layout.env" >"$UP/scripts/harness/layout.env"
+  mkdir -p "$UP/lib"
+  printf 'r\n' >"$UP/lib/r.go"
+  upstream_commit
+  check -1
+  has "lib/r.go: added upstream since"
+  lacks 'lib/r.go (upstream'
+}
+
+@test "fails closed without one clean API_DIR line in upstream's layout.env" {
+  local value
+  for value in 'a b' 'svc/' './svc' 'svc/../x'; do
+    sed "s|^API_DIR=.*|API_DIR=$value|" "$SANDBOX/scripts/harness/layout.env" >"$UP/scripts/harness/layout.env"
+    upstream_commit
+    check -2
+    has "upstream's scripts/harness/layout.env at "
+    has 'has no single API_DIR line with a clean relative path'
+  done
+  echo API_DIR=svc >>"$UP/scripts/harness/layout.env"
+  upstream_commit
+  check -2
+  has 'has no single API_DIR line'
+  lacks 'unexpected failure'
+  git -C "$UP" rm -q scripts/harness/layout.env
+  upstream_commit
+  check -2
+  has 'has no scripts/harness/layout.env at '
+  lacks 'unexpected failure'
 }
 
 @test "reads HARNESS_UPSTREAM from tool-versions.env; empty means the template, origin is not consulted" {

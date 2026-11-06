@@ -13,7 +13,7 @@ import (
 // layoutTree is a repo whose tree matches templateLayout, with layout.env holding lines.
 func layoutTree(t *testing.T, lines []string) string {
 	t.Helper()
-	root := linkRepo(t, map[string][]string{
+	root := templateRepo(t, map[string][]string{
 		layoutFile:                                    append([]string{"# layout", ""}, lines...),
 		"apps/api/go.mod":                             {"module example.com/api"},
 		"apps/api/internal/health/api/h.go":           {"package api"},
@@ -281,7 +281,7 @@ func TestLayoutStackHides(t *testing.T) {
 			files := maps.Clone(base)
 			maps.Copy(files, tt.add)
 			files[layoutFile] = append([]string{"# layout", ""}, withLayout("STACK", tt.stack)...)
-			root := linkRepo(t, files)
+			root := templateRepo(t, files)
 			gitT(t, root, "add", "-A")
 			var env []string
 			if tt.env != "-" {
@@ -307,7 +307,7 @@ func TestLayoutHidesSwiftWhateverTheProductGlobs(t *testing.T) {
 	for _, globs := range []string{"apps/ios:api/*", "apps:api"} {
 		t.Run(globs, func(t *testing.T) {
 			t.Parallel()
-			root := linkRepo(t, map[string][]string{
+			root := templateRepo(t, map[string][]string{
 				"apps/api/go.mod":                         {"module example.com/api"},
 				"apps/api/internal/health/api/h.go":       {"package api"},
 				"api/openapi.yaml":                        {"openapi: 3.1.0"},
@@ -369,33 +369,6 @@ func TestUpstreamSpecVectors(t *testing.T) {
 	}
 	if n == 0 {
 		t.Fatal("no vectors in testdata/upstream-spec-vectors.txt")
-	}
-}
-
-func TestLayoutRootModule(t *testing.T) {
-	t.Parallel()
-	// API_DIR=. puts the module at the repo root: paths are joined without a "./" prefix.
-	root := linkRepo(t, map[string][]string{
-		layoutFile:                   withLayout("API_DIR", "."),
-		"go.mod":                     {"module example.com/api"},
-		"internal/health/api/h.go":   {"package api"},
-		"apps/api/db/migrations/x":   {""},
-		"apps/api/db/queries/q.sql":  {""},
-		"api/openapi.yaml":           {"openapi: 3.1.0"},
-		"packages/api-client/x.json": {"{}"},
-		"apps/ios/project.yml":       {"name: App"},
-	})
-	gitT(t, root, "add", "-A")
-	l, err := loadLayout(testWorld(t, io.Discard), root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := l.apiPath("go.mod"); got != "go.mod" {
-		t.Errorf("apiPath(go.mod) = %q, want go.mod", got)
-	}
-	var out bytes.Buffer
-	if bad, err := layoutCheck(testWorld(t, &out), root); bad || err != nil {
-		t.Errorf("bad=%v err=%v: %s", bad, err, out.String())
 	}
 }
 
@@ -521,7 +494,7 @@ func TestLayoutCheckPlatformIsNoDomain(t *testing.T) {
 			t.Parallel()
 			all := maps.Clone(files)
 			maps.Copy(all, tc.add)
-			root := linkRepo(t, all)
+			root := templateRepo(t, all)
 			gitT(t, root, "add", "-A")
 			var out bytes.Buffer
 			bad, err := layoutCheck(testWorld(t, &out), root)

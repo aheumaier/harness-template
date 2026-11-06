@@ -21,7 +21,7 @@ import (
 
 func init() {
 	commands.register(sensor("spec-refs", "harness spec-refs <file>...",
-		"no $ref points outside its file: contract-check.sh, upstream-drift.sh (ADR 0037)",
+		"no $ref points outside its file: make contract-check, make upstream-drift (ADR 0037)",
 		func(w world, args []string) (bool, error) {
 			if len(args) == 0 {
 				return false, errUsage
