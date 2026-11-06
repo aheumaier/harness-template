@@ -23,6 +23,10 @@ swift-test 3000 NFR-H5
 # no row: it runs only where Xcode is selected (the macOS CI job), and the default applies.
 swiftlint 2000 NFR-H5
 swift-format 2000 NFR-H5
+# make build-ios (xcodebuild of the XcodeGen app, ADR 0044) in the macOS CI job check-ios: 15.4 s (2026-11-04,
+# 8030ca5) and 16.7 s (2026-11-05, 360b672), HARNESS_SCOPE=full, from the job's harness-timings-check-ios
+# artifact; 4.7-6.0 s locally (2026-11-02, Apple Silicon, Xcode selected). No report reads that artifact yet (TD-163).
+xcodebuild 20000 NFR-H5
 # The full-tree secret scan in make check (exec plan 0003, NFR-H9).
 repo-no-secrets 5000 NFR-H9
 # make harness-determinism runs make check twice: twice the NFR-H4 budget.
