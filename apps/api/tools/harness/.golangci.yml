@@ -5,6 +5,9 @@
 # linters of apps/api/.golangci.yml wait in TD-3.
 version: "2"
 
+run:
+  timeout: 3m # as apps/api's: lint-go waits for this run's lock (Makefile, --allow-serial-runners)
+
 linters:
   default: none
   enable:

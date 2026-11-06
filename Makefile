@@ -264,15 +264,19 @@ fmt: $(GCL) ## Auto-format Go, shell and (ios in STACK, on macOS) Swift code
 	@shfmt -w $(SH_FILES)
 	@$(if $(call stacked,fmt-check-ios),export HARNESS_SCOPE=full; $(call swift_files) swift-format format -i --follow-symlinks --configuration .swift-format "$${files[@]}",true)
 
+# golangci-lint allows one run at a time per user (a lock in $TMPDIR, shared by all worktrees) and by default gives
+# up after 5 s. lint-go and lint-harness start together under make -j, so both wait for the lock (--allow-serial-runners;
+# each config's run.timeout bounds the holder) instead of failing with "parallel golangci-lint is running". run.sh
+# times the wait as lint time.
 lint-go: $(GCL)
-	@$(call scoped,go,./...) $(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-test-helpers-only-in-tests,go-domain-isolation,go-structured-logging,go-sec,go-format,$(SIZE_RULES),repo-no-clones --dir $(API_DIR) -- $(CURDIR)/$(GCL) run $$scope
+	@$(call scoped,go,./...) $(RUN) golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-test-helpers-only-in-tests,go-domain-isolation,go-structured-logging,go-sec,go-format,$(SIZE_RULES),repo-no-clones --dir $(API_DIR) -- $(CURDIR)/$(GCL) run --allow-serial-runners $$scope
 
 # The .bin/harness module under its own config (tools/harness/.golangci.yml, ADR 0045): lint-go's ./... stops at
 # the module boundary (fmt's does not, so make fmt formats it). In make check it runs only when a harness file
 # changed: unchanged.sh also counts every protected path, and the module is one.
 lint-harness: $(GCL)
 	@if scripts/harness/unchanged.sh $(API_DIR)/tools/harness; then echo "$@: skipped, no harness file changed (make check-all runs it)"; \
-	else $(RUN) golangci-lint-harness harness-tests-parallel,harness-tests-exec-in-helpers,go-format,$(SIZE_RULES) --dir $(API_DIR)/tools/harness -- $(CURDIR)/$(GCL) run ./...; fi
+	else $(RUN) golangci-lint-harness harness-tests-parallel,harness-tests-exec-in-helpers,go-format,$(SIZE_RULES) --dir $(API_DIR)/tools/harness -- $(CURDIR)/$(GCL) run --allow-serial-runners ./...; fi
 
 arch-go:
 	@$(RUN) go-arch-lint go-layers --dir $(API_DIR) -- go-arch-lint check --output-color=false

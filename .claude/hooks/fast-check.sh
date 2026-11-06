@@ -56,7 +56,7 @@ case "$file" in
   apps/api/*.go)
     pkg="./$(dirname "${file#apps/api/}")/"
     check $RUN golangci-lint go-no-root-context,go-db-only-in-store,go-http-only-in-api,go-domain-isolation,go-format \
-      --dir apps/api -- ../../.bin/golangci-lint-custom run "$pkg"
+      --dir apps/api -- ../../.bin/golangci-lint-custom run --allow-serial-runners "$pkg" # waits for make check's run (Makefile)
     ;;
 
   apps/api/db/migrations/*.sql)

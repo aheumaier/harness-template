@@ -652,3 +652,9 @@ template's subcommand uncalled; the analyzers plugin already registers from `ini
     header, `zz_helpers_test.go`, `&exec.Cmd{}`, `zz_test.go_fixture.go`). The rest are declared under "Not
     caught" in `rules.md`, as is revive's generated-code skip, which golangci cannot turn off. TD-171 is paid,
     and TD-172 is new.
+- 2026-11-06: main went red after slice 2b merged (`74fb02a`): CI's check-all, adoption-probe and generator-probe
+  failed with "parallel golangci-lint is running". Under `make -j`, `lint-go` and `lint-harness` start golangci-lint
+  together; it allows one run per user's `$TMPDIR` and by default gives up after 5 s. The local gates missed it
+  because warm caches finish `lint-go` inside those 5 s; with a cold Go build cache it reproduces locally. Fix:
+  `--allow-serial-runners` on both targets and on fast-check's golangci-lint call, and a 3-minute `run.timeout`
+  in the harness config. `lint-go`'s measured time can now include the wait (NFR-H3, NFR-H5).
