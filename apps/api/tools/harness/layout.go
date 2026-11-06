@@ -27,7 +27,8 @@ package main
 //
 //	scripts/harness/layout.env[:<line>]: <message> [harness-layout-valid]
 //
-// for a malformed line, a missing, unknown or repeated key, an UPSTREAM_SPECS entry that is refused, a STACK that is invalid or leaves out a group the tree has, API_DIR without a go.mod, SPEC that is not a file,
+// for a malformed line, a missing, unknown or repeated key, an UPSTREAM_SPECS entry that is refused, a STACK that is invalid or leaves out a group the tree has, API_DIR that is not a clean path, has no go.mod
+// or has a harness module (<API_DIR>/tools/harness/) that a symlink or a case variant of its path hides or no config entry of protected-paths.txt matches, SPEC that is not a file,
 // MIGRATIONS_DIR or API_CLIENT_DIR that is not a directory (QUERIES_DIR: nor its parent), with ios an IOS_DIR
 // without a git-known Package.swift or project.yml, a WEB_GLOBS entry
 // that is not `<existing dir>/*`, and a LAYER_GLOB that is not `<dir>[/<dir>…]/*/*`-shaped (literal segments,
@@ -207,8 +208,10 @@ func (l layout) problems(w world, root string) ([]string, error) {
 		return err == nil && fi.Mode().IsRegular()
 	}
 
-	if !isFile(l.apiPath("go.mod")) {
-		report("API_DIR", "no go.mod there (the Go API module; `.` for the repo root)")
+	if problem, err := l.apiDirProblem(w, root); err != nil {
+		return nil, err
+	} else if problem != "" {
+		report("API_DIR", "%s", problem)
 	}
 	if !isFile(l.get("SPEC")) {
 		report("SPEC", "no such file (the OpenAPI contract)")
@@ -290,6 +293,93 @@ func (l layout) problems(w world, root string) ([]string, error) {
 		report("LAYER_GLOB", "%s is a package with no layer (expected %s/<domain>/<layer>): the domain-isolation analyzer skips it", dir, path.Dir(dir))
 	}
 	return out, nil
+}
+
+// apiDirProblem says what is wrong with API_DIR, or "".
+func (l layout) apiDirProblem(w world, root string) (string, error) {
+	// A clean path (fs.ValidPath holds for "."): the scripts' API_PREFIX is API_DIR as text, so sync-check's
+	// mapping would miss an apps/api/ or ./apps/api that path.Join here cleans.
+	if !fs.ValidPath(l.get("API_DIR")) {
+		return "not a clean path inside this repo (no leading /, no ./ or .., no trailing /)", nil
+	}
+	if fi, err := os.Stat(filepath.Join(root, l.apiPath("go.mod"))); err != nil || !fi.Mode().IsRegular() {
+		return "no go.mod there (the Go API module; `.` for the repo root)", nil
+	}
+	return l.unprotectedHarness(w, root)
+}
+
+// unprotectedHarness says why the .bin/harness module under API_DIR is not protected, or "": a symlink on the
+// way to it or inside it, a git-known path that names it in another case, or a file (its go.mod even before it exists, then each git-known file there) that no
+// config entry of protected-paths.txt matches. All harness logic lives there (ADR 0045), so a repo that moved
+// API_DIR without re-pointing protected-paths.txt has none of it protected; only a config entry also needs the
+// label in CI. A symlink is refused, not resolved: git's pathspecs, which CI matches, list nothing behind a
+// linked directory, and the hook resolves a link to a path no entry names. Matched with case (configPatterns'
+// :(icase) is git pathspec magic), so stricter than the hook and CI, which ignore it. A missing list is an error.
+func (l layout) unprotectedHarness(w world, root string) (string, error) {
+	entries, err := protectedPaths(filepath.Join(root, protectedPathsFile))
+	if err != nil {
+		return "", err
+	}
+	var patterns []string
+	for _, e := range entries {
+		if e.kind == "config" {
+			patterns = append(patterns, e.pattern)
+		}
+	}
+	dir := l.apiPath("tools/harness")
+	exists := true
+	for p, rest := "", strings.Split(dir, "/"); exists && len(rest) > 0; rest = rest[1:] {
+		p = path.Join(p, rest[0])
+		fi, err := os.Lstat(filepath.Join(root, p))
+		switch {
+		case err != nil && os.IsNotExist(err):
+			exists = false // nothing further to walk
+		case err != nil:
+			return "", err
+		case fi.Mode()&fs.ModeSymlink != 0:
+			return fmt.Sprintf("%s is a symlink, so protect-harness and CI never see the harness's code behind it (make it a real directory)", p), nil
+		case !fi.IsDir():
+			exists = false
+		}
+	}
+	// Every git-known path, not a pathspec: git folds only ASCII case, while a disk such as APFS also folds
+	// Harneſs or Harness into harness and builds what is there into .bin/harness, unseen by protect-harness and CI.
+	known, err := w.gitKnown(root)
+	if err != nil {
+		return "", err
+	}
+	files := []string{path.Join(dir, "go.mod")}
+	for _, f := range known {
+		if in, exact := inDirFold(f, dir); exact {
+			files = append(files, f)
+		} else if in {
+			return fmt.Sprintf("%s names %s in another case, so a case-insensitive disk builds it into .bin/harness while protect-harness and CI never match it (rename it to its exact path)", f, dir), nil
+		}
+	}
+	for _, f := range files {
+		if fi, err := os.Lstat(filepath.Join(root, f)); err == nil && !fi.Mode().IsRegular() {
+			return fmt.Sprintf("%s is not a regular file (a symlink or a submodule), so protect-harness and CI never see what it points to (commit the file itself)", f), nil
+		}
+		if !matchesAny(patterns, f) {
+			return fmt.Sprintf("%s matches no config entry of %s, so the harness's own code is unprotected (add or re-point the entry `%s config`: README, (b) step 5)", f, protectedPathsFile, l.apiPath("tools/harness/*")), nil
+		}
+	}
+	return "", nil
+}
+
+// inDirFold reports whether path p is inside dir when their components are compared with Unicode case folding,
+// and whether it is inside dir exactly.
+func inDirFold(p, dir string) (in, exact bool) {
+	ps, ds := strings.Split(p, "/"), strings.Split(dir, "/")
+	if len(ps) <= len(ds) {
+		return false, false
+	}
+	for i, d := range ds {
+		if !strings.EqualFold(ps[i], d) {
+			return false, false
+		}
+	}
+	return true, strings.HasPrefix(p, dir+"/")
 }
 
 // upstreamEntryProblem says why an UPSTREAM_SPECS entry is refused, or "" (upstream-drift.sh's entry_problem, with

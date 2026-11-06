@@ -79,6 +79,7 @@ nothing in run time. The evidence, re-measured here at `750c094` on 2026-11-02 o
 | 2026-11-05 | C: the iOS follow-ups ride in slice 2 as a `docs(ios)` commit: an `xcodebuild` row in `budgets.txt`, TD-151 and TD-155 closed, NFR-R5 dated (the user) | this file, slice 2a PR |
 | 2026-11-05 | D: slice 2 is three PRs, each opened after the one before merges: 2a registry, world, shared files and parallel tests; 2b `lint-harness`; 2c TD-129, `layout-check` and three rules (the user) | this file |
 | 2026-11-06 | `lint-harness` runs `paralleltest` next to `tparallel` (only `paralleltest` catches a test with no subtests and no `t.Parallel()`), and its process ban is on a use of `exec.Command`, `exec.CommandContext` or the type `exec.Cmd`, by package, not on the import (`world_test.go` needs `exec.ErrNotFound`) (agent) | this file, `docs/harness/rules.md` |
+| 2026-11-06 | Slice 2c closes TD-129: sync-check maps upstream's own `API_DIR` (read from the single `API_DIR` line of upstream's `layout.env`, so a newer upstream with more keys still reads; it fails closed without one) and this repo's entries under its `API_DIR` also select upstream's copy. `layout-check` refuses an unclean `API_DIR` and a harness module that no `config` entry protects or that a symlink or case variant hides. `lint-harness`'s file length goes from 556 to 529, the longest file after `layout_test.go` was split; the 556 below is the start value (agent) | this file, `docs/harness/rules.md`, ADR 0045 |
 
 ## Rulings
 
