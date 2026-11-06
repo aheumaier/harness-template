@@ -43,7 +43,8 @@ For each new function, method, type, constant set, script, make target, React co
    - `packages/domain` (pure TS) and `packages/api-client` (the generated client and its hooks, exported
      from `packages/api-client/src/index.ts`);
    - the shell in `scripts/*.sh`, `scripts/harness/*.sh` and `.claude/hooks/*.sh`, the `.bin/harness`
-     subcommands (`apps/api/tools/harness/`, listed in its `main.go`), and the Makefile targets with a `##`
+     subcommands (`apps/api/tools/harness/`: `harness help` lists them, and its `main.go` package comment names
+     the helpers they share), and the Makefile targets with a `##`
      comment on their header line;
    - the Go standard library at the version in `apps/api/go.mod`;
    - a dependency already pinned in `apps/api/go.mod`, the `go.mod` files under `apps/api/tools/`, the

@@ -103,7 +103,8 @@ and test bans) are adopted as `team-convention` under
   hook logic moves too (`protect-harness`'s Bash heuristic, `fast-check`'s routing); the wrapper stays and is
   tested from Go.
 - "Not ported: the Bash branch of `protect-harness` stays a heuristic over command text": it is ported. The port
-  keeps the heuristic's behaviour case for case; replacing it with guard-bash's AST walk is a separate change.
+  keeps every block of the bash version and may add more; replacing it with guard-bash's AST walk is a separate
+  change.
 - "`integrity-check` computes its merge base in Go, the same way as `merge-base.sh` … kept in step by hand": the
   `merge-base` subcommand reuses the same Go function, so there is one implementation.
 
