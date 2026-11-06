@@ -170,6 +170,7 @@ func TestApprovedCheck(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var out bytes.Buffer
 			bad, err := approvedCheck(testWorld(t, &out), approvedRepo(t, tt.files))
 			if err != nil {

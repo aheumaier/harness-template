@@ -333,6 +333,7 @@ func TestIntegrityCheck(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			own := integrityRepo(t)
 			root := tt.change(t, own)
 			if root == "" {
@@ -394,6 +395,7 @@ func TestIntegrityCheckRealListSparesProductWorkflows(t *testing.T) {
 func TestIntegrityCheckFailsClosed(t *testing.T) {
 	t.Parallel()
 	t.Run("BASE_REF does not resolve", func(t *testing.T) {
+		t.Parallel()
 		own := integrityRepo(t)
 		_, err := integrityCheck(testWorld(t, io.Discard), own, own, "no-such-branch", false)
 		if err == nil || !strings.Contains(err.Error(), "BASE_REF 'no-such-branch' is not a commit") {
@@ -401,6 +403,7 @@ func TestIntegrityCheckFailsClosed(t *testing.T) {
 		}
 	})
 	t.Run("no config entries", func(t *testing.T) {
+		t.Parallel()
 		own := integrityRepo(t)
 		writeLines(t, own, "scripts/harness/protected-paths.txt", "# emptied")
 		_, err := integrityCheck(testWorld(t, io.Discard), own, own, "main", true)
@@ -409,6 +412,7 @@ func TestIntegrityCheckFailsClosed(t *testing.T) {
 		}
 	})
 	t.Run("no rules.md", func(t *testing.T) {
+		t.Parallel()
 		own := integrityRepo(t)
 		if err := os.Remove(filepath.Join(own, "docs/harness/rules.md")); err != nil {
 			t.Fatal(err)
@@ -418,6 +422,7 @@ func TestIntegrityCheckFailsClosed(t *testing.T) {
 		}
 	})
 	t.Run("no layout.env", func(t *testing.T) {
+		t.Parallel()
 		own := integrityRepo(t)
 		if err := os.Remove(filepath.Join(own, layoutFile)); err != nil {
 			t.Fatal(err)
@@ -427,6 +432,7 @@ func TestIntegrityCheckFailsClosed(t *testing.T) {
 		}
 	})
 	t.Run("no merge base", func(t *testing.T) {
+		t.Parallel()
 		own := integrityRepo(t)
 		gitT(t, own, "checkout", "-q", "--orphan", "other")
 		commitAll(t, own, "unrelated")
@@ -466,6 +472,7 @@ func TestIntegrityCheckExitCodes(t *testing.T) {
 		{"no args", []string{"integrity-check"}, "", "", "", exitUsage},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var stdout, stderr bytes.Buffer
 			if code := runTest(t, tt.args, nil, &stdout, &stderr,
 				"HARNESS_ROOT="+tt.root, "BASE_REF="+tt.base, "HARNESS_CHANGE_APPROVED="+tt.waived); code != tt.want {

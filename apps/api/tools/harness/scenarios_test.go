@@ -201,6 +201,7 @@ func TestScenariosTested(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			root := templateRepo(t, tt.files)
 			wantFindings(t, func(w io.Writer) (bool, error) { return scenariosTested(testWorld(t, w), root) }, tt.want)
 		})

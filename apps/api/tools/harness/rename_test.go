@@ -172,6 +172,7 @@ func TestRenameBareModule(t *testing.T) {
 			"module emergencies\n", "tools/harness/go.mod", "example/hello/tools/harness"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			root := linkRepo(t, map[string][]string{
 				layoutFile:         withLayout("API_DIR", tc.apiDir),
 				tc.apiGoMod:        {tc.apiBefore},
@@ -265,6 +266,7 @@ func TestRenameNeedsLayout(t *testing.T) {
 		"not KEY=value": append(withLayout("API_DIR", "."), "API_DIR apps/api"),
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			files := map[string][]string{"package.json": {`{"name": "harness-template"}`}}
 			if lines != nil {
 				files[layoutFile] = lines

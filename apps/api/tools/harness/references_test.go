@@ -158,6 +158,7 @@ func TestReferencesPinned(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var out bytes.Buffer
 			bad, err := referencesPinned(testWorld(t, &out), linkRepo(t, tt.files))
 			if err != nil {
@@ -195,6 +196,7 @@ func TestReferencesPinnedCannotRun(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var stdout, stderr bytes.Buffer
 			if got := runTest(t, tt.args(t), strings.NewReader(""), &stdout, &stderr); got != tt.want {
 				t.Errorf("exit %d, want %d; stdout %q stderr %q", got, tt.want, stdout.String(), stderr.String())

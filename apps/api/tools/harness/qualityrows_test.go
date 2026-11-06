@@ -89,6 +89,7 @@ func TestQualityShape(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			root := qualityTestRepo(t, tt.rows, tt.domains)
 			wantFindings(t, func(w io.Writer) (bool, error) { return qualityShape(testWorld(t, w), root) }, tt.want)
 		})
@@ -126,6 +127,7 @@ func TestQualityShapeFailsClosedOnLayout(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			lines := []string{qualityTestHeader, qualityTestSep, qualityTestRow("billing", "A | A | A | A", "2026-10-29"), qualityTestMarker}
 			files := map[string][]string{qualityFile: lines, templateDomains + "billing/x.go": {"package x"}}
 			if tt.layout != nil {
@@ -167,6 +169,7 @@ func TestQualityFresh(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			root := qualityTestRepo(t, tt.rows, nil)
 			wantFindings(t, func(w io.Writer) (bool, error) { return qualityFresh(testWorld(t, w), root, today) }, tt.want)
 		})
@@ -232,6 +235,7 @@ func TestQualityRowsFailsClosed(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			files := map[string][]string{"README.md": {""}}
 			if tt.lines != nil {
 				files[qualityFile] = tt.lines

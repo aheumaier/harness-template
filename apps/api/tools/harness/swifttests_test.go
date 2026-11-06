@@ -49,6 +49,7 @@ func TestSwiftTests(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			files := map[string][]string{}
 			for _, f := range tt.files {
 				files[f] = []string{"import Testing"}
@@ -71,6 +72,7 @@ func TestSwiftTestsLinks(t *testing.T) {
 		{"a folder under Tests", "apps/ios/Tests/OrphanTests", "../TestSuite/OrphanTests"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			root := linkRepo(t, map[string][]string{"apps/ios/TestSuite/OrphanTests/XTests.swift": {"import Testing"}})
 			if err := os.MkdirAll(filepath.Dir(filepath.Join(root, tt.link)), 0o755); err != nil {
 				t.Fatal(err)

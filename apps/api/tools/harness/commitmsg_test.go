@@ -33,6 +33,7 @@ func TestCommitMsgHook(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			dir := sandbox(t, hook, "scripts/harness/run.sh", "scripts/harness/timing.sh", "docs/harness/rules.md")
 			switch tt.harness {
 			case "test":
