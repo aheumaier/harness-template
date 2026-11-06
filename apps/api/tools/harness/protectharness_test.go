@@ -32,11 +32,18 @@ func wantProtect(t *testing.T, root, cwd, tool string, blocked bool, args ...str
 	}
 }
 
-// TestProtectHarness holds the cases of the former scripts/test/protect-harness.bats, split into rows, against this
-// repository and its protected-paths.txt, plus the paths the bash heuristic let through.
+// TestProtectHarness holds the cases of the former scripts/test/protect-harness.bats, split into rows, plus the
+// paths the bash heuristic let through. A blocked row runs against this repository and its protected-paths.txt, so
+// dropping an entry the rows name fails it. An allowed row runs against the fixed list in
+// testdata/protected-paths.txt, so a product that protects more paths keeps it green.
 func TestProtectHarness(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
+	fixed := gitRepo(t, "main")
+	place(t, "testdata/protected-paths.txt", filepath.Join(fixed, protectedPathsFile))
+	for _, f := range []string{"apps/api/AGENTS.md", "docs/QUALITY.md"} { // allowed rows on files that exist
+		writeLines(t, fixed, f, "x")
+	}
 	tmp, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -52,8 +59,8 @@ func TestProtectHarness(t *testing.T) {
 		blocked bool
 		args    []string
 	}{
-		// The blocked paths under apps/ match `*` globs of the live list; the rest are root, scripts/, .claude/ or
-		// .github/ paths, so none depends on layout.env. The allowed rows assume this template's list; moving them onto a fixed list in testdata/ is exec plan 0005 slice 2.
+		// The blocked paths under apps/ match `*` globs of this repository's list; the rest are root, scripts/, .claude/ or
+		// .github/ paths, so none depends on layout.env. The allowed paths are near misses of the fixed list's globs.
 		{name: "blocks file tools on harness files", tool: "Edit", blocked: true, args: []string{
 			".golangci.yml", "apps/api/.go-arch-lint.yml", "apps/web/eslint.config.js", ".claude/settings.json",
 			".claude/hooks/guard-bash.sh", ".github/workflows/ci.yml", ".github/workflows/pr-review.yml",
@@ -89,7 +96,11 @@ func TestProtectHarness(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			wantProtect(t, root, root, tt.tool, tt.blocked, tt.args...)
+			at := fixed
+			if tt.blocked {
+				at = root
+			}
+			wantProtect(t, at, at, tt.tool, tt.blocked, tt.args...)
 		})
 	}
 

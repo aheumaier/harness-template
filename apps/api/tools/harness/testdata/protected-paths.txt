@@ -1,0 +1,30 @@
+# A fixed protected-paths.txt for TestProtectHarness (apps/api/tools/harness/protectharness_test.go): its allowed
+# rows run against this list, not the repo's, so a product that protects more paths keeps them green; its blocked
+# rows run against the repo's list. Each allowed path is a near miss of a glob here (apps/api/AGENTS.md of
+# AGENTS.md), a read of a file one matches, or product code no glob names (api/openapi.yaml). Same format as
+# scripts/harness/protected-paths.txt; the globs are a subset of the template's on 2026-11-06.
+*.golangci.yml config
+*.go-arch-lint.yml config
+*eslint.config.* config
+apps/web/e2e/global-setup.ts config
+*.spectral.yaml config
+*atlas.hcl config
+*.squawk.toml config
+knip.json config
+*tsconfig*.json config
+.claude/settings.json config
+Makefile config
+.github/workflows/ci.yml config
+.github/workflows/pr-review.yml config
+.github/actions/setup/* config
+.github/CODEOWNERS config
+scripts/tool-versions.env config
+scripts/harness/* config
+scripts/test/*
+apps/api/tools/harness/* config
+apps/api/internal/platform/approvaltest/* config
+.claude/hooks/* config
+.claude/*
+.github/pull_request_template.md
+docs/harness/*
+AGENTS.md
