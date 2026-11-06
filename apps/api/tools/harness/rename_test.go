@@ -12,11 +12,12 @@ import (
 func renameRun(t *testing.T, args ...string) (int, string) {
 	t.Helper()
 	var out bytes.Buffer
-	code := run(append([]string{"rename"}, args...), nil, &out, &out)
+	code := runTest(t, append([]string{"rename"}, args...), nil, &out, &out)
 	return code, out.String()
 }
 
 func TestRenamer(t *testing.T) {
+	t.Parallel()
 	r := newRenamer("acme-shop", "github.com/acme/shop", "@acme/platform")
 	for _, tc := range []struct{ in, want string }{
 		{"module github.com/aheumaier/harness-template/apps/api", "module github.com/acme/shop/apps/api"},
@@ -40,6 +41,7 @@ func TestRenamer(t *testing.T) {
 // The rename points template sync at the template (ADR 0026): written after the rewrite, never renamed, never
 // a leftover, and a second run changes nothing.
 func TestRenameSetsUpstream(t *testing.T) {
+	t.Parallel()
 	root := linkRepo(t, map[string][]string{
 		upstreamFile:   {"# harness-template sync", "GO_TOOLCHAIN=go1", "HARNESS_UPSTREAM="},
 		"package.json": {`{"name": "harness-template"}`},
@@ -74,6 +76,7 @@ func TestRenameSetsUpstream(t *testing.T) {
 }
 
 func TestRenameRepo(t *testing.T) {
+	t.Parallel()
 	root := linkRepo(t, map[string][]string{
 		"apps/api/go.mod":                    {"module github.com/aheumaier/harness-template/apps/api"},
 		"apps/api/tools/harness/go.mod":      {"module " + templateHarnessModule, "", "go 1.27"},
@@ -158,6 +161,7 @@ func renameFile(t *testing.T, root, p string) string {
 // (exec plan 0003, P4.8). The harness tool's module follows API_DIR; the template URL is kept, since
 // https://<bare module> is no URL, and listed for a hand fix.
 func TestRenameBareModule(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, module, apiDir, apiGoMod, apiBefore, apiAfter, harnessGoMod, harnessModule string
 	}{
@@ -205,6 +209,7 @@ func TestRenameBareModule(t *testing.T) {
 // MODULE=skip renames only the name and the owner: Go module paths, the harness tool's included, stay as
 // they are (exec plan 0003, P4.8).
 func TestRenameModuleSkip(t *testing.T) {
+	t.Parallel()
 	root := linkRepo(t, map[string][]string{
 		layoutFile:             withLayout("API_DIR", "."),
 		"go.mod":               {"module emergencies"},
@@ -251,6 +256,7 @@ func TestRenameModuleSkip(t *testing.T) {
 
 // The rename reads API_DIR from layout.env and fails closed without it, before it writes anything.
 func TestRenameNeedsLayout(t *testing.T) {
+	t.Parallel()
 	for name, lines := range map[string][]string{
 		"missing":       nil,
 		"no API_DIR":    withLayout("API_DIR", ""),
@@ -276,6 +282,7 @@ func TestRenameNeedsLayout(t *testing.T) {
 }
 
 func TestRenameLeftovers(t *testing.T) {
+	t.Parallel()
 	root := linkRepo(t, map[string][]string{
 		"apps/api/go.mod":      {"module github.com/aheumaier/harness-template/apps/api"},
 		"docs/remote.md":       {"git clone git@github.com:aheumaier/harness-template.git", "fine"},
@@ -327,6 +334,7 @@ func TestRenameLeftovers(t *testing.T) {
 // TestCheckRenameArgs tables the argument check itself, so a refused row fails for its own reason and an
 // accepted row proves the check does not refuse too much.
 func TestCheckRenameArgs(t *testing.T) {
+	t.Parallel()
 	const (
 		badName   = "want lowercase letters"
 		badModule = "want a Go module path"
@@ -381,6 +389,7 @@ func TestCheckRenameArgs(t *testing.T) {
 
 // The command refuses bad arguments before it writes a file.
 func TestRenameArgs(t *testing.T) {
+	t.Parallel()
 	root := linkRepo(t, map[string][]string{"package.json": {`{"name": "harness-template"}`}, layoutFile: templateLayout})
 	gitT(t, root, "add", "-A")
 	for _, tc := range []struct {

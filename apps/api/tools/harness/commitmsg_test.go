@@ -10,6 +10,7 @@ import (
 // TestCommitMsgHook runs scripts/git-hooks/commit-msg: it checks the message with .bin/harness, and blocks with
 // "run make setup" when that binary is missing or older than the hook (ADR 0045).
 func TestCommitMsgHook(t *testing.T) {
+	t.Parallel()
 	const hook = "scripts/git-hooks/commit-msg"
 	tests := []struct {
 		name    string

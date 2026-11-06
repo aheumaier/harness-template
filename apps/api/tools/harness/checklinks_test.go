@@ -3,32 +3,13 @@ package main
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// linkRepo makes a git repo holding files (path → lines); untracked files count, as in the sensor.
-func linkRepo(t *testing.T, files map[string][]string) string {
-	t.Helper()
-	root := t.TempDir()
-	if out, err := exec.Command("git", "init", "-q", root).CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v: %s", err, out)
-	}
-	for p, lines := range files {
-		f := filepath.Join(root, p)
-		if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(f, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return root
-}
-
 func TestCheckLinks(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		files map[string][]string
@@ -106,7 +87,7 @@ func TestCheckLinks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			bad, err := checkLinks(linkRepo(t, tt.files), &out)
+			bad, err := checkLinks(testWorld(t, &out), linkRepo(t, tt.files))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -122,15 +103,14 @@ func TestCheckLinks(t *testing.T) {
 }
 
 func TestCheckLinksTrackedFileDeleted(t *testing.T) {
+	t.Parallel()
 	root := linkRepo(t, map[string][]string{"a.md": {"[x](gone.md)"}, "gone.md": {"# Gone"}})
-	if out, err := exec.Command("git", "-C", root, "add", "-A").CombinedOutput(); err != nil {
-		t.Fatalf("git add: %v: %s", err, out)
-	}
+	gitT(t, root, "add", "-A")
 	if err := os.Remove(filepath.Join(root, "gone.md")); err != nil {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	bad, err := checkLinks(root, &out)
+	bad, err := checkLinks(testWorld(t, &out), root)
 	want := "a.md: broken link (gone.md): ./gone.md does not exist [docs-links-resolve]\n"
 	if err != nil || !bad || out.String() != want {
 		t.Errorf("bad=%v err=%v, output:\n%swant:\n%s", bad, err, out.String(), want)
@@ -138,6 +118,7 @@ func TestCheckLinksTrackedFileDeleted(t *testing.T) {
 }
 
 func TestCheckLinksExitCodes(t *testing.T) {
+	t.Parallel()
 	ok := linkRepo(t, map[string][]string{"a.md": {"# A"}})
 	broken := linkRepo(t, map[string][]string{"a.md": {"[x](gone.md)"}})
 	for _, tt := range []struct {
@@ -150,7 +131,7 @@ func TestCheckLinksExitCodes(t *testing.T) {
 		{[]string{"check-links"}, exitUsage},
 	} {
 		var stdout, stderr bytes.Buffer
-		if code := run(tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.want {
+		if code := runTest(t, tt.args, nil, &stdout, &stderr); code != tt.want {
 			t.Errorf("%v: exit %d, want %d (%s%s)", tt.args, code, tt.want, stdout.String(), stderr.String())
 		}
 	}

@@ -12,7 +12,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -39,14 +38,13 @@ type headerField struct {
 	value string
 }
 
-type finding struct {
-	line int
-	msg  string
+func init() {
+	commands.register(rootSensor("references-pinned", "docs-references-pinned (make references-pinned)", referencesPinned))
 }
 
 // referencesPinned prints one line per finding to stdout and reports whether there was any. root is the repo.
-func referencesPinned(root string, stdout io.Writer) (bool, error) {
-	known, err := gitKnown(root, referencesDir+"/*-llms.txt")
+func referencesPinned(w world, root string) (bool, error) {
+	known, err := w.gitKnown(root, referencesDir+"/*-llms.txt")
 	if err != nil {
 		return false, err
 	}
@@ -59,7 +57,7 @@ func referencesPinned(root string, stdout io.Writer) (bool, error) {
 	if len(refs) == 0 {
 		return false, fmt.Errorf("no %s/*-llms.txt known to git: run from the repository root", referencesDir)
 	}
-	c := &refChecker{root: root, pins: map[string]map[string]string{}}
+	c := &refChecker{w: w, root: root, pins: map[string]map[string]string{}}
 	bad := false
 	for _, ref := range refs {
 		findings, err := c.check(ref)
@@ -70,13 +68,14 @@ func referencesPinned(root string, stdout io.Writer) (bool, error) {
 		sort.SliceStable(findings, func(i, j int) bool { return findings[i].line < findings[j].line })
 		for _, f := range findings {
 			bad = true
-			fmt.Fprintf(stdout, "%s:%d: %s [docs-references-pinned]\n", ref, f.line, f.msg)
+			printFinding(w.stdout, ref, f.line, "docs-references-pinned", "%s", f.msg)
 		}
 	}
 	return bad, nil
 }
 
 type refChecker struct {
+	w    world
 	root string
 	pins map[string]map[string]string // pin file → key → version, read once each
 }
@@ -165,7 +164,7 @@ func (c *refChecker) knownPinFile(file string) (bool, error) {
 	if filepath.IsAbs(file) || path.Clean(file) != file || file == ".." || strings.HasPrefix(file, "../") {
 		return false, nil
 	}
-	known, err := gitKnown(c.root, ":(literal)"+file)
+	known, err := c.w.gitKnown(c.root, ":(literal)"+file)
 	if err != nil {
 		return false, err
 	}

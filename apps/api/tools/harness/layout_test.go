@@ -2,53 +2,13 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
-
-// templateLayout is the template's scripts/harness/layout.env, without comments.
-var templateLayout = []string{
-	"API_DIR=apps/api",
-	"SPEC=api/openapi.yaml",
-	"MIGRATIONS_DIR=apps/api/db/migrations",
-	"QUERIES_DIR=apps/api/db/queries",
-	"API_CLIENT_DIR=packages/api-client",
-	"WEB_GLOBS=apps/*:packages/*",
-	"GENERATED_GLOBS=*.gen.go:apps/api/internal/*/store/*:packages/api-client/src/gen/*:docs/generated/*",
-	"PRODUCT_GLOBS=apps/*:api/*",
-	"LAYER_GLOB=internal/*/*",
-	"STACK=go:db:web:ios",
-	"IOS_DIR=apps/ios",
-}
-
-// noHarnessStack keeps the environment's HARNESS_STACK (a run of make check with a smaller stack) out of a test.
-func noHarnessStack(t *testing.T) {
-	t.Helper()
-	t.Setenv("HARNESS_STACK", "") // restores the value after the test
-	os.Unsetenv("HARNESS_STACK")
-}
-
-// withLayout is templateLayout with each key, value pair of kv set ("" drops the key).
-func withLayout(kv ...string) []string {
-	set := map[string]string{}
-	for i := 0; i+1 < len(kv); i += 2 {
-		set[kv[i]] = kv[i+1]
-	}
-	var out []string
-	for _, l := range templateLayout {
-		k, _, _ := strings.Cut(l, "=")
-		switch v, ok := set[k]; {
-		case !ok:
-			out = append(out, l)
-		case v != "":
-			out = append(out, k+"="+v)
-		}
-	}
-	return out
-}
 
 // layoutTree is a repo whose tree matches templateLayout, with layout.env holding lines.
 func layoutTree(t *testing.T, lines []string) string {
@@ -75,7 +35,7 @@ func withoutIOSApp(t *testing.T, root string) string {
 }
 
 func TestLayoutCheck(t *testing.T) {
-	noHarnessStack(t)
+	t.Parallel()
 	const at = layoutFile + ":"
 	tests := []struct {
 		name  string
@@ -163,7 +123,7 @@ func TestLayoutCheck(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			bad, err := layoutCheck(layoutTree(t, tt.lines), &out)
+			bad, err := layoutCheck(testWorld(t, &out), layoutTree(t, tt.lines))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -179,6 +139,7 @@ func TestLayoutCheck(t *testing.T) {
 }
 
 func TestLayoutStack(t *testing.T) {
+	t.Parallel()
 	// Paths of the db, web and ios groups that do not exist, as in a product without them.
 	lines := withLayout("MIGRATIONS_DIR", "nope", "API_CLIENT_DIR", "nope", "QUERIES_DIR", "nope/queries", "WEB_GLOBS", "web/*", "IOS_DIR", "nope")
 	const at = layoutFile + ":"
@@ -202,9 +163,8 @@ func TestLayoutStack(t *testing.T) {
 		{"go,web,go", []string{"HARNESS_STACK=go,web,go: go named twice [harness-layout-valid]"}},
 	} {
 		t.Run(tt.env, func(t *testing.T) {
-			t.Setenv("HARNESS_STACK", tt.env)
 			var out bytes.Buffer
-			bad, err := layoutCheck(withoutIOSApp(t, layoutTree(t, lines)), &out)
+			bad, err := layoutCheck(testWorld(t, &out, "HARNESS_STACK="+tt.env), withoutIOSApp(t, layoutTree(t, lines)))
 			want := strings.Join(append(tt.want, ""), "\n")
 			if len(tt.want) == 0 {
 				want = ""
@@ -215,8 +175,7 @@ func TestLayoutStack(t *testing.T) {
 		})
 	}
 	t.Run("loadLayout sees the override", func(t *testing.T) {
-		t.Setenv("HARNESS_STACK", "go,db")
-		l, err := loadLayout(layoutTree(t, templateLayout))
+		l, err := loadLayout(testWorld(t, io.Discard, "HARNESS_STACK=go,db"), layoutTree(t, templateLayout))
 		if err != nil || l.get("STACK") != "go:db" || !l.has("db") || l.has("web") {
 			t.Errorf("STACK=%q err=%v", l.get("STACK"), err)
 		}
@@ -226,14 +185,14 @@ func TestLayoutStack(t *testing.T) {
 // TestLayoutStackDefault: a layout.env written before STACK existed (a base ref, an older product) reads as
 // go:db:web; a STACK that is present but invalid still fails closed (TestLayoutCheck, TestStackVectors).
 func TestLayoutStackDefault(t *testing.T) {
-	noHarnessStack(t)
+	t.Parallel()
 	root := withoutIOSApp(t, layoutTree(t, withLayout("STACK", "")))
-	l, err := loadLayout(root)
+	l, err := loadLayout(testWorld(t, io.Discard), root)
 	if err != nil || l.get("STACK") != "go:db:web" || !l.has("db") || !l.has("web") {
 		t.Errorf("STACK=%q err=%v", l.get("STACK"), err)
 	}
 	var out bytes.Buffer
-	if bad, err := layoutCheck(root, &out); bad || err != nil {
+	if bad, err := layoutCheck(testWorld(t, &out), root); bad || err != nil {
 		t.Errorf("bad=%v err=%v: %s", bad, err, out.String())
 	}
 }
@@ -241,7 +200,7 @@ func TestLayoutStackDefault(t *testing.T) {
 // TestLayoutStackHides: a stack that leaves out a group whose git-known files are still in the tree is a
 // finding at the STACK line (or HARNESS_STACK), so narrowing the stack never silently drops sensors.
 func TestLayoutStackHides(t *testing.T) {
-	noHarnessStack(t)
+	t.Parallel()
 	hides := func(at, group, found string) string {
 		return at + ": leaves out " + group + ", but " + found + " exists: add " + group +
 			" to STACK or delete its directories (do not narrow HARNESS_STACK on a full tree) [harness-layout-valid]"
@@ -320,11 +279,12 @@ func TestLayoutStackHides(t *testing.T) {
 			files[layoutFile] = append([]string{"# layout", ""}, withLayout("STACK", tt.stack)...)
 			root := linkRepo(t, files)
 			gitT(t, root, "add", "-A")
+			var env []string
 			if tt.env != "-" {
-				t.Setenv("HARNESS_STACK", tt.env)
+				env = append(env, "HARNESS_STACK="+tt.env)
 			}
 			var out bytes.Buffer
-			bad, err := layoutCheck(root, &out)
+			bad, err := layoutCheck(testWorld(t, &out, env...), root)
 			want := strings.Join(append(tt.want, ""), "\n")
 			if len(tt.want) == 0 {
 				want = ""
@@ -339,7 +299,7 @@ func TestLayoutStackHides(t *testing.T) {
 // TestLayoutHidesSwiftWhateverTheProductGlobs: a PRODUCT_GLOBS entry is a pathspec with or without a trailing
 // `*` (productTests reads both), so the Swift under it is found either way.
 func TestLayoutHidesSwiftWhateverTheProductGlobs(t *testing.T) {
-	noHarnessStack(t)
+	t.Parallel()
 	for _, globs := range []string{"apps/ios:api/*", "apps:api"} {
 		t.Run(globs, func(t *testing.T) {
 			root := linkRepo(t, map[string][]string{
@@ -351,7 +311,7 @@ func TestLayoutHidesSwiftWhateverTheProductGlobs(t *testing.T) {
 			})
 			gitT(t, root, "add", "-A")
 			var out bytes.Buffer
-			bad, err := layoutCheck(root, &out)
+			bad, err := layoutCheck(testWorld(t, &out), root)
 			if err != nil || !bad || !strings.Contains(out.String(), "leaves out ios, but apps/ios/Sources/AppCore/Greeting.swift exists") {
 				t.Errorf("bad=%v err=%v, output:\n%s", bad, err, out.String())
 			}
@@ -361,7 +321,7 @@ func TestLayoutHidesSwiftWhateverTheProductGlobs(t *testing.T) {
 
 // TestStackVectors runs the STACK vectors layout.bats shares, so layout.go and layout.sh agree (ADR 0033).
 func TestStackVectors(t *testing.T) {
-	noHarnessStack(t)
+	t.Parallel()
 	b, err := os.ReadFile("testdata/stack-vectors.txt")
 	if err != nil {
 		t.Fatal(err)
@@ -374,7 +334,7 @@ func TestStackVectors(t *testing.T) {
 		}
 		n++
 		l := layout{values: map[string]string{"STACK": value}, lines: map[string]int{"STACK": 1}}
-		if problems := l.applyStack(); (len(problems) == 0) != (want == "accept") {
+		if problems := l.applyStack(lookupIn(nil)); (len(problems) == 0) != (want == "accept") {
 			t.Errorf("STACK=%s: problems %q; want %s", value, problems, want)
 		}
 	}
@@ -386,6 +346,7 @@ func TestStackVectors(t *testing.T) {
 // TestUpstreamSpecVectors runs the UPSTREAM_SPECS entry vectors upstream-drift.bats shares, so layout-check
 // refuses what upstream-drift.sh would (ADR 0037).
 func TestUpstreamSpecVectors(t *testing.T) {
+	t.Parallel()
 	b, err := os.ReadFile("testdata/upstream-spec-vectors.txt")
 	if err != nil {
 		t.Fatal(err)
@@ -407,7 +368,7 @@ func TestUpstreamSpecVectors(t *testing.T) {
 }
 
 func TestLayoutRootModule(t *testing.T) {
-	noHarnessStack(t)
+	t.Parallel()
 	// API_DIR=. puts the module at the repo root: paths are joined without a "./" prefix.
 	root := linkRepo(t, map[string][]string{
 		layoutFile:                   withLayout("API_DIR", "."),
@@ -420,7 +381,7 @@ func TestLayoutRootModule(t *testing.T) {
 		"apps/ios/project.yml":       {"name: App"},
 	})
 	gitT(t, root, "add", "-A")
-	l, err := loadLayout(root)
+	l, err := loadLayout(testWorld(t, io.Discard), root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +389,7 @@ func TestLayoutRootModule(t *testing.T) {
 		t.Errorf("apiPath(go.mod) = %q, want go.mod", got)
 	}
 	var out bytes.Buffer
-	if bad, err := layoutCheck(root, &out); bad || err != nil {
+	if bad, err := layoutCheck(testWorld(t, &out), root); bad || err != nil {
 		t.Errorf("bad=%v err=%v: %s", bad, err, out.String())
 	}
 }
@@ -437,13 +398,13 @@ func TestLayoutRootModule(t *testing.T) {
 // Swift under STACK=go).
 // So does a project.yml in another case, as macOS reads it.
 func TestLayoutCheckIOSPackage(t *testing.T) {
-	noHarnessStack(t)
+	t.Parallel()
 	for _, app := range []string{"apps/pkg/Package.swift", "apps/pkg/Project.yml"} {
 		t.Run(app, func(t *testing.T) {
 			root := layoutTree(t, withLayout("IOS_DIR", "apps/pkg"))
 			writeLines(t, root, app, "// swift-tools-version: 6.0")
 			var out bytes.Buffer
-			if bad, err := layoutCheck(root, &out); err != nil || bad {
+			if bad, err := layoutCheck(testWorld(t, &out), root); err != nil || bad {
 				t.Errorf("bad=%v, err=%v, output:\n%s", bad, err, out.String())
 			}
 		})
@@ -451,7 +412,7 @@ func TestLayoutCheckIOSPackage(t *testing.T) {
 }
 
 func TestLayoutCheckIOSPackageIsARegularFile(t *testing.T) {
-	noHarnessStack(t)
+	t.Parallel()
 	for name, plant := range map[string]func(t *testing.T, root string){
 		"a directory named Package.swift": func(t *testing.T, root string) {
 			writeLines(t, root, "apps/fake/Package.swift/README", "x")
@@ -479,7 +440,7 @@ func TestLayoutCheckIOSPackageIsARegularFile(t *testing.T) {
 			root := layoutTree(t, withLayout("IOS_DIR", "apps/fake"))
 			plant(t, root)
 			var out bytes.Buffer
-			bad, err := layoutCheck(root, &out)
+			bad, err := layoutCheck(testWorld(t, &out), root)
 			if want := "IOS_DIR=apps/fake: no git-known Package.swift or project.yml there"; err != nil || !bad || !strings.Contains(out.String(), want) {
 				t.Errorf("bad=%v, err=%v, want %q in output:\n%s", bad, err, want, out.String())
 			}
@@ -488,18 +449,18 @@ func TestLayoutCheckIOSPackageIsARegularFile(t *testing.T) {
 }
 
 func TestLayoutCheckIOSOutsideProductGlobs(t *testing.T) {
-	noHarnessStack(t)
+	t.Parallel()
 	root := layoutTree(t, withLayout("IOS_DIR", "ios"))
 	writeLines(t, root, "ios/Package.swift", "// swift-tools-version: 6.0")
 	var out bytes.Buffer
-	bad, err := layoutCheck(root, &out)
+	bad, err := layoutCheck(testWorld(t, &out), root)
 	if want := "IOS_DIR=ios: not under a PRODUCT_GLOBS or WEB_GLOBS entry"; err != nil || !bad || !strings.Contains(out.String(), want) {
 		t.Errorf("bad=%v, err=%v, want %q in output:\n%s", bad, err, want, out.String())
 	}
 }
 
 func TestLayoutCheckExitCodes(t *testing.T) {
-	noHarnessStack(t)
+	t.Parallel()
 	ok := layoutTree(t, templateLayout)
 	bad := layoutTree(t, withLayout("LAYER_GLOB", "domains/*/*"))
 	for _, tt := range []struct {
@@ -512,22 +473,22 @@ func TestLayoutCheckExitCodes(t *testing.T) {
 		{[]string{"layout-check"}, exitUsage},
 	} {
 		var stdout, stderr bytes.Buffer
-		if code := run(tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.want {
+		if code := runTest(t, tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.want {
 			t.Errorf("%v: exit %d, want %d (%s%s)", tt.args, code, tt.want, stdout.String(), stderr.String())
 		}
 	}
 }
 
 func TestLoadLayoutFailsClosed(t *testing.T) {
-	noHarnessStack(t)
+	t.Parallel()
 	root := linkRepo(t, map[string][]string{layoutFile: withLayout("SPEC", "")})
-	if _, err := loadLayout(root); err == nil || err.Error() != layoutFile+": missing SPEC (run make layout-check)" {
+	if _, err := loadLayout(testWorld(t, io.Discard), root); err == nil || err.Error() != layoutFile+": missing SPEC (run make layout-check)" {
 		t.Errorf("err = %v", err)
 	}
 }
 
 func TestLayoutCheckPlatformIsNoDomain(t *testing.T) {
-	noHarnessStack(t)
+	t.Parallel()
 	// domainiso skips <layer dir>/platform and every flat <layer dir>/<pkg>. A platform-only tree is the
 	// template before its first domain, so it passes; a flat package beside it is a layout domainiso cannot see.
 	files := map[string][]string{
@@ -555,7 +516,7 @@ func TestLayoutCheckPlatformIsNoDomain(t *testing.T) {
 			root := linkRepo(t, all)
 			gitT(t, root, "add", "-A")
 			var out bytes.Buffer
-			bad, err := layoutCheck(root, &out)
+			bad, err := layoutCheck(testWorld(t, &out), root)
 			if err != nil || bad != (tc.want != "") || out.String() != tc.want {
 				t.Errorf("bad=%v err=%v, output:\n%s\nwant:\n%s", bad, err, out.String(), tc.want)
 			}
@@ -565,6 +526,7 @@ func TestLayoutCheckPlatformIsNoDomain(t *testing.T) {
 
 // TestLayerSegmentsVectors runs the LAYER_GLOB vectors domainiso's parsePrefix test shares (ADR 0030).
 func TestLayerSegmentsVectors(t *testing.T) {
+	t.Parallel()
 	b, err := os.ReadFile("testdata/layer-globs.txt")
 	if err != nil {
 		t.Fatal(err)

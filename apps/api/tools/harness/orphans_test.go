@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 )
@@ -17,6 +18,7 @@ func orphanTarget(line int, name string) string {
 }
 
 func TestOrphans(t *testing.T) {
+	t.Parallel()
 	const ok = "ok: ## An entry point needs no caller"
 	tests := []struct {
 		name  string
@@ -163,7 +165,7 @@ func TestOrphans(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			bad, err := orphans(linkRepo(t, tt.files), &out)
+			bad, err := orphans(testWorld(t, &out), linkRepo(t, tt.files))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -179,10 +181,11 @@ func TestOrphans(t *testing.T) {
 }
 
 func TestOrphansFailsClosed(t *testing.T) {
-	if _, err := orphans(linkRepo(t, map[string][]string{"scripts/a.sh": {"echo"}}), &bytes.Buffer{}); err == nil {
+	t.Parallel()
+	if _, err := orphans(testWorld(t, io.Discard), linkRepo(t, map[string][]string{"scripts/a.sh": {"echo"}})); err == nil {
 		t.Error("no Makefile: want an error")
 	}
-	if _, err := orphans(t.TempDir(), &bytes.Buffer{}); err == nil {
+	if _, err := orphans(testWorld(t, io.Discard), t.TempDir()); err == nil {
 		t.Error("not a git repo: want an error")
 	}
 }

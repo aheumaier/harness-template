@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"io"
 	"io/fs"
@@ -45,26 +44,8 @@ func qualityLayoutRepo(t *testing.T, layout []string, dir string, rows, domains 
 	return linkRepo(t, files)
 }
 
-// wantFindings fails unless check printed exactly want (nothing when want is empty) and reported it.
-func wantFindings(t *testing.T, check func(io.Writer) (bool, error), want []string) {
-	t.Helper()
-	var out bytes.Buffer
-	bad, err := check(&out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(want) == 0 {
-		if bad || out.Len() != 0 {
-			t.Fatalf("want no findings, got bad=%v:\n%s", bad, out.String())
-		}
-		return
-	}
-	if got := strings.TrimSuffix(out.String(), "\n"); !bad || got != strings.Join(want, "\n") {
-		t.Fatalf("got bad=%v:\n%s\nwant:\n%s", bad, got, strings.Join(want, "\n"))
-	}
-}
-
 func TestQualityShape(t *testing.T) {
+	t.Parallel()
 	link := qualityTestLink
 	row := qualityTestRow
 	tests := []struct {
@@ -109,7 +90,7 @@ func TestQualityShape(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := qualityTestRepo(t, tt.rows, tt.domains)
-			wantFindings(t, func(w io.Writer) (bool, error) { return qualityShape(root, w) }, tt.want)
+			wantFindings(t, func(w io.Writer) (bool, error) { return qualityShape(testWorld(t, w), root) }, tt.want)
 		})
 	}
 }
@@ -117,12 +98,13 @@ func TestQualityShape(t *testing.T) {
 // With the domains moved (LAYER_GLOB=pkg/domains/*/*), rows are demanded and links checked under the new
 // directory, and a directory under the old apps/api/internal/ is no domain.
 func TestQualityShapeFollowsLayout(t *testing.T) {
+	t.Parallel()
 	const dir = "apps/api/pkg/domains/"
 	root := qualityLayoutRepo(t, withLayout("LAYER_GLOB", "pkg/domains/*/*"), dir, []string{
 		qualityTestRow(qualityTestLink("billing"), "A | A | A | A", "2026-10-29"),
 	}, []string{"billing", "orders", "platform"})
 	writeLines(t, root, templateDomains+"users/x.go", "package x")
-	wantFindings(t, func(w io.Writer) (bool, error) { return qualityShape(root, w) }, []string{
+	wantFindings(t, func(w io.Writer) (bool, error) { return qualityShape(testWorld(t, w), root) }, []string{
 		"docs/QUALITY.md:3: Domain link [billing](../apps/api/internal/billing/AGENTS.md) does not point at its domain: write [billing](../" + dir + "billing/AGENTS.md) [docs-quality-rows-well-formed]",
 		"docs/QUALITY.md:4: domain orders (" + dir + "orders/) has no row: add one before the marker and grade it [docs-quality-rows-match-domains]",
 	})
@@ -131,6 +113,7 @@ func TestQualityShapeFollowsLayout(t *testing.T) {
 // The shape mode reads the domains' directory from layout.env, so it fails closed without a usable one; the
 // age check needs no domain and still runs.
 func TestQualityShapeFailsClosedOnLayout(t *testing.T) {
+	t.Parallel()
 	today := time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name   string
@@ -149,15 +132,16 @@ func TestQualityShapeFailsClosedOnLayout(t *testing.T) {
 				files[layoutFile] = tt.layout
 			}
 			root := linkRepo(t, files)
-			if _, err := qualityShape(root, io.Discard); err == nil || !strings.Contains(err.Error(), tt.want) {
+			if _, err := qualityShape(testWorld(t, io.Discard), root); err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("want an error containing %q, got %v", tt.want, err)
 			}
-			wantFindings(t, func(w io.Writer) (bool, error) { return qualityFresh(root, today, w) }, nil)
+			wantFindings(t, func(w io.Writer) (bool, error) { return qualityFresh(testWorld(t, w), root, today) }, nil)
 		})
 	}
 }
 
 func TestQualityFresh(t *testing.T) {
+	t.Parallel()
 	// 2026-10-30 locally, 2026-10-29 23:30 in UTC: the rows are measured against the UTC date.
 	today := time.Date(2026, 10, 30, 0, 30, 0, 0, time.FixedZone("CET", 3600))
 	row := qualityTestRow
@@ -184,7 +168,7 @@ func TestQualityFresh(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := qualityTestRepo(t, tt.rows, nil)
-			wantFindings(t, func(w io.Writer) (bool, error) { return qualityFresh(root, today, w) }, tt.want)
+			wantFindings(t, func(w io.Writer) (bool, error) { return qualityFresh(testWorld(t, w), root, today) }, tt.want)
 		})
 	}
 }
@@ -193,6 +177,7 @@ func TestQualityFresh(t *testing.T) {
 // on the day it is written: the generator and the sensor agree on the table's shape. A repo that dropped
 // make new-domain with its generator (README "(b) Brownfield project" step 5) has nothing to agree with.
 func TestQualityRowTemplateMatchesHeader(t *testing.T) {
+	t.Parallel()
 	repo := repoRoot(t)
 	tmpl, err := os.ReadFile(filepath.Join(repo, "scripts/templates/new-domain/quality-row.md.tmpl"))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -228,11 +213,12 @@ func TestQualityRowTemplateMatchesHeader(t *testing.T) {
 	}
 	root := linkRepo(t, map[string][]string{qualityFile: table, layoutFile: templateLayout, templateDomains + "billing_run/AGENTS.md": {"# billing_run"}})
 	today := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
-	wantFindings(t, func(w io.Writer) (bool, error) { return qualityShape(root, w) }, nil)
-	wantFindings(t, func(w io.Writer) (bool, error) { return qualityFresh(root, today, w) }, nil)
+	wantFindings(t, func(w io.Writer) (bool, error) { return qualityShape(testWorld(t, w), root) }, nil)
+	wantFindings(t, func(w io.Writer) (bool, error) { return qualityFresh(testWorld(t, w), root, today) }, nil)
 }
 
 func TestQualityRowsFailsClosed(t *testing.T) {
+	t.Parallel()
 	today := time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name  string
@@ -252,8 +238,8 @@ func TestQualityRowsFailsClosed(t *testing.T) {
 			}
 			root := linkRepo(t, files)
 			for mode, check := range map[string]func(io.Writer) (bool, error){
-				"shape": func(w io.Writer) (bool, error) { return qualityShape(root, w) },
-				"fresh": func(w io.Writer) (bool, error) { return qualityFresh(root, today, w) },
+				"shape": func(w io.Writer) (bool, error) { return qualityShape(testWorld(t, w), root) },
+				"fresh": func(w io.Writer) (bool, error) { return qualityFresh(testWorld(t, w), root, today) },
 			} {
 				if _, err := check(io.Discard); err == nil || !strings.Contains(err.Error(), tt.want) {
 					t.Fatalf("%s: want an error containing %q, got %v", mode, tt.want, err)

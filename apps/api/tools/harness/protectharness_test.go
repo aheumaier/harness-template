@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,10 +11,10 @@ import (
 	"testing"
 )
 
-// protect runs `harness protect-harness root` on a payload and returns the exit code and stderr.
-func protect(t *testing.T, root, stdin string) (int, string) {
+// protect runs `harness protect-harness root` on a payload, with env added, and returns the exit code and stderr.
+func protect(t *testing.T, root, stdin string, env ...string) (int, string) {
 	t.Helper()
-	return runHook(t, "protect-harness", root, stdin)
+	return runHook(t, "protect-harness", root, stdin, env...)
 }
 
 // wantProtect checks that tool on each arg, from cwd, is blocked as a harness file (or allowed).
@@ -30,10 +32,18 @@ func wantProtect(t *testing.T, root, cwd, tool string, blocked bool, args ...str
 	}
 }
 
-// TestProtectHarness holds the cases of the former scripts/test/protect-harness.bats, split into rows, against this
-// repository and its protected-paths.txt, plus the paths the bash heuristic let through.
+// TestProtectHarness holds the cases of the former scripts/test/protect-harness.bats, split into rows, plus the
+// paths the bash heuristic let through. A blocked row runs against this repository and its protected-paths.txt, so
+// dropping an entry the rows name fails it. An allowed row runs against the fixed list in
+// testdata/protected-paths.txt, so a product that protects more paths keeps it green.
 func TestProtectHarness(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
+	fixed := gitRepo(t, "main")
+	place(t, "testdata/protected-paths.txt", filepath.Join(fixed, protectedPathsFile))
+	for _, f := range []string{"apps/api/AGENTS.md", "docs/QUALITY.md"} { // allowed rows on files that exist
+		writeLines(t, fixed, f, "x")
+	}
 	tmp, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -49,8 +59,8 @@ func TestProtectHarness(t *testing.T) {
 		blocked bool
 		args    []string
 	}{
-		// The blocked paths under apps/ match `*` globs of the live list; the rest are root, scripts/, .claude/ or
-		// .github/ paths, so none depends on layout.env. The allowed rows assume this template's list; moving them onto a fixed list in testdata/ is exec plan 0005 slice 2.
+		// The blocked paths under apps/ match `*` globs of this repository's list; the rest are root, scripts/, .claude/ or
+		// .github/ paths, so none depends on layout.env. The allowed paths are near misses of the fixed list's globs.
 		{name: "blocks file tools on harness files", tool: "Edit", blocked: true, args: []string{
 			".golangci.yml", "apps/api/.go-arch-lint.yml", "apps/web/eslint.config.js", ".claude/settings.json",
 			".claude/hooks/guard-bash.sh", ".github/workflows/ci.yml", ".github/workflows/pr-review.yml",
@@ -86,7 +96,11 @@ func TestProtectHarness(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			wantProtect(t, root, root, tt.tool, tt.blocked, tt.args...)
+			at := fixed
+			if tt.blocked {
+				at = root
+			}
+			wantProtect(t, at, at, tt.tool, tt.blocked, tt.args...)
 		})
 	}
 
@@ -121,6 +135,7 @@ func worktreeSandbox(t *testing.T) (repo, tmp string) {
 }
 
 func TestProtectHarnessWorktrees(t *testing.T) {
+	t.Parallel()
 	t.Run("guards every worktree of the repo with this checkout's list: a sibling lane, a nested agent worktree", func(t *testing.T) {
 		repo, tmp := worktreeSandbox(t)
 		lane, agent, other := tmp+"/lane", repo+"/.claude/worktrees/agent", tmp+"/other"
@@ -150,7 +165,7 @@ func TestProtectHarnessWorktrees(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if roots, err := (&protector{root: repo}).worktrees(); err != nil || !slices.Contains(roots, repo+"/scripts") {
+		if roots, err := (&protector{w: testWorld(t, io.Discard), root: repo}).worktrees(); err != nil || !slices.Contains(roots, repo+"/scripts") {
 			t.Fatalf("git worktree list: %v, %v; want it to list %s/scripts", roots, err, repo)
 		}
 		wantProtect(t, repo, repo, "Edit", true, "scripts/harness/run.sh", repo+"/scripts/harness/protected-paths.txt")
@@ -174,16 +189,17 @@ func TestProtectHarnessWorktrees(t *testing.T) {
 			t.Fatal(err)
 		}
 		place(t, stub, nogit+"/git")
-		// worktrees reads the process environment; passing it in as a value is exec plan 0005 slice 2.
-		t.Setenv("PATH", nogit+":"+os.Getenv("PATH"))
-		t.Setenv("STUB_EXIT", "1")
-		t.Setenv("STUB_OUTPUT", "fatal: stub git")
-		if code, out := protect(t, repo, payload(t, repo, "Edit", tmp+"/lane/apps/x.go")); code != 2 ||
+		env := []string{"PATH=" + nogit + ":" + os.Getenv("PATH"), "STUB_EXIT=1", "STUB_OUTPUT=fatal: stub git"}
+		if code, out := protect(t, repo, payload(t, repo, "Edit", tmp+"/lane/apps/x.go"), env...); code != 2 ||
 			!strings.Contains(out, "cannot list the worktrees") || !strings.Contains(out, "fatal: stub git") {
 			t.Errorf("exit %d, want 2 with cannot list the worktrees; stderr:\n%s", code, out)
 		}
 		// Paths in this checkout or in no repository need no list.
-		wantProtect(t, repo, repo, "Edit", false, "apps/x.go", nogit+"/x")
+		for _, p := range []string{"apps/x.go", nogit + "/x"} {
+			if code, out := protect(t, repo, payload(t, repo, "Edit", p), env...); code != 0 {
+				t.Errorf("Edit %q: exit %d, want 0; stderr:\n%s", p, code, out)
+			}
+		}
 	})
 
 	t.Run("fails closed without the list of protected paths", func(t *testing.T) {
@@ -197,11 +213,40 @@ func TestProtectHarnessWorktrees(t *testing.T) {
 		}
 		wantProtect(t, repo, repo, "Bash", false, "ls") // a command that writes nothing needs no list
 	})
+
+	t.Run("fails closed on a relative path without a working directory", func(t *testing.T) {
+		repo, _ := worktreeSandbox(t)
+		for tool, arg := range map[string]string{"Write": ".claude/settings.json", "Bash": "echo x > .claude/settings.json"} {
+			var stderr bytes.Buffer
+			w := testWorld(t, io.Discard)
+			w.cwd, w.stderr = "", &stderr // os.Getwd failed, and the payload names no cwd
+			w.stdin = strings.NewReader(payload(t, "", tool, arg))
+			if code := commands.dispatch(w, []string{"protect-harness", repo}); code != 2 ||
+				!strings.Contains(stderr.String(), "no working directory") {
+				t.Errorf("%s %q: exit %d, want 2 with no working directory; stderr:\n%s", tool, arg, code, stderr.String())
+			}
+		}
+	})
+
+	t.Run("a relative payload cwd counts as no working directory", func(t *testing.T) {
+		repo, _ := worktreeSandbox(t)
+		for cwd, file := range map[string]string{".": ".claude/settings.json", "docs": "../.claude/settings.json"} {
+			var stderr bytes.Buffer
+			w := testWorld(t, io.Discard)
+			w.cwd, w.stderr = repo, &stderr // falling back to it would read docs/../ from the repo's parent
+			w.stdin = strings.NewReader(payload(t, cwd, "Write", file))
+			if code := commands.dispatch(w, []string{"protect-harness", repo}); code != 2 ||
+				!strings.Contains(stderr.String(), "no working directory") {
+				t.Errorf("Write %s from payload cwd %q: exit %d, stderr %q; want 2", file, cwd, code, stderr.String())
+			}
+		}
+	})
 }
 
 // TestProtectHarnessHook runs .claude/hooks/protect-harness.sh: HARNESS_EDIT=1 lets a human through, and a
 // binary older than the hook blocks with "rebuild" but never the commands that build it (exec plan 0005, A7).
 func TestProtectHarnessHook(t *testing.T) {
+	t.Parallel()
 	const hook = ".claude/hooks/protect-harness.sh"
 	files := []string{hook, "scripts/harness/hook-bootstrap.sh", "scripts/harness/timing.sh",
 		"scripts/harness/protected-paths.txt"}

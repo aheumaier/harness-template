@@ -18,7 +18,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -26,8 +25,12 @@ import (
 	"unicode"
 )
 
-func swiftResolved(root string, out io.Writer) (bool, error) {
-	manifests, err := gitFiles(root, ":(icase)Package.swift", ":(icase)*/Package.swift",
+func init() {
+	commands.register(rootSensor("swift-resolved", "deps-swift-resolved: Package.resolved in git (make swift-resolved)", swiftResolved))
+}
+
+func swiftResolved(w world, root string) (bool, error) {
+	manifests, err := w.gitFiles(root, ":(icase)Package.swift", ":(icase)*/Package.swift",
 		":(icase)Package@swift-*.swift", ":(icase)*/Package@swift-*.swift")
 	if err != nil {
 		return false, err
@@ -36,7 +39,7 @@ func swiftResolved(root string, out io.Writer) (bool, error) {
 	for _, m := range manifests {
 		// A link can point anywhere, a FIFO that never ends a read included; SwiftPM follows it, so it fails.
 		if regular, err := isRegular(root, m); err != nil || !regular {
-			printFinding(out, m, 1, "deps-swift-resolved", "is not a regular file, so it is not read: make it one")
+			printFinding(w.stdout, m, 1, "deps-swift-resolved", "is not a regular file, so it is not read: make it one")
 			bad = true
 			continue
 		}
@@ -48,10 +51,10 @@ func swiftResolved(root string, out io.Writer) (bool, error) {
 			continue
 		}
 		resolved := path.Join(path.Dir(m), "Package.resolved")
-		if ok, err := lockfileInGit(root, resolved); err != nil {
+		if ok, err := lockfileInGit(w, root, resolved); err != nil {
 			return false, err
 		} else if !ok {
-			printFinding(out, m, 1, "deps-swift-resolved", "declares a remote package, but %s is not a file in git that pins one", resolved)
+			printFinding(w.stdout, m, 1, "deps-swift-resolved", "declares a remote package, but %s is not a file in git that pins one", resolved)
 			bad = true
 		}
 	}
@@ -61,7 +64,7 @@ func swiftResolved(root string, out io.Writer) (bool, error) {
 // lockfileInGit reports whether f is a regular file in git's index and in the working tree that pins at least
 // one package. A symlink is no lockfile (it can point anywhere, /dev/null included), and `git add -N` stages the
 // empty blob.
-func lockfileInGit(root, f string) (bool, error) {
+func lockfileInGit(w world, root, f string) (bool, error) {
 	if regular, err := isRegular(root, f); err != nil || !regular {
 		return false, nil
 	}
@@ -78,7 +81,7 @@ func lockfileInGit(root, f string) (bool, error) {
 	if json.Unmarshal(src, &lock) != nil || len(lock.Pins)+len(lock.Object.Pins) == 0 {
 		return false, nil
 	}
-	staged, err := git(root, "ls-files", "-s", "-z", "--", ":(literal)"+f)
+	staged, err := w.git(root, "ls-files", "-s", "-z", "--", ":(literal)"+f)
 	if err != nil {
 		return false, err
 	}
@@ -86,7 +89,7 @@ func lockfileInGit(root, f string) (bool, error) {
 	if len(fields) < 2 || (fields[0] != "100644" && fields[0] != "100755") {
 		return false, nil
 	}
-	size, err := git(root, "cat-file", "-s", fields[1])
+	size, err := w.git(root, "cat-file", "-s", fields[1])
 	if err != nil {
 		return false, err
 	}

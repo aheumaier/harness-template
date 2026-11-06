@@ -26,7 +26,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -85,33 +84,37 @@ func stripComments(text string) string {
 	return strings.Join(lines, "\n")
 }
 
+func init() {
+	commands.register(rootSensor("orphans", "repo-no-orphan-scripts (make orphans, check-all)", orphans))
+}
+
 // orphans prints one line per finding to stdout and reports whether there was any. root is the repo.
-func orphans(root string, stdout io.Writer) (bool, error) {
+func orphans(w world, root string) (bool, error) {
 	mk, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		return false, err
 	}
-	refs, err := collectReferencers(root, string(mk))
+	refs, err := collectReferencers(w, root, string(mk))
 	if err != nil {
 		return false, err
 	}
-	orphaned, refs, err := reachScripts(root, refs)
+	orphaned, refs, err := reachScripts(w, root, refs)
 	if err != nil {
 		return false, err
 	}
 	for _, s := range orphaned {
-		fmt.Fprintf(stdout, "%s:1: no Makefile target, workflow, hook, skill, agent, guide or named script names this file; wire it up or delete it [%s]\n", s, orphanRule)
+		fmt.Fprintf(w.stdout, "%s:1: no Makefile target, workflow, hook, skill, agent, guide or named script names this file; wire it up or delete it [%s]\n", s, orphanRule)
 	}
 	uncalled := uncalledTargets(string(mk), refs)
 	for _, t := range uncalled {
-		fmt.Fprintf(stdout, "Makefile:%d: make target %s has no '##' help comment and nothing calls it; document it for make help, call it or delete it [%s]\n", t.line, t.name, orphanRule)
+		fmt.Fprintf(w.stdout, "Makefile:%d: make target %s has no '##' help comment and nothing calls it; document it for make help, call it or delete it [%s]\n", t.line, t.name, orphanRule)
 	}
 	return len(orphaned)+len(uncalled) > 0, nil
 }
 
 // collectReferencers reads the Makefile (given), workflows, actions, Claude hooks, settings, skills and agents,
 // and the guides.
-func collectReferencers(root, mk string) ([]referencer, error) {
+func collectReferencers(w world, root, mk string) ([]referencer, error) {
 	refs := []referencer{newReferencer("Makefile", mk, true)}
 	groups := []struct {
 		exec      bool
@@ -123,7 +126,7 @@ func collectReferencers(root, mk string) ([]referencer, error) {
 		{false, true, []string{"*.md"}},
 	}
 	for _, g := range groups {
-		files, err := gitKnown(root, g.pathspecs...)
+		files, err := w.gitKnown(root, g.pathspecs...)
 		if err != nil {
 			return nil, err
 		}
@@ -143,8 +146,8 @@ func collectReferencers(root, mk string) ([]referencer, error) {
 
 // reachScripts returns the scripts no referencer names, sorted, and refs with every named shell script added:
 // a named script names others in turn, until nothing new is named.
-func reachScripts(root string, refs []referencer) ([]string, []referencer, error) {
-	scripts, err := gitKnown(root, "scripts")
+func reachScripts(w world, root string, refs []referencer) ([]string, []referencer, error) {
+	scripts, err := w.gitKnown(root, "scripts")
 	if err != nil {
 		return nil, nil, err
 	}

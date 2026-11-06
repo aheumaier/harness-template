@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,20 +15,8 @@ func guardRun(t *testing.T, root, cwd, command string) (int, string) {
 	return runHook(t, "guard-bash", root, payload(t, cwd, "Bash", command))
 }
 
-// gitRepo returns a new repository (symlinks resolved) on branch.
-func gitRepo(t *testing.T, branch string) string {
-	t.Helper()
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out, err := exec.Command("git", "-C", dir, "init", "-q", "-b", branch).CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v\n%s", err, out)
-	}
-	return dir
-}
-
 func TestGuardBash(t *testing.T) {
+	t.Parallel()
 	root := gitRepo(t, "feat")
 	onMain := gitRepo(t, "main")
 	tests := []struct {
@@ -133,31 +121,61 @@ func TestGuardBash(t *testing.T) {
 }
 
 func TestGuardBashFailsClosed(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	for _, in := range []string{"not json", "", "null", "[]", `{"tool_input":{"command":1}}`, `{} {}`} {
 		var stdout, stderr bytes.Buffer
-		code := run([]string{"guard-bash", root}, strings.NewReader(in), &stdout, &stderr)
+		code := runTest(t, []string{"guard-bash", root}, strings.NewReader(in), &stdout, &stderr)
 		if code != 2 || !strings.Contains(stderr.String(), "guard-bash: blocked: cannot parse the hook input") {
 			t.Errorf("%q: exit %d, stderr %q; want 2, cannot parse", in, code, stderr.String())
 		}
 	}
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"guard-bash"}, strings.NewReader("{}"), &stdout, &stderr); code != exitUsage {
+	if code := runTest(t, []string{"guard-bash"}, strings.NewReader("{}"), &stdout, &stderr); code != exitUsage {
 		t.Errorf("no root: exit %d, want %d", code, exitUsage)
 	}
 }
 
+// TestGuardBashNoGit: when git cannot start, a bare push may be from main, so it blocks (it used to read as "no
+// branch" and pass).
+func TestGuardBashNoGit(t *testing.T) {
+	t.Parallel()
+	onMain := gitRepo(t, "main")
+	code, stderr := runHook(t, "guard-bash", onMain, payload(t, onMain, "Bash", "git push"), "PATH="+t.TempDir())
+	if code != 2 || !strings.Contains(stderr, "git cannot run") {
+		t.Errorf("git push without git on PATH: exit %d, stderr %q; want 2", code, stderr)
+	}
+}
+
+// TestGuardBashNoCwd: with neither a usable payload cwd (none, or a relative one) nor a working directory, nothing
+// can be judged, so it blocks.
+func TestGuardBashNoCwd(t *testing.T) {
+	t.Parallel()
+	root := gitRepo(t, "main")
+	for _, tt := range []struct{ payloadCwd, cwd string }{{"", ""}, {".", root}, {"sub", root}} {
+		var stderr bytes.Buffer
+		w := testWorld(t, io.Discard)
+		w.cwd, w.stdin, w.stderr = tt.cwd, strings.NewReader(payload(t, tt.payloadCwd, "Bash", "git push")), &stderr
+		if code := commands.dispatch(w, []string{"guard-bash", root}); code != 2 || !strings.Contains(stderr.String(), "no working directory") {
+			t.Errorf("git push from payload cwd %q, cwd %q: exit %d, stderr %q; want 2", tt.payloadCwd, tt.cwd, code, stderr.String())
+		}
+	}
+}
+
 func TestGuardBashUnusableCwd(t *testing.T) {
+	t.Parallel()
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Chdir(root)
-	if err := os.Mkdir("sub", 0o755); err != nil {
+	if err := os.Mkdir(filepath.Join(root, "sub"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	// A missing cwd falls back to the working directory, like `cd "$cwd" || cwd=$PWD`.
-	if code, stderr := guardRun(t, root, filepath.Join(root, "gone"), "rm -rf sub"); code != 0 {
-		t.Errorf("rm -rf sub from a missing cwd: exit %d\n%s", code, stderr)
+	var stderr bytes.Buffer
+	w := testWorld(t, io.Discard)
+	w.cwd, w.stdin, w.stderr = root, strings.NewReader(payload(t, filepath.Join(root, "gone"), "Bash", "rm -rf sub")), &stderr
+	if code := commands.dispatch(w, []string{"guard-bash", root}); code != 0 {
+		t.Errorf("rm -rf sub from a missing cwd: exit %d\n%s", code, stderr.String())
 	}
 }

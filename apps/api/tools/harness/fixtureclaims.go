@@ -14,18 +14,12 @@ package main
 // check). Fails closed (exit 2) when rules.md is missing or holds no rules.
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
-)
-
-const (
-	rulesFile   = "docs/harness/rules.md"
-	fixturesDir = "scripts/harness/fixtures"
 )
 
 var (
@@ -35,6 +29,7 @@ var (
 )
 
 type claimChecker struct {
+	w        world
 	root     string
 	out      io.Writer
 	bad      bool
@@ -46,40 +41,12 @@ func (c *claimChecker) report(line int, format string, a ...any) {
 	c.bad = true
 }
 
-// ruleHeading is one `### <rule-id>` heading of rules.md: the id, the `## ` section it sits in (that heading's
-// text before any ` (`), its line, and first: the line of an earlier heading with the same id (0 for none).
-type ruleHeading struct {
-	id, section string
-	line, first int
-}
-
-// ruleHeadings lists rules.md's `### <rule-id>` headings in order; an error when there is none.
-func ruleHeadings(src []byte) ([]ruleHeading, error) {
-	var (
-		rules   []ruleHeading
-		section string
-		seen    = map[string]int{} // rule id → line of its first heading
-	)
-	for i, line := range strings.Split(string(src), "\n") {
-		switch {
-		case strings.HasPrefix(line, "### "):
-			id := strings.TrimSpace(line[4:])
-			rules = append(rules, ruleHeading{id: id, section: section, line: i + 1, first: seen[id]})
-			if seen[id] == 0 {
-				seen[id] = i + 1
-			}
-		case strings.HasPrefix(line, "## "):
-			section, _, _ = strings.Cut(strings.TrimSpace(line[3:]), " (")
-		}
-	}
-	if len(rules) == 0 {
-		return nil, fmt.Errorf("%s has no `### <rule-id>` sections", rulesFile)
-	}
-	return rules, nil
+func init() {
+	commands.register(rootSensor("fixture-claims", "rules-fixture-claims (make fixture-claims)", fixtureClaims))
 }
 
 // fixtureClaims prints one line per finding to stdout and reports whether there was any. root is the repo.
-func fixtureClaims(root string, stdout io.Writer) (bool, error) {
+func fixtureClaims(w world, root string) (bool, error) {
 	src, err := os.ReadFile(filepath.Join(root, rulesFile))
 	if err != nil {
 		return false, err
@@ -88,8 +55,8 @@ func fixtureClaims(root string, stdout io.Writer) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	c := &claimChecker{root: root, out: stdout}
-	if c.fixtures, err = fixtureRules(root); err != nil {
+	c := &claimChecker{w: w, root: root, out: w.stdout}
+	if c.fixtures, err = fixtureRules(w, root); err != nil {
 		return false, err
 	}
 	at := map[int]ruleHeading{} // line → the rule heading there
@@ -174,7 +141,7 @@ func (c *claimChecker) claim(rule string, line int, claim string) error {
 			c.report(line, "%s: `%s` is not a test path (fixtures come before the `;`)", rule, p)
 			continue
 		}
-		files, err := gitKnown(c.root, p)
+		files, err := c.w.gitKnown(c.root, p)
 		if err != nil {
 			return err
 		}
@@ -232,8 +199,8 @@ func claimList(claim string) (dirs, tests []string, ok bool) {
 
 // fixtureRules maps each git-known fixture dir to the RULE= of its fixture.conf, read as selftest.sh reads
 // it (the last RULE= line, one pair of quotes stripped).
-func fixtureRules(root string) (map[string]string, error) {
-	confs, err := gitKnown(root, fixturesDir+"/*/fixture.conf")
+func fixtureRules(w world, root string) (map[string]string, error) {
+	confs, err := w.gitKnown(root, fixturesDir+"/*/fixture.conf")
 	if err != nil {
 		return nil, err
 	}

@@ -59,7 +59,7 @@ nothing in run time. The evidence, re-measured here at `750c094` on 2026-11-02 o
 |---|-------|----------------|-------|
 | 0 | Write this plan and ADR 0045 | both reviewed here, findings fixed or rejected below | this PR |
 | 1 | The user rules on R1–R4 | each has a dated ruling in this file; ADR 0045 accepted; the status lines of ADRs 0012, 0024 and 0031 say "amended by ADR 0045" | done (2026-11-02, ruled on the product's copy, recorded here) |
-| 2 | Slice 1, pilot: `check-commits` and `protect-harness` (2 PRs) | the [pilot acceptance criteria](#pilot-acceptance-criteria) hold, measured and written into the [Log](#log) | open |
+| 2 | Slice 1, pilot: `check-commits` and `protect-harness` (2 PRs) | the [pilot acceptance criteria](#pilot-acceptance-criteria) hold, measured and written into the [Log](#log) | done (2026-11-03, 2026-11-05) |
 | 3 | Slice 2, base: lint, layout, helpers, scope fixes | the [slice 2 list](#port-order) is done, `make check` green | open |
 | 4 | Slices 3–10: the rest of `scripts/` in the [port order](#port-order) | each slice's bats files deleted, its Go tests green, its docs updated | open |
 | 5 | Slice 11, exit: bats removed | the [exit criteria](#exit-criteria) hold | open |
@@ -73,7 +73,11 @@ nothing in run time. The evidence, re-measured here at `750c094` on 2026-11-02 o
 | 2026-11-02 | No GNU `parallel` pin and no `bats --jobs`: both are thrown away once bats goes (agent advice; the user did not object) | this file |
 | 2026-11-02 | R1–R4 all option (a): template first, everything but the bootstrap, testscript plus table tests, one `.bin/harness` (the user) | [Rulings](#rulings), ADR 0045 |
 | 2026-11-02 | The `protect-harness` port keeps every block of the bash heuristic and adds some: globs ignore case, symlinks and `..` are followed, an unresolvable path or an unreadable list blocks, a glob without `*` covers the paths under it, `$(…)` and backquotes are split, `-Ei`/`--in-place` and `cp … 2>/dev/null` are caught. ADR 0045 says "case for case"; whether to reword that sentence is the user's call in the pilot 2 PR (agent) | this file, pilot 2 PR |
-| 2026-11-02 | A hook guard's cases are table tests that call `run()` with a JSON payload, not testscript files: a payload per case is clearer as a Go value than as a `.txtar` file, and the wrapper is still run as a shell would (`TestProtectHarnessHook`). testscript stays for subcommands driven by arguments and files, as `check-commits` (agent) | this file |
+| 2026-11-02 | A hook guard's cases are table tests that call `run()` (since slice 2 `runHook`, which dispatches in a test world) with a JSON payload, not testscript files: a payload per case is clearer as a Go value than as a `.txtar` file, and the wrapper is still run as a shell would (`TestProtectHarnessHook`). testscript stays for subcommands driven by arguments and files, as `check-commits` (agent) | this file |
+| 2026-11-05 | A: ADR 0045's "keeps the heuristic's behaviour case for case" becomes "keeps every block of the bash version and may add more"; its `:40` stays (the user) | ADR 0045 |
+| 2026-11-05 | B: the merged pilot branches `refactor/harness-check-commits-go` and `refactor/harness-protect-go` are deleted on the remote (the user) | this file |
+| 2026-11-05 | C: the iOS follow-ups ride in slice 2 as a `docs(ios)` commit: an `xcodebuild` row in `budgets.txt`, TD-151 and TD-155 closed, NFR-R5 dated (the user) | this file, slice 2a PR |
+| 2026-11-05 | D: slice 2 is three PRs, each opened after the one before merges: 2a registry, world, shared files and parallel tests; 2b `lint-harness`; 2c TD-129, `layout-check` and three rules (the user) | this file |
 
 ## Rulings
 
@@ -115,7 +119,7 @@ each in ADR 0045's Alternatives; the product's copy has them in full.
   *not* run subcommands in-process: it copies the test binary into a temp `PATH` directory under each command
   name (`cloneFile`, a new inode on macOS) and each call is a child process, which pays the macOS first-run check
   (trap 2) per command per run. The in-process route is `Params.Cmds`: a `harness` command that calls
-  `run(args, …)` directly. Its built-in `exec` cannot be replaced through `Params.Cmds`, so a script that uses
+  `commands.dispatch` with a world built from the script's environment (`scriptWorld`, since slice 2). Its built-in `exec` cannot be replaced through `Params.Cmds`, so a script that uses
   `exec` runs a child process that no linter sees.
 - **R4, binary layout: (a) all subcommands in the existing `.bin/harness`:** one build, one module, one Make
   target that every check already depends on (`$(HARNESS)`), and `make test-harness` already runs its tests.
@@ -243,21 +247,25 @@ or stays, because deleting it touches every caller.
      here.
 2. **Base.** No script is ported; this slice makes the rest safe.
    - `lint-harness` with its own protected config: size and complexity rules with starting numbers, `tparallel`,
-     and a `forbidigo` rule that bans `os/exec` in `_test.go` files outside the sandbox helper. The existing
-     `exec.Command` calls in `checklinks_test.go`, `guardbash_test.go` and `integritycheck_test.go` move to the
-     helper first.
-   - The subcommand registry and the stable surface for product files (Target shape), folding in all four lists
-     of `main.go`, the "world as arguments" change for the 5 calls including
-     `layout.go`'s signature (the shared vectors keep it in step with `layout.sh`), and `t.Parallel()` in the
-     existing 72 tests. Pilot 2 added a sixth: `protectharness.go`'s `worktrees` reads `os.Environ()` to drop
-     `GIT_DIR`, `GIT_WORK_TREE` and `GIT_COMMON_DIR`, and its test sets `PATH` with `t.Setenv`.
-   - The surface shared by subcommands moves into files of its own, named in the package doc: the hook helpers
-     (`blockf`, `set`, `physicalDir`, `segments`, now in `guardbash.go` and also used by `protectharness.go`)
-     and the path helpers (`protectedPaths`, `pathspecMatch*`, `matchesAny*`, `resolveExisting`, now in
-     `integritycheck.go` and `testfile.go`).
-   - The cases of `TestProtectHarness` that depend on the list move onto a fixed list in `testdata/`, so a product
-     that protects more paths keeps them green.
-   - The sandbox helper from the pilot, generalised.
+     and a `forbidigo` rule that bans `exec.Command` calls in `_test.go` files other than `helpers_test.go`
+     (the call, not the `os/exec` import: `world_test.go` imports it for `exec.ErrNotFound`). The existing
+     `exec.Command` calls in `checklinks_test.go`, `guardbash_test.go` and `integritycheck_test.go` moved to
+     `helpers_test.go`'s `gitT`, `execIn` and `execInput` in 2a. Test functions call `t.Parallel()` since 2a;
+     their subtests do not yet, so `tparallel` and `paralleltest` (a test without `t.Parallel()`) need them,
+     and `TestRunPhysicalCwd` a suppression with its reason (it sets the process's working directory).
+   - Done in 2a: the subcommand registry (`command.go`) and the stable surface for product files (Target shape,
+     listed in `main.go`'s package comment), folding in all four lists of `main.go`; the "world as arguments"
+     change (`world.go`) for the 5 calls including `layout.go`'s signature (the shared vectors keep it in step
+     with `layout.sh`); `t.Parallel()` in every top-level test but `TestRunPhysicalCwd`. Pilot 2's sixth call,
+     `protectharness.go`'s `worktrees`, reads the world's environment, and its test no longer uses `t.Setenv`.
+   - Done in 2a: the surface shared by subcommands moved into files of its own, named in the package doc: the
+     hook helpers (`blockf`, `set`, `physicalDir`, `segments`) into `hook.go`, the path helpers
+     (`protectedPaths`, `pathspecMatch*`, `matchesAny*`, `resolveExisting`, `isRegular`) into `paths.go`, the
+     Markdown readers into `markdown.go`, and the test helpers two tests share into `helpers_test.go`.
+   - Done in 2a: `TestProtectHarness`'s allowed rows run on a fixed list in `testdata/`, so a product that
+     protects more paths keeps them green; its blocked rows still run on the repo's list, so dropping an entry
+     they name fails the test.
+   - Done in 2a: the sandbox helper from the pilot, generalised (`place`, `gitRepo`, `writeLines`).
    - Fix TD-129 (`sync-check` literal `apps/api` paths) and extend `harness-layout-valid` (`layout-check`) to
      fail when no protected glob matches `<API_DIR>/tools/harness/*` (fixture
      `harness-layout-module-unprotected`): after the port, all harness logic lives under `API_DIR`, so an adopter
@@ -362,14 +370,14 @@ Each is an acceptance criterion of the pilot and a rule for every later slice.
 1. **Stale cached green.** `go test` replays a pass when nothing it tracked changed, and it tracks only files
    inside `apps/api/tools/harness` (see Scope and budgets). So:
    - `test-harness` runs uncached whenever a harness path changed (the trigger rule above). This is the guard.
-   - Ported code is called in-process (`run(…)` or `Params.Cmds`), never through a `.bin/harness` built outside
-     the test.
+   - Ported code is called in-process (`commands.dispatch` through `runTest`, `runHook` or `Params.Cmds`; only
+     `TestMain` and `TestRunPhysicalCwd` call `run`), never through a `.bin/harness` built outside the test.
    - A wrapper test that needs `.bin/harness` hardlinks the test binary itself into the sandbox as
      `.bin/harness`, and `TestMain` dispatches on the program name (like `testscript.Main`, but a hardlink, see
      trap 2). The test binary is part of the cache key, so a source change re-runs the test.
-   - Every test that executes a file goes through the sandbox helper, the only allowed use of `os/exec` in the
-     harness tests (`forbidigo`, slice 2). The helper does not make the file part of the cache key; the trigger
-     rule does that job.
+   - Every Go test that executes a file goes through `helpers_test.go` (`gitT`, `execIn`, `execInput`), the only
+     place a harness test calls `exec.Command` (`forbidigo`, slice 2b); testscript scripts use their own `exec`.
+     The helpers do not make the file part of the cache key; the trigger rule does that job.
 2. **macOS executable check.** macOS checks every newly written executable on its first run, about 0.35 s each
    (comment in `scripts/test/helpers.bash:31`). The sandbox helper hardlinks executables into the sandbox
    (`os.Link`), falls back to a copy only across volumes, and never writes a new executable per test.
@@ -436,7 +444,7 @@ Each PR updates every reference to the files it moves:
 - `AGENTS.md` golden principle 5 (`:44`), which lists `scripts/harness/**` as protected but not the module the
   logic moves to (human-owned: proposed in the PR description); `docs/design-docs/core-beliefs.md:11`, whose
   consequence names `run.sh` (slice 9); the package comment of `apps/api/tools/harness/main.go:1-3`, "The shell
-  scripts and make stay the entry points" (slice 2).
+  scripts and make stay the entry points" (done in slice 2a).
 - ADRs that name a script keep their text (an accepted ADR is history); ADR 0045 lists the ones it amends.
 - `docs/exec-plans/tech-debt-tracker.md`: close or reword TD-7, TD-99, TD-129, TD-133, TD-143 (determinism
   latency, which also holds the shellcheck overrun),
@@ -605,3 +613,21 @@ template's subcommand uncalled; the analyzers plugin already registers from `ini
     before a redirect, `rm AGENTS\.md`, a duplicate, differently cased or `\u`-escaped `command` key passing the
     `make setup` escape, git's error text in the block. Still open in TD-73: wrapper words, interpreters, a word
     glued to `>`, an input redirect after the destination, `cp -t`.
+- 2026-11-05: the user ruled on slice 2 (A–D in [Decisions taken](#decisions-taken)).
+- 2026-11-06: slice 2a (registry, world, shared files, parallel tests), measured on an Apple Silicon Mac (load
+  avg 5–8).
+  - **Go tests.** The module's suite takes 7.2–7.5 s uncached (3 runs; 12.3 s before) and 0.4–0.5 s cached.
+    With `-race` it takes 7.1 s (19.0 s before); `-race -count=3 -shuffle=on` is green.
+  - **`make check` after a one-line harness change: 155 s** (at `ee4eaa1`). The bats suite is 151 s of it.
+  - **Lines.** Go code +1012 −677, Go tests +639 −292, `testdata/protected-paths.txt` +30, `Makefile` +5 −2.
+    `main.go` lost its four lists (276 lines changed); the registry (`command.go`), the world (`world.go`) and
+    the shared files (`hook.go`, `paths.go`, `markdown.go`) hold what each subcommand used to repeat.
+  - **Behaviour.** Same rule ids and output. A relative or missing working directory in a hook payload now
+    blocks in both guards, and `run` resolves a symlinked working directory, so `..` names the physical parent.
+  - **Tests.** Every test runs in a world built from the process's environment minus a caller's `HARNESS_*`,
+    `BASE_REF` and `PR_TITLE`, so a CI or shell variable no longer changes a result. Subtests are not parallel
+    yet (2b).
+  - **Review.** Go, code, architecture, reuse, evasion, shell and senior architect reviewers, one re-run each.
+    The evasion review found that moving every `TestProtectHarness` row onto the fixed list let 12 entries of the
+    repo's list be dropped with the test green; the blocked rows stay on the repo's list. Deferred items are
+    TD-165 to TD-171 in the tech-debt tracker.

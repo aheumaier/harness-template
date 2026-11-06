@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -46,32 +46,6 @@ func integrityRepo(t *testing.T) string {
 	return root
 }
 
-func gitT(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@localhost",
-		"-c", "commit.gpgsign=false"}, args...)...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git %v: %v: %s", args, err, out)
-	}
-}
-
-func commitAll(t *testing.T, dir, msg string) {
-	t.Helper()
-	gitT(t, dir, "add", "-A")
-	gitT(t, dir, "commit", "-q", "--no-verify", "-m", msg)
-}
-
-func writeLines(t *testing.T, root, p string, lines ...string) {
-	t.Helper()
-	f := filepath.Join(root, p)
-	if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(f, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // add appends lines to a file of the repo, creating it.
 func add(t *testing.T, root, p string, lines ...string) {
 	t.Helper()
@@ -110,6 +84,7 @@ func clone(t *testing.T, own string) string {
 }
 
 func TestIntegrityCheck(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		change   func(t *testing.T, own string) (root string) // root "" is own
@@ -364,7 +339,7 @@ func TestIntegrityCheck(t *testing.T) {
 				root = own
 			}
 			var out bytes.Buffer
-			bad, err := integrityCheck(own, root, "main", tt.approved, &out)
+			bad, err := integrityCheck(testWorld(t, &out), own, root, "main", tt.approved)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -382,6 +357,7 @@ func TestIntegrityCheck(t *testing.T) {
 // With the repo's real protected-paths.txt, the harness's own workflows and action are configs and a product's
 // workflow or action beside them is not (exec plan 0003 P4.9): a product CI change needs no label.
 func TestIntegrityCheckRealListSparesProductWorkflows(t *testing.T) {
+	t.Parallel()
 	repo := repoRoot(t)
 	list, err := os.ReadFile(filepath.Join(repo, "scripts/harness/protected-paths.txt"))
 	if err != nil {
@@ -402,7 +378,7 @@ func TestIntegrityCheckRealListSparesProductWorkflows(t *testing.T) {
 	add(t, own, ".github/workflows/new.yml", "on: push")
 	add(t, own, ".github/actions/setup/extra.sh", "make release")
 	var out bytes.Buffer
-	bad, err := integrityCheck(own, own, "main", false, &out)
+	bad, err := integrityCheck(testWorld(t, &out), own, own, "main", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,9 +392,10 @@ func TestIntegrityCheckRealListSparesProductWorkflows(t *testing.T) {
 }
 
 func TestIntegrityCheckFailsClosed(t *testing.T) {
+	t.Parallel()
 	t.Run("BASE_REF does not resolve", func(t *testing.T) {
 		own := integrityRepo(t)
-		_, err := integrityCheck(own, own, "no-such-branch", false, &bytes.Buffer{})
+		_, err := integrityCheck(testWorld(t, io.Discard), own, own, "no-such-branch", false)
 		if err == nil || !strings.Contains(err.Error(), "BASE_REF 'no-such-branch' is not a commit") {
 			t.Errorf("err = %v", err)
 		}
@@ -426,7 +403,7 @@ func TestIntegrityCheckFailsClosed(t *testing.T) {
 	t.Run("no config entries", func(t *testing.T) {
 		own := integrityRepo(t)
 		writeLines(t, own, "scripts/harness/protected-paths.txt", "# emptied")
-		_, err := integrityCheck(own, own, "main", true, &bytes.Buffer{})
+		_, err := integrityCheck(testWorld(t, io.Discard), own, own, "main", true)
 		if err == nil || !strings.Contains(err.Error(), "refusing to pass") {
 			t.Errorf("err = %v", err)
 		}
@@ -436,7 +413,7 @@ func TestIntegrityCheckFailsClosed(t *testing.T) {
 		if err := os.Remove(filepath.Join(own, "docs/harness/rules.md")); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := integrityCheck(own, own, "main", true, &bytes.Buffer{}); err == nil {
+		if _, err := integrityCheck(testWorld(t, io.Discard), own, own, "main", true); err == nil {
 			t.Error("passed without rules.md")
 		}
 	})
@@ -445,7 +422,7 @@ func TestIntegrityCheckFailsClosed(t *testing.T) {
 		if err := os.Remove(filepath.Join(own, layoutFile)); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := integrityCheck(own, own, "main", false, &bytes.Buffer{}); err == nil {
+		if _, err := integrityCheck(testWorld(t, io.Discard), own, own, "main", false); err == nil {
 			t.Error("passed without layout.env")
 		}
 	})
@@ -453,7 +430,7 @@ func TestIntegrityCheckFailsClosed(t *testing.T) {
 		own := integrityRepo(t)
 		gitT(t, own, "checkout", "-q", "--orphan", "other")
 		commitAll(t, own, "unrelated")
-		_, err := integrityCheck(own, own, "main", false, &bytes.Buffer{})
+		_, err := integrityCheck(testWorld(t, io.Discard), own, own, "main", false)
 		if err == nil || !strings.Contains(err.Error(), "have no merge base") {
 			t.Errorf("err = %v", err)
 		}
@@ -461,6 +438,7 @@ func TestIntegrityCheckFailsClosed(t *testing.T) {
 }
 
 func TestIntegrityCheckExitCodes(t *testing.T) {
+	t.Parallel()
 	clean := integrityRepo(t)
 	dirty := integrityRepo(t)
 	add(t, dirty, "x.go", nolint)
@@ -488,11 +466,9 @@ func TestIntegrityCheckExitCodes(t *testing.T) {
 		{"no args", []string{"integrity-check"}, "", "", "", exitUsage},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("HARNESS_ROOT", tt.root)
-			t.Setenv("BASE_REF", tt.base)
-			t.Setenv("HARNESS_CHANGE_APPROVED", tt.waived)
 			var stdout, stderr bytes.Buffer
-			if code := run(tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.want {
+			if code := runTest(t, tt.args, nil, &stdout, &stderr,
+				"HARNESS_ROOT="+tt.root, "BASE_REF="+tt.base, "HARNESS_CHANGE_APPROVED="+tt.waived); code != tt.want {
 				t.Errorf("exit %d, want %d (%s%s)", code, tt.want, stdout.String(), stderr.String())
 			}
 		})

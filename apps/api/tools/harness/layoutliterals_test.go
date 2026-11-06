@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -18,7 +19,7 @@ import (
 // key yet (TD-46).
 func layoutPaths(t *testing.T) [][]string {
 	t.Helper()
-	l, err := loadLayout(repoRoot(t))
+	l, err := loadLayout(testWorld(t, io.Discard), repoRoot(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,6 +113,7 @@ func isPathJoin(call *ast.CallExpr) bool {
 // from literals names a layout.env path: a literal, a `+` of adjacent literals, or adjacent literal arguments
 // of filepath.Join or path.Join. Comments and import paths are not strings the sensors act on.
 func TestNoLayoutLiterals(t *testing.T) {
+	t.Parallel()
 	paths := layoutPaths(t)
 	files, err := filepath.Glob("*.go")
 	if err != nil {

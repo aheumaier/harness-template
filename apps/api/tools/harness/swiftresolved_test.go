@@ -11,6 +11,7 @@ import (
 const lockfile = `{"pins": [{"identity": "b", "kind": "remoteSourceControl", "location": "https://github.com/a/b"}], "version": 3}`
 
 func TestSwiftResolved(t *testing.T) {
+	t.Parallel()
 	const remote = `.package(url: "https://github.com/a/b", exact: "1.0.0")`
 	manifest := func(deps ...string) []string {
 		lines := []string{"// swift-tools-version: 6.0", "import PackageDescription", "let package = Package(", "  name: \"P\",", "  dependencies: ["}
@@ -102,12 +103,13 @@ func TestSwiftResolved(t *testing.T) {
 			for _, f := range tt.staged {
 				gitT(t, root, "add", "--", f)
 			}
-			wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(root, out) }, tt.want)
+			wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(testWorld(t, out), root) }, tt.want)
 		})
 	}
 }
 
 func TestSwiftResolvedSymlink(t *testing.T) {
+	t.Parallel()
 	root := linkRepo(t, map[string][]string{
 		"Package.swift": {`.package(url: "https://github.com/a/b", exact: "1.0.0")`},
 	})
@@ -115,30 +117,33 @@ func TestSwiftResolvedSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	gitT(t, root, "add", "--", "Package.resolved")
-	wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(root, out) },
+	wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(testWorld(t, out), root) },
 		[]string{"Package.swift:1: declares a remote package, but Package.resolved is not a file in git that pins one [deps-swift-resolved]"})
 }
 
 func TestSwiftResolvedIntentToAdd(t *testing.T) {
+	t.Parallel()
 	root := linkRepo(t, map[string][]string{
 		"Package.swift":    {`.package(url: "https://github.com/a/b", exact: "1.0.0")`},
 		"Package.resolved": {lockfile},
 	})
 	gitT(t, root, "add", "-N", "--", "Package.resolved") // stages the empty blob
-	wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(root, out) },
+	wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(testWorld(t, out), root) },
 		[]string{"Package.swift:1: declares a remote package, but Package.resolved is not a file in git that pins one [deps-swift-resolved]"})
 }
 
 func TestSwiftResolvedLinkedManifest(t *testing.T) {
+	t.Parallel()
 	root := linkRepo(t, map[string][]string{"x.swift": {`.package(url: "https://github.com/a/b", exact: "1.0.0")`}})
 	if err := os.Symlink("x.swift", filepath.Join(root, "Package.swift")); err != nil {
 		t.Fatal(err)
 	}
-	wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(root, out) },
+	wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(testWorld(t, out), root) },
 		[]string{"Package.swift:1: is not a regular file, so it is not read: make it one [deps-swift-resolved]"})
 }
 
 func TestSwiftResolvedStagedLink(t *testing.T) {
+	t.Parallel()
 	root := linkRepo(t, map[string][]string{
 		"Package.swift": {`.package(url: "https://github.com/a/b", exact: "1.0.0")`},
 	})
@@ -154,6 +159,6 @@ func TestSwiftResolvedStagedLink(t *testing.T) {
 	if err := os.WriteFile(resolved, []byte(lockfile), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(root, out) },
+	wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(testWorld(t, out), root) },
 		[]string{"Package.swift:1: declares a remote package, but Package.resolved is not a file in git that pins one [deps-swift-resolved]"})
 }

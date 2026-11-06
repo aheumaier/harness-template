@@ -81,13 +81,36 @@ func (c *qualityChecker) report(line int, rule, format string, a ...any) {
 	c.bad = true
 }
 
+func init() {
+	commands.register(sensor("quality-rows", "harness quality-rows [-no-clock] <root>",
+		"-no-clock: docs-quality-rows-well-formed, docs-quality-rows-match-domains (make docs-quality-shape, check-all); "+
+			"without: docs-quality-row-fresh against today's UTC date (make docs-quality, drift only)",
+		func(w world, args []string) (bool, error) {
+			noClock := len(args) == 2 && args[0] == "-no-clock"
+			if noClock {
+				args = args[1:]
+			}
+			if len(args) != 1 {
+				return false, errUsage
+			}
+			root, err := w.abs(args[0])
+			switch {
+			case err != nil:
+				return false, err
+			case noClock:
+				return qualityShape(w, root)
+			}
+			return qualityFresh(w, root, time.Now())
+		}))
+}
+
 // qualityShape prints one line per well-formed or match-domains finding and reports whether there was any.
-func qualityShape(root string, stdout io.Writer) (bool, error) {
+func qualityShape(w world, root string) (bool, error) {
 	t, err := readQualityTable(root)
 	if err != nil {
 		return false, err
 	}
-	l, err := loadLayout(root)
+	l, err := loadLayout(w, root)
 	if err != nil {
 		return false, err
 	}
@@ -95,8 +118,8 @@ func qualityShape(root string, stdout io.Writer) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	c := &qualityChecker{out: stdout, domains: dir + "/"}
-	domains, err := backendDomains(root, c.domains)
+	c := &qualityChecker{out: w.stdout, domains: dir + "/"}
+	domains, err := backendDomains(w, root, c.domains)
 	if err != nil {
 		return false, err
 	}
@@ -126,14 +149,14 @@ func qualityShape(root string, stdout io.Writer) (bool, error) {
 
 // qualityFresh prints one line per row whose Updated date is after today's UTC date or more than
 // qualityMaxAgeDays before it. Rows that are not well-formed are skipped: qualityShape reports them.
-func qualityFresh(root string, today time.Time, stdout io.Writer) (bool, error) {
+func qualityFresh(w world, root string, today time.Time) (bool, error) {
 	t, err := readQualityTable(root)
 	if err != nil {
 		return false, err
 	}
 	today = today.UTC()
 	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
-	c := &qualityChecker{out: stdout}
+	c := &qualityChecker{out: w.stdout}
 	for _, r := range t.rows {
 		if len(r.cells) != t.width {
 			continue
@@ -264,8 +287,8 @@ func tableCells(line string) []string {
 
 // backendDomains is the set of directories under dir (the domains' parent, with a trailing `/`) that hold a
 // git-known file and are domains (isDomainDir).
-func backendDomains(root, dir string) (map[string]bool, error) {
-	files, err := gitKnown(root, dir+"*")
+func backendDomains(w world, root, dir string) (map[string]bool, error) {
+	files, err := w.gitKnown(root, dir+"*")
 	if err != nil {
 		return nil, err
 	}

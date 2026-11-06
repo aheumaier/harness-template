@@ -68,9 +68,13 @@ func (a *approvedChecker) report(file, format string, args ...any) {
 	a.bad = true
 }
 
+func init() {
+	commands.register(rootSensor("approved-check", "api-approved-match-contract (make approved-check)", approvedCheck))
+}
+
 // approvedCheck prints one line per finding to stdout and reports whether there was any. root is the repo.
-func approvedCheck(root string, stdout io.Writer) (bool, error) {
-	l, err := loadLayout(root)
+func approvedCheck(w world, root string) (bool, error) {
+	l, err := loadLayout(w, root)
 	if err != nil {
 		return false, err
 	}
@@ -79,7 +83,7 @@ func approvedCheck(root string, stdout io.Writer) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("%s: %w", spec, err)
 	}
-	a := &approvedChecker{out: stdout, spec: spec, doc: doc, ops: map[string]string{}, schemas: map[string]*jsonschema.Schema{}}
+	a := &approvedChecker{out: w.stdout, spec: spec, doc: doc, ops: map[string]string{}, schemas: map[string]*jsonschema.Schema{}}
 	paths, _ := pointer(doc, "/paths").(map[string]any)
 	for p, item := range paths {
 		for _, m := range httpMethods {
@@ -96,7 +100,7 @@ func approvedCheck(root string, stdout io.Writer) (bool, error) {
 		return false, fmt.Errorf("%s: %w", spec, err)
 	}
 
-	files, err := gitFiles(root, approvedPathspec)
+	files, err := w.gitFiles(root, approvedPathspec)
 	if err != nil {
 		return false, err
 	}

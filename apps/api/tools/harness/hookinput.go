@@ -8,6 +8,31 @@ import (
 	"strings"
 )
 
+func init() {
+	commands.register(command{name: "hook-input", usage: "harness hook-input <cwd|tool_name|target|command>...",
+		about: "Claude Code hook JSON on stdin → the fields, one per line", run: hookInputCmd})
+}
+
+func hookInputCmd(w world, args []string) int {
+	in, err := parseHookInput(w.stdin)
+	if err == nil {
+		var out string
+		out, err = in.fields(args)
+		if err == nil {
+			_, err = io.WriteString(w.stdout, out)
+			if err == nil {
+				return 0
+			}
+		}
+	}
+	if errors.Is(err, errUnknownField) {
+		fmt.Fprintf(w.stderr, "harness hook-input: %v (%s)\n", err, commands["hook-input"].usage)
+		return exitUsage
+	}
+	fmt.Fprintf(w.stderr, "harness hook-input: %v\n", err)
+	return 2
+}
+
 // hookInput is the part of Claude Code's hook JSON the hooks read.
 type hookInput struct {
 	Cwd       string `json:"cwd"`
@@ -58,7 +83,7 @@ func (in *hookInput) fields(names []string) (string, error) {
 				out[i] = in.ToolInput.NotebookPath
 			}
 		default:
-			return "", fmt.Errorf("%w %q (%s)", errUnknownField, n, usage)
+			return "", fmt.Errorf("%w %q", errUnknownField, n)
 		}
 	}
 	return strings.Join(out, "\n"), nil

@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestSpecRefs(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		name, doc string
 		want      string // stdout; "" means no finding
@@ -24,12 +26,13 @@ func TestSpecRefs(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			t.Chdir(dir)
 			if err := os.WriteFile(filepath.Join(dir, "f.yaml"), []byte(tt.doc), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			var out bytes.Buffer
-			bad, err := specRefs([]string{"f.yaml"}, &out)
+			w := testWorld(t, &out)
+			w.cwd = dir // a relative path names a file in the working directory
+			bad, err := specRefs(w, []string{"f.yaml"})
 			if err != nil || bad != (tt.want != "") || out.String() != tt.want {
 				t.Errorf("bad=%v err=%v, output:\n%s\nwant:\n%s", bad, err, out.String(), tt.want)
 			}
@@ -38,15 +41,16 @@ func TestSpecRefs(t *testing.T) {
 }
 
 func TestSpecRefsUnparsable(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	f := filepath.Join(dir, "f.yaml")
 	if err := os.WriteFile(f, []byte("openapi: [\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := specRefs([]string{f}, &bytes.Buffer{}); err == nil {
+	if _, err := specRefs(testWorld(t, io.Discard), []string{f}); err == nil {
 		t.Error("want an error for a document that does not parse")
 	}
-	if _, err := specRefs([]string{filepath.Join(dir, "missing.yaml")}, &bytes.Buffer{}); err == nil {
+	if _, err := specRefs(testWorld(t, io.Discard), []string{filepath.Join(dir, "missing.yaml")}); err == nil {
 		t.Error("want an error for a missing file")
 	}
 }

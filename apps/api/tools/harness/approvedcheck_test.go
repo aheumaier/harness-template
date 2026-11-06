@@ -95,6 +95,7 @@ const (
 )
 
 func TestApprovedCheck(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		files map[string]string
@@ -170,7 +171,7 @@ func TestApprovedCheck(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			bad, err := approvedCheck(approvedRepo(t, tt.files), &out)
+			bad, err := approvedCheck(testWorld(t, &out), approvedRepo(t, tt.files))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -186,6 +187,7 @@ func TestApprovedCheck(t *testing.T) {
 }
 
 func TestApprovedCheckExitCodes(t *testing.T) {
+	t.Parallel()
 	ok := approvedRepo(t, map[string]string{"getHealth.200.json": okResponse})
 	bad := approvedRepo(t, map[string]string{"getHealth.200.json": `{}`})
 	none := approvedRepo(t, nil) // the template ships getHealth's: none means layout or pathspec drift
@@ -213,7 +215,7 @@ func TestApprovedCheckExitCodes(t *testing.T) {
 		{[]string{"approved-check"}, exitUsage, ""},
 	} {
 		var stdout, stderr bytes.Buffer
-		if code := run(tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.want || !strings.Contains(stderr.String(), tt.wantStderr) {
+		if code := runTest(t, tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.want || !strings.Contains(stderr.String(), tt.wantStderr) {
 			t.Errorf("%v: exit %d, want %d (%s%s)", tt.args, code, tt.want, stdout.String(), stderr.String())
 		}
 	}

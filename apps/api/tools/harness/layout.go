@@ -40,7 +40,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io"
 	"io/fs"
 	"maps"
 	"os"
@@ -92,7 +91,7 @@ func (l layout) apiPath(p string) string { return path.Join(l.get("API_DIR"), p)
 
 // parseLayout reads root's layout.env; problems are findings (`<layoutFile>[:<line>]: <message>`), err means it
 // is unreadable.
-func parseLayout(root string) (layout, []string, error) {
+func parseLayout(w world, root string) (layout, []string, error) {
 	b, err := os.ReadFile(filepath.Join(root, layoutFile))
 	if err != nil {
 		return layout{}, nil, err
@@ -127,21 +126,21 @@ func parseLayout(root string) (layout, []string, error) {
 		}
 	}
 	if len(problems) == 0 {
-		problems = l.applyStack()
+		problems = l.applyStack(w.lookupEnv)
 	}
 	return l, problems, sc.Err()
 }
 
-// applyStack defaults a missing STACK, replaces it with HARNESS_STACK when that is set, then validates it
+// applyStack defaults a missing STACK, replaces it with HARNESS_STACK when lookupEnv has it, then validates it
 // (layout.sh's harness_layout_parse and harness_stack_apply).
-func (l *layout) applyStack() []string {
+func (l *layout) applyStack(lookupEnv func(string) (string, bool)) []string {
 	if l.lines["STACK"] == 0 {
 		l.values["STACK"] = defaultStack
 		l.stackAt = fmt.Sprintf("%s: STACK unset, so %s", layoutFile, defaultStack)
 	} else {
 		l.stackAt = fmt.Sprintf("%s:%d: STACK=%s", layoutFile, l.lines["STACK"], l.get("STACK"))
 	}
-	if env, ok := os.LookupEnv("HARNESS_STACK"); ok {
+	if env, ok := lookupEnv("HARNESS_STACK"); ok {
 		l.values["STACK"], l.stackAt = strings.ReplaceAll(env, ",", ":"), "HARNESS_STACK="+env
 	}
 	where := l.stackAt
@@ -166,34 +165,38 @@ func (l *layout) applyStack() []string {
 }
 
 // loadLayout is parseLayout for the sensors that only read the layout: any problem is an error (exit 2).
-func loadLayout(root string) (layout, error) {
-	l, problems, err := parseLayout(root)
+func loadLayout(w world, root string) (layout, error) {
+	l, problems, err := parseLayout(w, root)
 	if err == nil && len(problems) > 0 {
 		err = fmt.Errorf("%s (run make layout-check)", problems[0])
 	}
 	return l, err
 }
 
+func init() {
+	commands.register(rootSensor("layout-check", "harness-layout-valid: scripts/harness/layout.env (make layout-check)", layoutCheck))
+}
+
 // layoutCheck prints one line per finding to stdout and reports whether there was any.
-func layoutCheck(root string, stdout io.Writer) (bool, error) {
-	l, problems, err := parseLayout(root)
+func layoutCheck(w world, root string) (bool, error) {
+	l, problems, err := parseLayout(w, root)
 	if err != nil {
 		return false, err
 	}
 	if len(problems) == 0 {
-		problems, err = l.problems(root)
+		problems, err = l.problems(w, root)
 		if err != nil {
 			return false, err
 		}
 	}
 	for _, p := range problems {
-		fmt.Fprintf(stdout, "%s [harness-layout-valid]\n", p)
+		fmt.Fprintf(w.stdout, "%s [harness-layout-valid]\n", p)
 	}
 	return len(problems) > 0, nil
 }
 
 // problems checks a well-formed layout against the tree at root.
-func (l layout) problems(root string) ([]string, error) {
+func (l layout) problems(w world, root string) ([]string, error) {
 	var out []string
 	report := func(key, format string, a ...any) {
 		out = append(out, fmt.Sprintf("%s:%d: %s=%s: %s", layoutFile, l.lines[key], key, l.get(key), fmt.Sprintf(format, a...)))
@@ -248,7 +251,7 @@ func (l layout) problems(root string) ([]string, error) {
 			report("IOS_DIR", "not a clean path inside this repo (no leading /, no ./ or .., no trailing /)")
 		default:
 			want := []string{path.Join(dir, "Package.swift"), path.Join(dir, "project.yml")}
-			apps, err := gitKnown(root, ":(literal,icase)"+want[0], ":(literal,icase)"+want[1]) // as macOS reads them
+			apps, err := w.gitKnown(root, ":(literal,icase)"+want[0], ":(literal,icase)"+want[1]) // as macOS reads them
 			if err != nil {
 				return nil, err
 			}
@@ -256,7 +259,7 @@ func (l layout) problems(root string) ([]string, error) {
 			// and a regular file, not a symlink: a link to /dev/null or to any other file is no app.
 			found := slices.ContainsFunc(apps, func(f string) bool {
 				regular, err := isRegular(root, f)
-				return slices.ContainsFunc(want, func(w string) bool { return strings.EqualFold(w, f) }) && err == nil && regular
+				return slices.ContainsFunc(want, func(p string) bool { return strings.EqualFold(p, f) }) && err == nil && regular
 			})
 			if !found {
 				report("IOS_DIR", "no git-known Package.swift or project.yml there, but STACK has ios (set it to the iOS app's directory)")
@@ -266,7 +269,7 @@ func (l layout) problems(root string) ([]string, error) {
 			}
 		}
 	}
-	hidden, err := l.hiddenGroups(root, isDir)
+	hidden, err := l.hiddenGroups(w, root, isDir)
 	if err != nil {
 		return nil, err
 	}
@@ -276,7 +279,7 @@ func (l layout) problems(root string) ([]string, error) {
 		report("LAYER_GLOB", "%v", err)
 		return out, nil
 	}
-	n, flat, err := l.layerPackages(root, segs)
+	n, flat, err := l.layerPackages(w, root, segs)
 	if err != nil {
 		return nil, err
 	}
@@ -313,13 +316,13 @@ func upstreamEntryProblem(e string) string {
 
 // hiddenGroups reports each group the stack leaves out while the tree still has its code: its sensors would leave
 // make check and make check-all without a trace.
-func (l layout) hiddenGroups(root string, isDir func(string) bool) ([]string, error) {
+func (l layout) hiddenGroups(w world, root string, isDir func(string) bool) ([]string, error) {
 	var out []string
 	hide := func(group, found string) {
 		out = append(out, fmt.Sprintf("%s: leaves out %s, but %s exists: add %s to STACK or delete its directories (do not narrow HARNESS_STACK on a full tree)", l.stackAt, group, found, group))
 	}
 	if !l.has("db") {
-		files, err := gitFiles(root, ":(glob)"+l.get("MIGRATIONS_DIR")+"/*.sql", l.get("QUERIES_DIR")+"/*")
+		files, err := w.gitFiles(root, ":(glob)"+l.get("MIGRATIONS_DIR")+"/*.sql", l.get("QUERIES_DIR")+"/*")
 		if err != nil {
 			return nil, err
 		}
@@ -332,7 +335,7 @@ func (l layout) hiddenGroups(root string, isDir func(string) bool) ([]string, er
 		for _, e := range l.list("WEB_GLOBS") {
 			specs = append(specs, ":(glob)"+e+"/package.json")
 		}
-		files, err := gitFiles(root, specs...)
+		files, err := w.gitFiles(root, specs...)
 		if err != nil {
 			return nil, err
 		}
@@ -347,7 +350,7 @@ func (l layout) hiddenGroups(root string, isDir func(string) bool) ([]string, er
 		// project.yml, in any case as macOS's file system reads it (an Xcode project too): an XcodeGen app with no
 		// Swift yet (ADR 0044).
 		// Not gitFiles: a fixtures/ folder in the app is still the app.
-		files, err := gitKnown(root, "*.swift", ":(icase)*.xcodeproj/project.pbxproj", ":(icase)project.yml", ":(icase)*/project.yml")
+		files, err := w.gitKnown(root, "*.swift", ":(icase)*.xcodeproj/project.pbxproj", ":(icase)project.yml", ":(icase)*/project.yml")
 		if err != nil {
 			return nil, err
 		}
@@ -401,12 +404,12 @@ func (l layout) layerDir(segs []string) string {
 // .go file, and lists the flat packages: <layer dir>/<pkg> with a .go file of its own, which domainiso skips
 // (it needs a domain and a layer). <layer dir>/platform is no domain (isDomainDir): domainiso skips it too, so
 // it is never flat; its packages count, since a tree without a domain yet (the template) is valid.
-func (l layout) layerPackages(root string, segs []string) (int, []string, error) {
+func (l layout) layerPackages(w world, root string, segs []string) (int, []string, error) {
 	prefix := l.layerDir(segs)
 	if fi, err := os.Stat(filepath.Join(root, prefix)); err != nil || !fi.IsDir() {
 		return 0, nil, nil // also keeps git ls-files -o from warning about a missing directory
 	}
-	files, err := gitFiles(root, prefix+"/*.go")
+	files, err := w.gitFiles(root, prefix+"/*.go")
 	if err != nil {
 		return 0, nil, err
 	}

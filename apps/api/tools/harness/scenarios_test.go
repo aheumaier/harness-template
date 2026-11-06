@@ -11,20 +11,6 @@ import (
 	"testing"
 )
 
-// protectedList is the protected-paths.txt of the repos below: the harness's own tests and fixtures are in it.
-var protectedList = []string{"# harness files", "apps/api/tools/harness/* config", "scripts/harness/* config", "AGENTS.md"}
-
-// scenarioRepo is a repo with the template's layout and protected paths plus files (path → lines).
-func scenarioRepo(t *testing.T, files map[string][]string) string {
-	t.Helper()
-	noHarnessStack(t)
-	all := map[string][]string{layoutFile: templateLayout, "scripts/harness/protected-paths.txt": protectedList}
-	for p, lines := range files {
-		all[p] = lines
-	}
-	return linkRepo(t, all)
-}
-
 // story is a spec-kit user story section with its acceptance scenarios; they start on its line 7.
 func story(heading string, scenarios ...string) []string {
 	lines := []string{"### " + heading, "", "Plain words.", "", "**Acceptance Scenarios**:", ""}
@@ -50,6 +36,7 @@ func untestedAt(line int, id, text string) string {
 }
 
 func TestScenariosTested(t *testing.T) {
+	t.Parallel()
 	const (
 		g1 = "1. **Given** a cart, **When** I pay, **Then** I get a receipt"
 		g2 = "2. **Given** an empty cart, **When** I pay, **Then** I am told it is empty"
@@ -214,14 +201,15 @@ func TestScenariosTested(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			root := scenarioRepo(t, tt.files)
-			wantFindings(t, func(w io.Writer) (bool, error) { return scenariosTested(root, w) }, tt.want)
+			root := templateRepo(t, tt.files)
+			wantFindings(t, func(w io.Writer) (bool, error) { return scenariosTested(testWorld(t, w), root) }, tt.want)
 		})
 	}
 }
 
 // The vendored spec-kit template is what /speckit-specify copies: its stories and scenarios must keep their ids.
 func TestScenariosTestedReadsSpecKitTemplate(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile(filepath.Join(repoRoot(t), ".specify/templates/spec-template.md"))
 	if err != nil {
 		t.Fatal(err)
@@ -240,7 +228,8 @@ func TestScenariosTestedReadsSpecKitTemplate(t *testing.T) {
 }
 
 func TestScenariosTestedLinks(t *testing.T) {
-	root := scenarioRepo(t, map[string][]string{
+	t.Parallel()
+	root := templateRepo(t, map[string][]string{
 		"outside/spec.md":     spec(story("User Story 1 - Pay", "1. **Given** a")),
 		"outside/a_test.go":   {"// spec: 002/US1-AS1"},
 		"specs/002-b/spec.md": spec(story("User Story 1 - Pay", "1. **Given** b")),
@@ -253,26 +242,21 @@ func TestScenariosTestedLinks(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	wantFindings(t, func(w io.Writer) (bool, error) { return scenariosTested(root, w) }, []string{
+	wantFindings(t, func(w io.Writer) (bool, error) { return scenariosTested(testWorld(t, w), root) }, []string{
 		"specs/001-a/spec.md:1: is not a regular file (a symlink?); commit the spec itself [specs-scenarios-tested]",
 		"specs/002-b/spec.md:11: 002/US1-AS1 has no test naming it: **Given** b [specs-scenarios-tested]",
 	})
 }
 
 func TestScenariosTestedExitCodes(t *testing.T) {
-	ok := scenarioRepo(t, nil)
-	bad := scenarioRepo(t, map[string][]string{"specs/001-demo/spec.md": spec(story("User Story 1 - Pay", "1. **Given** a"))})
+	t.Parallel()
+	ok := templateRepo(t, nil)
+	bad := templateRepo(t, map[string][]string{"specs/001-demo/spec.md": spec(story("User Story 1 - Pay", "1. **Given** a"))})
 	noLayout := linkRepo(t, map[string][]string{"README.md": {"x"}})
 	noProtected := linkRepo(t, map[string][]string{layoutFile: templateLayout, "specs/001-demo/spec.md": spec(story("User Story 1 - Pay", "1. **Given** a"))})
 	noGit := t.TempDir() // layout and protected paths are readable, so only git can fail
-	for p, lines := range map[string][]string{layoutFile: templateLayout, "scripts/harness/protected-paths.txt": protectedList} {
-		if err := os.MkdirAll(filepath.Dir(filepath.Join(noGit, p)), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(noGit, p), []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
+	writeLines(t, noGit, layoutFile, templateLayout...)
+	writeLines(t, noGit, "scripts/harness/protected-paths.txt", protectedList...)
 	for _, tt := range []struct {
 		args []string
 		want int
@@ -285,7 +269,7 @@ func TestScenariosTestedExitCodes(t *testing.T) {
 		{[]string{"specs-tested"}, exitUsage},
 	} {
 		var stdout, stderr bytes.Buffer
-		if code := run(tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.want {
+		if code := runTest(t, tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.want {
 			t.Errorf("%v: exit %d, want %d (%s%s)", tt.args, code, tt.want, stdout.String(), stderr.String())
 		}
 	}

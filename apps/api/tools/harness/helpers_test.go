@@ -31,12 +31,25 @@ func payload(t *testing.T, cwd, tool, arg string) string {
 	return string(b)
 }
 
-// runHook runs `harness <hook> root` in-process on a PreToolUse payload and returns the exit code and stderr.
-func runHook(t *testing.T, hook, root, stdin string) (int, string) {
+// runHook runs `harness <hook> root` in-process on a PreToolUse payload, in testWorld(env...), and returns the
+// exit code and stderr.
+func runHook(t *testing.T, hook, root, stdin string, env ...string) (int, string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	code := run([]string{hook, root}, strings.NewReader(stdin), &stdout, &stderr)
+	code := runTest(t, []string{hook, root}, strings.NewReader(stdin), &stdout, &stderr, env...)
 	return code, stderr.String()
+}
+
+// runTest is run for a test: the subcommand gets testWorld(env...) with stdin, stdout and stderr. It sets
+// nothing in the process, so the test can run in parallel, and testEnv keeps a caller's settings out.
+func runTest(t *testing.T, args []string, stdin io.Reader, stdout, stderr io.Writer, env ...string) int {
+	t.Helper()
+	w := testWorld(t, stdout, env...)
+	if stdin != nil {
+		w.stdin = stdin
+	}
+	w.stderr = stderr
+	return commands.dispatch(w, args)
 }
 
 // TestMain runs the test binary as the harness when a sandbox links it in as .bin/harness (linkHarness), so a
@@ -124,6 +137,104 @@ func sandboxFrom(t *testing.T, src string, files ...string) string {
 	return dir
 }
 
+// gitRepo returns a new repository (symlinks resolved) on branch.
+func gitRepo(t *testing.T, branch string) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitT(t, dir, "init", "-q", "-b", branch)
+	return dir
+}
+
+// linkRepo makes a git repo holding files (path → lines); untracked files count, as in the sensors.
+func linkRepo(t *testing.T, files map[string][]string) string {
+	t.Helper()
+	root := t.TempDir()
+	gitT(t, root, "init", "-q")
+	for p, lines := range files {
+		writeLines(t, root, p, lines...)
+	}
+	return root
+}
+
+// templateLayout is the template's scripts/harness/layout.env, without comments.
+var templateLayout = []string{
+	"API_DIR=apps/api",
+	"SPEC=api/openapi.yaml",
+	"MIGRATIONS_DIR=apps/api/db/migrations",
+	"QUERIES_DIR=apps/api/db/queries",
+	"API_CLIENT_DIR=packages/api-client",
+	"WEB_GLOBS=apps/*:packages/*",
+	"GENERATED_GLOBS=*.gen.go:apps/api/internal/*/store/*:packages/api-client/src/gen/*:docs/generated/*",
+	"PRODUCT_GLOBS=apps/*:api/*",
+	"LAYER_GLOB=internal/*/*",
+	"STACK=go:db:web:ios",
+	"IOS_DIR=apps/ios",
+}
+
+// withLayout is templateLayout with each key, value pair of kv set ("" drops the key).
+func withLayout(kv ...string) []string {
+	set := map[string]string{}
+	for i := 0; i+1 < len(kv); i += 2 {
+		set[kv[i]] = kv[i+1]
+	}
+	var out []string
+	for _, l := range templateLayout {
+		k, _, _ := strings.Cut(l, "=")
+		switch v, ok := set[k]; {
+		case !ok:
+			out = append(out, l)
+		case v != "":
+			out = append(out, k+"="+v)
+		}
+	}
+	return out
+}
+
+// protectedList is the protected-paths.txt of templateRepo: the harness's own tests and fixtures are in it.
+var protectedList = []string{"# harness files", "apps/api/tools/harness/* config", "scripts/harness/* config", "AGENTS.md"}
+
+// templateRepo is a linkRepo with the template's layout and protected paths plus files (path → lines).
+func templateRepo(t *testing.T, files map[string][]string) string {
+	t.Helper()
+	all := map[string][]string{layoutFile: templateLayout, "scripts/harness/protected-paths.txt": protectedList}
+	for p, lines := range files {
+		all[p] = lines
+	}
+	return linkRepo(t, all)
+}
+
+// gitT runs git in dir as a fixed author with no signing, and fails the test when git fails. Go tests run git
+// only through it, execIn and execInput; testscript scripts run it with their own exec.
+func gitT(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@localhost",
+		"-c", "commit.gpgsign=false"}, args...)...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
+	}
+}
+
+func commitAll(t *testing.T, dir, msg string) {
+	t.Helper()
+	gitT(t, dir, "add", "-A")
+	gitT(t, dir, "commit", "-q", "--no-verify", "-m", msg)
+}
+
+// writeLines writes lines to the repo file p, creating its directories.
+func writeLines(t *testing.T, root, p string, lines ...string) {
+	t.Helper()
+	f := filepath.Join(root, p)
+	if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(f, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // linkHarness puts the test binary into the sandbox dir as .bin/harness; TestMain then runs it as the harness.
 func linkHarness(t *testing.T, dir string) {
 	t.Helper()
@@ -195,10 +306,53 @@ func copyFile(src, dst string, mode os.FileMode) error {
 	return out.Close()
 }
 
-// execIn runs a file in dir with env added to the environment (env wins) and returns its exit code and combined
-// output. The environment has no latency budgets (a loaded machine must not add warnings to tested output), no
-// scope or stack override, like scripts/test/helpers.bash, and no HARNESS_EDIT (a human's session would let every
-// protect-harness case through). execInput also gives it stdin.
+// testEnv is the test process's environment without any HARNESS_* setting, BASE_REF or PR_TITLE, with env added
+// (env wins). A caller's or CI's settings cannot reach a test: no latency budgets (a loaded machine must not add
+// warnings to tested output), no scope or stack override, like scripts/test/helpers.bash, no HARNESS_EDIT (a
+// human's session would let every protect-harness case through), no HARNESS_ROOT or BASE_REF from the CI job.
+func testEnv(env ...string) []string {
+	var all []string
+	for _, kv := range os.Environ() {
+		if k, _, _ := strings.Cut(kv, "="); !strings.HasPrefix(k, "HARNESS_") && k != "BASE_REF" && k != "PR_TITLE" {
+			all = append(all, kv)
+		}
+	}
+	return append(append(all, "HARNESS_BUDGETS=/dev/null"), env...)
+}
+
+// wantFindings fails unless check printed exactly want (nothing when want is empty) and reported it.
+func wantFindings(t *testing.T, check func(io.Writer) (bool, error), want []string) {
+	t.Helper()
+	var out bytes.Buffer
+	bad, err := check(&out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(want) == 0 {
+		if bad || out.Len() != 0 {
+			t.Fatalf("want no findings, got bad=%v:\n%s", bad, out.String())
+		}
+		return
+	}
+	if got := strings.TrimSuffix(out.String(), "\n"); !bad || got != strings.Join(want, "\n") {
+		t.Fatalf("got bad=%v:\n%s\nwant:\n%s", bad, got, strings.Join(want, "\n"))
+	}
+}
+
+// testWorld is the world of an in-process subcommand: testEnv(env...) as its environment, both for lookupEnv and
+// the processes it runs, the test's working directory, empty stdin, stdout into out and stderr to the test's.
+func testWorld(t *testing.T, out io.Writer, env ...string) world {
+	t.Helper()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	environ := testEnv(env...)
+	return world{stdin: strings.NewReader(""), stdout: out, stderr: os.Stderr, lookupEnv: lookupIn(environ), environ: environ, cwd: cwd}
+}
+
+// execIn runs a file in dir with testEnv(env...) and returns its exit code and combined output. execInput also
+// gives it stdin.
 func execIn(t *testing.T, dir string, env []string, name string, args ...string) (int, string) {
 	t.Helper()
 	return execInput(t, dir, env, "", name, args...)
@@ -206,18 +360,9 @@ func execIn(t *testing.T, dir string, env []string, name string, args ...string)
 
 func execInput(t *testing.T, dir string, env []string, stdin, name string, args ...string) (int, string) {
 	t.Helper()
-	var all []string
-	for _, kv := range os.Environ() {
-		switch k, _, _ := strings.Cut(kv, "="); k {
-		case "HARNESS_BUDGETS", "HARNESS_SCOPE", "HARNESS_STACK", "HARNESS_EDIT":
-		default:
-			all = append(all, kv)
-		}
-	}
-	env = append(append(all, "HARNESS_BUDGETS=/dev/null"), env...)
 	var out bytes.Buffer
 	cmd := exec.Command(name, args...)
-	cmd.Dir, cmd.Env, cmd.Stdin, cmd.Stdout, cmd.Stderr = dir, env, strings.NewReader(stdin), &out, &out
+	cmd.Dir, cmd.Env, cmd.Stdin, cmd.Stdout, cmd.Stderr = dir, testEnv(env...), strings.NewReader(stdin), &out, &out
 	var exit *exec.ExitError
 	switch err := cmd.Run(); {
 	case err == nil:
@@ -233,6 +378,7 @@ func execInput(t *testing.T, dir string, env []string, stdin, name string, args 
 // TestSandbox checks the sandbox helper itself (exec plan 0005, A2): executables are the real files, a write
 // through one is caught, and own breaks the link.
 func TestSandbox(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	dir := sandbox(t, "scripts/git-hooks/commit-msg", "docs/harness/rules.md")
 	for f, same := range map[string]bool{"scripts/git-hooks/commit-msg": true, "scripts/harness/layout.sh": true,

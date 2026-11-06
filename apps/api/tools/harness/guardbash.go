@@ -1,12 +1,9 @@
 package main
 
 import (
-	"fmt"
-	"io"
-	"os"
+	"errors"
 	"os/exec"
 	"path"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -26,12 +23,6 @@ import (
 // Heredoc bodies are data (commit messages, file contents), not commands, except for the substitutions
 // in an unquoted one, which run.
 
-type blockError struct{ msg string }
-
-func (e *blockError) Error() string { return e.msg }
-
-func blockf(format string, a ...any) error { return &blockError{fmt.Sprintf(format, a...)} }
-
 // maxDepth bounds nested `bash -c` / `eval` strings.
 const maxDepth = 4
 
@@ -47,43 +38,27 @@ var (
 	shells = set("bash", "sh", "zsh")
 )
 
-func set(words ...string) map[string]bool {
-	m := make(map[string]bool, len(words))
-	for _, w := range words {
-		m[w] = true
-	}
-	return m
+func init() {
+	commands.register(hookGuard("guard-bash", "PreToolUse guard for Bash commands (.claude/hooks/guard-bash.sh)", guardBash))
 }
 
-func guardBash(root string, stdin io.Reader) error {
-	in, err := parseHookInput(stdin)
+func guardBash(w world, root string) error {
+	in, err := parseHookInput(w.stdin)
 	if err != nil {
 		return blockf("%v", err)
 	}
 	if in.ToolInput.Command == "" {
 		return nil
 	}
-	g := &guard{root: root, cwd: physicalDir(in.Cwd)}
+	g := &guard{w: w, root: root, cwd: physicalDir(in.Cwd, w.cwd)}
+	if g.cwd == "" { // neither the payload's cwd nor ours: relative paths and the branch cannot be judged
+		return blockf("no working directory to check the command against")
+	}
 	return g.check(in.ToolInput.Command, 0)
 }
 
-// physicalDir is dir with symlinks resolved, like `cd dir && pwd -P`; the working directory if dir is unusable.
-func physicalDir(dir string) string {
-	if dir != "" {
-		if p, err := filepath.EvalSymlinks(dir); err == nil {
-			if st, err := os.Stat(p); err == nil && st.IsDir() {
-				return p
-			}
-		}
-	}
-	wd, _ := os.Getwd()
-	if p, err := filepath.EvalSymlinks(wd); err == nil {
-		return p
-	}
-	return wd
-}
-
 type guard struct {
+	w         world
 	root, cwd string
 	branch    *string // current branch of cwd, looked up on the first git push
 }
@@ -215,7 +190,11 @@ func (g *guard) gitPush(ws []word) error {
 		for _, ref := range positional[1:] {
 			dst := ref[strings.LastIndex(ref, ":")+1:]
 			if dst == "HEAD" || dst == "@" {
-				dst = g.currentBranch()
+				b, err := g.currentBranch()
+				if err != nil {
+					return err
+				}
+				dst = b
 			}
 			if mainBranch.MatchString(dst) {
 				return blockf("push to %s. Push a feature branch and open a PR.", dst)
@@ -224,19 +203,28 @@ func (g *guard) gitPush(ws []word) error {
 		return nil
 	}
 	// No refspec: pushes the current branch.
-	if b := g.currentBranch(); b == "main" || b == "master" {
+	b, err := g.currentBranch()
+	if err != nil {
+		return err
+	}
+	if b == "main" || b == "master" {
 		return blockf("`git push` from %s pushes main. Create a branch first.", b)
 	}
 	return nil
 }
 
-func (g *guard) currentBranch() string {
+// currentBranch is HEAD's branch: "" when HEAD is detached or cwd is no repository, a block when git cannot
+// start (the push may be from main).
+func (g *guard) currentBranch() (string, error) {
 	if g.branch == nil {
-		out, _ := exec.Command("git", "-C", g.cwd, "symbolic-ref", "--short", "-q", "HEAD").Output()
+		out, err := g.w.command("git", "-C", g.cwd, "symbolic-ref", "--short", "-q", "HEAD").Output()
+		if exit := (*exec.ExitError)(nil); err != nil && !errors.As(err, &exit) {
+			return "", blockf("git cannot run to read the current branch (%v)", err)
+		}
 		b := strings.TrimSpace(string(out))
 		g.branch = &b
 	}
-	return *g.branch
+	return *g.branch, nil
 }
 
 // rm checks that every path of a recursive rm is a literal path inside the repo.
@@ -301,29 +289,6 @@ func embedded(text string) [][]word {
 			ws[i] = word{text: f, raw: f, static: !strings.ContainsAny(f, "$`")}
 		}
 		out = append(out, ws)
-	}
-	return out
-}
-
-var separator = regexp.MustCompile("[;&|\n`]|\\$\\(")
-
-// segments splits text on `;&|`, newlines, backquotes and `$(`, then each part into whitespace-separated
-// fields without leading quotes and grouping (`"`, `'`, `\`, `(`, `{`, backquote, `$(`) or trailing ones.
-func segments(text string) [][]string {
-	parts := separator.Split(text, -1)
-	out := make([][]string, len(parts))
-	for i, p := range parts {
-		for _, f := range strings.Fields(p) {
-			for len(f) > 0 && (strings.ContainsRune("\"'\\({`", rune(f[0])) || strings.HasPrefix(f, "$(")) {
-				if strings.HasPrefix(f, "$(") {
-					f = f[2:]
-				} else {
-					f = f[1:]
-				}
-			}
-			f = strings.TrimRight(f, "\"')}`")
-			out[i] = append(out[i], f)
-		}
 	}
 	return out
 }

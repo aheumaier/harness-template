@@ -10,6 +10,7 @@ import (
 )
 
 func TestSwiftTests(t *testing.T) {
+	t.Parallel()
 	const describe = `{"targets": [
 		{"name": "AppCoreTests", "path": "Tests/AppCoreTests", "sources": ["GreetingTests.swift", "Sub/MoreTests.swift"], "type": "test"},
 		{"name": "Support", "path": "Tests/Support", "sources": ["Helper.swift"], "type": "library"},
@@ -54,7 +55,9 @@ func TestSwiftTests(t *testing.T) {
 			}
 			root := linkRepo(t, files)
 			wantFindings(t, func(out io.Writer) (bool, error) {
-				return swiftTests(root, "apps/ios", strings.NewReader(tt.describe), out)
+				w := testWorld(t, out)
+				w.stdin = strings.NewReader(tt.describe)
+				return swiftTests(w, root, "apps/ios")
 			}, tt.want)
 		})
 	}
@@ -62,6 +65,7 @@ func TestSwiftTests(t *testing.T) {
 
 // SwiftPM follows a link under or at Tests/, but git lists only the link: the files behind it are unchecked.
 func TestSwiftTestsLinks(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct{ name, link, target string }{
 		{"Tests itself", "apps/ios/Tests", "TestSuite"},
 		{"a folder under Tests", "apps/ios/Tests/OrphanTests", "../TestSuite/OrphanTests"},
@@ -75,7 +79,9 @@ func TestSwiftTestsLinks(t *testing.T) {
 				t.Fatal(err)
 			}
 			wantFindings(t, func(out io.Writer) (bool, error) {
-				return swiftTests(root, "apps/ios", strings.NewReader(`{"targets": []}`), out)
+				w := testWorld(t, out)
+				w.stdin = strings.NewReader(`{"targets": []}`)
+				return swiftTests(w, root, "apps/ios")
 			}, []string{tt.link + ":1: is a link, so the tests behind it are not checked: make it a folder or a file [ios-tests-pass]"})
 		})
 	}
@@ -83,6 +89,7 @@ func TestSwiftTestsLinks(t *testing.T) {
 
 // make test-ios reads exit 1 as a finding and 2 as a broken sensor; a broken describe is never "no finding".
 func TestSwiftTestsExitCodes(t *testing.T) {
+	t.Parallel()
 	root := linkRepo(t, map[string][]string{"apps/ios/Tests/AppCoreTests/GreetingTests.swift": {"import Testing"}})
 	const declared = `{"targets": [{"path": "Tests/AppCoreTests", "sources": ["GreetingTests.swift"], "type": "test"}]}`
 	for _, tt := range []struct {
@@ -98,7 +105,7 @@ func TestSwiftTestsExitCodes(t *testing.T) {
 		{[]string{"swift-tests", root}, declared, exitUsage},
 	} {
 		var stdout, stderr bytes.Buffer
-		if code := run(tt.args, strings.NewReader(tt.stdin), &stdout, &stderr); code != tt.want {
+		if code := runTest(t, tt.args, strings.NewReader(tt.stdin), &stdout, &stderr); code != tt.want {
 			t.Errorf("%v <<< %q: exit %d, want %d (%s%s)", tt.args[1:], tt.stdin, code, tt.want, stdout.String(), stderr.String())
 		}
 	}

@@ -23,6 +23,7 @@ var (
 )
 
 func TestRuleLists(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		skill    []string
@@ -66,7 +67,7 @@ func TestRuleLists(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			root := linkRepo(t, map[string][]string{rulesFile: listRules, skillFile: tt.skill, agentFile: listAgent})
 			var out bytes.Buffer
-			bad, err := checkRuleLists(root, &out, map[string][]string{skillFile: tt.required, agentFile: nil})
+			bad, err := checkRuleLists(testWorld(t, &out), root, map[string][]string{skillFile: tt.required, agentFile: nil})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -78,6 +79,7 @@ func TestRuleLists(t *testing.T) {
 }
 
 func TestRuleListsFailsClosed(t *testing.T) {
+	t.Parallel()
 	both := map[string][]string{rulesFile: listRules, skillFile: {"## Skip"}, agentFile: listAgent}
 	tests := []struct {
 		name     string
@@ -98,7 +100,7 @@ func TestRuleListsFailsClosed(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			if _, err := checkRuleLists(linkRepo(t, tt.files), &out, tt.required); err == nil || !strings.Contains(err.Error(), tt.want) {
+			if _, err := checkRuleLists(testWorld(t, &out), linkRepo(t, tt.files), tt.required); err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want it to contain %q", err, tt.want)
 			}
 		})

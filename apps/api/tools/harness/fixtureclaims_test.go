@@ -20,6 +20,7 @@ func claimRepo(t *testing.T, rules []string, fixtures map[string]string, other .
 }
 
 func TestFixtureClaims(t *testing.T) {
+	t.Parallel()
 	const status = " · Status: seed"
 	fixtures := map[string]string{
 		"a-one":   "RULE=a",
@@ -125,7 +126,7 @@ func TestFixtureClaims(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			bad, err := fixtureClaims(claimRepo(t, tt.rules, fixtures, "scripts/test/b.bats"), &out)
+			bad, err := fixtureClaims(testWorld(t, &out), claimRepo(t, tt.rules, fixtures, "scripts/test/b.bats"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -141,6 +142,7 @@ func TestFixtureClaims(t *testing.T) {
 }
 
 func TestFixtureClaimsExitCodes(t *testing.T) {
+	t.Parallel()
 	ok := claimRepo(t, []string{"### a", "- **Fixture:** none (no sensor)"}, nil)
 	bad := claimRepo(t, []string{"### a", "- **Fixture:** none"}, nil)
 	dup := claimRepo(t, []string{"### a", "- **Fixture:** none (no sensor)", "### a", "- **Fixture:** none (no sensor)"}, nil)
@@ -159,7 +161,7 @@ func TestFixtureClaimsExitCodes(t *testing.T) {
 		{[]string{"fixture-claims"}, exitUsage},
 	} {
 		var stdout, stderr bytes.Buffer
-		if code := run(tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.want {
+		if code := runTest(t, tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.want {
 			t.Errorf("%v: exit %d, want %d (%s%s)", tt.args, code, tt.want, stdout.String(), stderr.String())
 		}
 	}
