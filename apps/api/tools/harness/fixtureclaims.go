@@ -23,10 +23,7 @@ import (
 	"strings"
 )
 
-const (
-	rulesFile   = "docs/harness/rules.md"
-	fixturesDir = "scripts/harness/fixtures"
-)
+const fixturesDir = "scripts/harness/fixtures"
 
 var (
 	fixtureDirRE = regexp.MustCompile(`^fixtures/([a-z0-9][a-z0-9-]*)$`)
@@ -35,6 +32,7 @@ var (
 )
 
 type claimChecker struct {
+	w        world
 	root     string
 	out      io.Writer
 	bad      bool
@@ -78,8 +76,12 @@ func ruleHeadings(src []byte) ([]ruleHeading, error) {
 	return rules, nil
 }
 
+func init() {
+	commands.register(rootSensor("fixture-claims", "rules-fixture-claims (make fixture-claims)", fixtureClaims))
+}
+
 // fixtureClaims prints one line per finding to stdout and reports whether there was any. root is the repo.
-func fixtureClaims(root string, stdout io.Writer) (bool, error) {
+func fixtureClaims(w world, root string) (bool, error) {
 	src, err := os.ReadFile(filepath.Join(root, rulesFile))
 	if err != nil {
 		return false, err
@@ -88,8 +90,8 @@ func fixtureClaims(root string, stdout io.Writer) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	c := &claimChecker{root: root, out: stdout}
-	if c.fixtures, err = fixtureRules(root); err != nil {
+	c := &claimChecker{w: w, root: root, out: w.stdout}
+	if c.fixtures, err = fixtureRules(w, root); err != nil {
 		return false, err
 	}
 	at := map[int]ruleHeading{} // line → the rule heading there
@@ -174,7 +176,7 @@ func (c *claimChecker) claim(rule string, line int, claim string) error {
 			c.report(line, "%s: `%s` is not a test path (fixtures come before the `;`)", rule, p)
 			continue
 		}
-		files, err := gitKnown(c.root, p)
+		files, err := c.w.gitKnown(c.root, p)
 		if err != nil {
 			return err
 		}
@@ -232,8 +234,8 @@ func claimList(claim string) (dirs, tests []string, ok bool) {
 
 // fixtureRules maps each git-known fixture dir to the RULE= of its fixture.conf, read as selftest.sh reads
 // it (the last RULE= line, one pair of quotes stripped).
-func fixtureRules(root string) (map[string]string, error) {
-	confs, err := gitKnown(root, fixturesDir+"/*/fixture.conf")
+func fixtureRules(w world, root string) (map[string]string, error) {
+	confs, err := w.gitKnown(root, fixturesDir+"/*/fixture.conf")
 	if err != nil {
 		return nil, err
 	}

@@ -19,9 +19,7 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -43,12 +41,7 @@ var (
 	// non-letters and non-digits there counts, so no invisible character hides a suppression.
 	suppressionRE = regexp.MustCompile(`(//[[:space:]]*(nolint|lint:(file-)?ignore)|eslint-disable|/\*[[:space:]]*eslint[[:space:]]|@ts-expect-error|#[[:space:]]*shellcheck[[:space:]]+disable|atlas:nolint|squawk-ignore|swiftlint:[^\pL\pN]*disable)`)
 	reasonRE      = regexp.MustCompile(`reason: .+\(rule: ([a-z0-9-]+)\)`)
-	// Only `#` lines and blank lines are comments: `//` and `/* */` can comment out a JSONC, JS or Go line
-	// without the commented line itself looking like code. A `#` line that holds another line break (CR, VT,
-	// FF, U+0085, U+2028, U+2029; one CR may end it) is not: YAML, SwiftLint and swift-format read a line after it.
-	// Nor is one ending in `\`: make continues the comment onto the next line, commenting that line out.
-	commentRE = regexp.MustCompile(`^[[:space:]]*(#([^\r\v\f\x{85}\x{2028}\x{2029}]*[^\\\r\v\f\x{85}\x{2028}\x{2029}])?\r?)?$`)
-	hunkRE    = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
+	hunkRE        = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
 )
 
 // change is one added (+) or removed (-) line; removed lines carry their line number on the base side.
@@ -59,27 +52,46 @@ type change struct {
 	text  string
 }
 
+func init() {
+	commands.register(sensor("integrity-check", "harness integrity-check <root>",
+		"harness-suppression-reason, harness-config-not-loosened (make harness-integrity; env BASE_REF, HARNESS_ROOT, HARNESS_CHANGE_APPROVED)",
+		func(w world, args []string) (bool, error) {
+			if len(args) != 1 {
+				return false, errUsage
+			}
+			own, err := w.abs(args[0])
+			if err != nil {
+				return false, err
+			}
+			root, err := w.harnessRoot(own)
+			if err != nil {
+				return false, err
+			}
+			return integrityCheck(w, own, root, w.getenv("BASE_REF"), w.getenv("HARNESS_CHANGE_APPROVED") == "1")
+		}))
+}
+
 // integrityCheck prints one line per finding to stdout and reports whether there was any.
-func integrityCheck(own, root, baseRef string, approved bool, stdout io.Writer) (bool, error) {
-	base, err := mergeBase(root, baseRef)
+func integrityCheck(w world, own, root, baseRef string, approved bool) (bool, error) {
+	base, err := w.mergeBase(root, baseRef)
 	if err != nil {
 		return false, err
 	}
 	bad := false
 	report := func(format string, a ...any) {
-		fmt.Fprintf(stdout, format+"\n", a...)
+		fmt.Fprintf(w.stdout, format+"\n", a...)
 		bad = true
 	}
 
-	rules, err := os.ReadFile(filepath.Join(own, "docs/harness/rules.md"))
+	rules, err := os.ReadFile(filepath.Join(own, rulesFile))
 	if err != nil {
 		return false, err
 	}
-	l, err := loadLayout(own)
+	l, err := loadLayout(w, own)
 	if err != nil {
 		return false, err
 	}
-	rows, err := changes(root, base, suppressionPathspecs(l))
+	rows, err := changes(w, root, base, suppressionPathspecs(l))
 	if err != nil {
 		return false, err
 	}
@@ -100,7 +112,7 @@ func integrityCheck(own, root, baseRef string, approved bool, stdout io.Writer) 
 
 	// Any non-comment change counts, tightening included: telling a loosening from a tightening needs
 	// judgment, and judgment is the human's (the label).
-	protected := filepath.Join(own, "scripts/harness/protected-paths.txt")
+	protected := filepath.Join(own, protectedPathsFile)
 	configs, err := configPatterns(protected)
 	if err != nil {
 		return false, err
@@ -109,7 +121,7 @@ func integrityCheck(own, root, baseRef string, approved bool, stdout io.Writer) 
 		return false, fmt.Errorf("no `config` entries in %s: refusing to pass without checking harness configs", protected)
 	}
 	if !approved {
-		rows, err := changes(root, base, configs)
+		rows, err := changes(w, root, base, configs)
 		if err != nil {
 			return false, err
 		}
@@ -124,7 +136,7 @@ func integrityCheck(own, root, baseRef string, approved bool, stdout io.Writer) 
 			}
 			report("%s:%d: %s harness config line: %s [harness-config-not-loosened]", c.path, c.line, what, c.text)
 		}
-		modes, err := modeChanges(root, base, configs)
+		modes, err := modeChanges(w, root, base, configs)
 		if err != nil {
 			return false, err
 		}
@@ -148,28 +160,6 @@ func suppressionPathspecs(l layout) []string {
 	return specs
 }
 
-// mergeBase is scripts/harness/merge-base.sh in root: the merge base of HEAD with ref (default: origin/main
-// if it exists, else main). A sensor that cannot find its base would compare nothing and pass.
-func mergeBase(root, ref string) (string, error) {
-	verify := func(r string) bool {
-		return exec.Command("git", "-C", root, "rev-parse", "-q", "--verify", r+"^{commit}").Run() == nil
-	}
-	if ref == "" {
-		ref = "main"
-		if verify("origin/main") {
-			ref = "origin/main"
-		}
-	}
-	if !verify(ref) {
-		return "", fmt.Errorf("BASE_REF '%s' is not a commit in this clone: fetch it (git fetch origin main) or pass BASE_REF=<branch|sha>.", ref)
-	}
-	out, err := exec.Command("git", "-C", root, "merge-base", "HEAD", ref).Output()
-	if err != nil {
-		return "", fmt.Errorf("HEAD and BASE_REF '%s' have no merge base: fetch full history (git fetch --unshallow; CI: actions/checkout with fetch-depth: 0).", ref)
-	}
-	return strings.TrimSpace(string(out)), nil
-}
-
 // configPatterns returns the pathspecs marked `config` in protected-paths.txt.
 func configPatterns(file string) ([]string, error) {
 	entries, err := protectedPaths(file)
@@ -186,23 +176,12 @@ func configPatterns(file string) ([]string, error) {
 	return patterns, nil
 }
 
-// git runs git in root and returns its stdout.
-func git(root string, args ...string) ([]byte, error) {
-	cmd := exec.Command("git", append([]string{"-C", root, "-c", "core.quotePath=false"}, args...)...)
-	cmd.Stderr = os.Stderr
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("git %s: %w", args[0], err)
-	}
-	return out, nil
-}
-
 // modeChanges lists [old mode, new mode, path] for the files matching pathspecs whose mode changed since
 // base; a diff without content lines (`chmod -x`) has no rows in changes. Added and deleted files (mode
 // 000000 on one side) are left to changes. A symlink (120000 on either side) is listed whenever it changed:
 // its one line is the target's name, which can look like a comment (`#notes`) while the tool reads the target.
-func modeChanges(root, base string, pathspecs []string) ([][3]string, error) {
-	out, err := git(root, append([]string{"diff", "--raw", "-z", "--no-renames", "--no-ext-diff", base, "--"}, pathspecs...)...)
+func modeChanges(w world, root, base string, pathspecs []string) ([][3]string, error) {
+	out, err := w.git(root, append([]string{"diff", "--raw", "-z", "--no-renames", "--no-ext-diff", base, "--"}, pathspecs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +198,7 @@ func modeChanges(root, base string, pathspecs []string) ([][3]string, error) {
 		}
 	}
 	// An untracked symlink has no raw row, and changes reads its target.
-	untracked, err := git(root, append([]string{"ls-files", "-z", "-o", "--exclude-standard", "--"}, pathspecs...)...)
+	untracked, err := w.git(root, append([]string{"ls-files", "-z", "-o", "--exclude-standard", "--"}, pathspecs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -234,9 +213,9 @@ func modeChanges(root, base string, pathspecs []string) ([][3]string, error) {
 // changes lists the lines added and removed since base in the files matching pathspecs; untracked files
 // count as added. --text --no-textconv: the change's .gitattributes (`-diff`, `binary`, textconv) must not
 // turn a hunk into "Binary files differ".
-func changes(root, base string, pathspecs []string) ([]change, error) {
+func changes(w world, root, base string, pathspecs []string) ([]change, error) {
 	var rows []change
-	untracked, err := git(root, append([]string{"ls-files", "-z", "-o", "--exclude-standard", "--"}, pathspecs...)...)
+	untracked, err := w.git(root, append([]string{"ls-files", "-z", "-o", "--exclude-standard", "--"}, pathspecs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +231,7 @@ func changes(root, base string, pathspecs []string) ([]change, error) {
 			rows = append(rows, change{f, i + 1, true, trimTabs(l)})
 		}
 	}
-	diff, err := git(root, append([]string{"diff", "-U0", "--text", "--no-textconv", "--no-color", "--no-ext-diff",
+	diff, err := w.git(root, append([]string{"diff", "-U0", "--text", "--no-textconv", "--no-color", "--no-ext-diff",
 		"--no-renames", "--src-prefix=a/", "--dst-prefix=b/", base, "--"}, pathspecs...)...)
 	if err != nil {
 		return nil, err

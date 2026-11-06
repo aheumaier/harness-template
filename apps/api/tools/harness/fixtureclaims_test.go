@@ -125,7 +125,7 @@ func TestFixtureClaims(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			bad, err := fixtureClaims(claimRepo(t, tt.rules, fixtures, "scripts/test/b.bats"), &out)
+			bad, err := fixtureClaims(testWorld(t, &out), claimRepo(t, tt.rules, fixtures, "scripts/test/b.bats"))
 			if err != nil {
 				t.Fatal(err)
 			}

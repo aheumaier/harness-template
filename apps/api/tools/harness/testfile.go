@@ -42,12 +42,12 @@ type productTests struct {
 // loadProductTests reads the predicate from root's layout.env and protected-paths.txt. It fails closed on a
 // protected-paths.txt without entries (the harness would not be excluded) and on a pattern pathspecMatch cannot
 // read the way git does (`?`, `[` or `\`).
-func loadProductTests(root string) (productTests, error) {
-	l, err := loadLayout(root)
+func loadProductTests(w world, root string) (productTests, error) {
+	l, err := loadLayout(w, root)
 	if err != nil {
 		return productTests{}, err
 	}
-	file := filepath.Join(root, "scripts/harness/protected-paths.txt")
+	file := filepath.Join(root, protectedPathsFile)
 	protected, err := protectedPaths(file)
 	if err != nil {
 		return productTests{}, err
@@ -101,6 +101,25 @@ func (pt productTests) why(rel string) string {
 	return ""
 }
 
+func init() {
+	commands.register(command{name: "test-file", usage: "harness test-file <root> <path>",
+		about: "test-writer's write guard: path is a product test file inside root, as specs-tested counts them (.claude/hooks/only-test-files.sh)",
+		run: func(w world, args []string) int {
+			if len(args) != 2 {
+				return exitBadArgs
+			}
+			root, err := w.abs(args[0])
+			if err == nil {
+				err = testFile(w, root, args[1])
+			}
+			if err != nil {
+				fmt.Fprintf(w.stderr, "harness test-file: %v\n", err)
+				return 1
+			}
+			return 0
+		}})
+}
+
 // testFile is the test-writer subagent's write guard (.claude/hooks/only-test-files.sh, ADR 0039): p (absolute,
 // or relative to the working directory) must name a file inside root that productTests allows, the predicate
 // specs-tested reads tests with. Symlinks in the part of the path that exists are resolved first, as
@@ -111,7 +130,7 @@ func (pt productTests) why(rel string) string {
 // Limit: it reads no git state, so a git-ignored product test file (apps/web/dist/x.test.ts, coverage/, .tmp/)
 // is allowed although specs-tested, which reads git-known files only, never sees it (TD-128). Writing one is
 // harmless: it traces no scenario and is not committed.
-func testFile(root, p string) error {
+func testFile(w world, root, p string) error {
 	r, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		return fmt.Errorf("repository root: %w", err)
@@ -119,11 +138,16 @@ func testFile(root, p string) error {
 	if p == "" {
 		return errors.New("no file path in the hook input")
 	}
-	// filepath.Abs would drop `x/..` before the symlinks are resolved, but the OS resolves a link x first.
+	// Joining to the working directory would drop `x/..` before the symlinks are resolved, but the OS resolves
+	// a link x first.
 	if slices.Contains(strings.Split(filepath.ToSlash(p), "/"), "..") {
 		return fmt.Errorf("%s has a `..` part, which can lead outside the repository: give the path without it", p)
 	}
-	resolved, err := resolveExisting(p)
+	abs, err := w.abs(p)
+	if err != nil {
+		return err
+	}
+	resolved, err := resolveExisting(abs)
 	if err != nil {
 		return err
 	}
@@ -131,7 +155,7 @@ func testFile(root, p string) error {
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return fmt.Errorf("%s is outside the repository", p)
 	}
-	pt, err := loadProductTests(r)
+	pt, err := loadProductTests(w, r)
 	if err != nil {
 		return err
 	}

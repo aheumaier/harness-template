@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -18,7 +19,7 @@ import (
 // key yet (TD-46).
 func layoutPaths(t *testing.T) [][]string {
 	t.Helper()
-	l, err := loadLayout(repoRoot(t))
+	l, err := loadLayout(testWorld(t, io.Discard), repoRoot(t))
 	if err != nil {
 		t.Fatal(err)
 	}

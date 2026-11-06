@@ -49,16 +49,35 @@ func visible(r rune) bool {
 		!unicode.In(r, unicode.Mn, unicode.Me, unicode.Other_Default_Ignorable_Code_Point)
 }
 
+func init() {
+	commands.register(sensor("check-commits", "harness check-commits <root> | harness check-commits --msg <file>",
+		"git-conventional-commits: commits since the merge base and PR_TITLE (make commits; env BASE_REF, HARNESS_ROOT, PR_TITLE), "+
+			"or one commit message (scripts/git-hooks/commit-msg)",
+		func(w world, args []string) (bool, error) {
+			switch {
+			case len(args) == 2 && args[0] == "--msg":
+				return checkMessage(w, args[1])
+			case len(args) == 1 && args[0] != "--msg":
+				root, err := w.harnessRoot(args[0])
+				if err != nil {
+					return false, err
+				}
+				return checkCommits(w, root, w.getenv("BASE_REF"), w.getenv("PR_TITLE"))
+			}
+			return false, errUsage
+		}))
+}
+
 // checkCommits is `make commits`: every non-merge commit in root since its merge base with baseRef, plus
 // prTitle when set, at most 90 characters (GitHub's default squash commit is the title + " (#N)"). CI passes
 // the PR head as root and runs the base branch's binary (harness-integrity.yml).
-func checkCommits(root, baseRef, prTitle string, stdout io.Writer) (bool, error) {
-	base, err := mergeBase(root, baseRef)
+func checkCommits(w world, root, baseRef, prTitle string) (bool, error) {
+	base, err := w.mergeBase(root, baseRef)
 	if err != nil {
 		return false, err
 	}
 	// %B, not %s: %s joins the lines of the first paragraph, so `feat(api):` + newline + `add orders` would pass.
-	log, err := git(root, "log", "--no-merges", "-z", "--format=%h %B", base+"..HEAD")
+	log, err := w.git(root, "log", "--no-merges", "-z", "--format=%h %B", base+"..HEAD")
 	if err != nil {
 		return false, err
 	}
@@ -66,19 +85,23 @@ func checkCommits(root, baseRef, prTitle string, stdout io.Writer) (bool, error)
 	for _, entry := range strings.Split(string(log), "\x00") {
 		if sha, msg, _ := strings.Cut(entry, " "); sha != "" {
 			subject, _, _ := strings.Cut(msg, "\n")
-			bad = checkSubject(stdout, sha, subject, 100) || bad
+			bad = checkSubject(w.stdout, sha, subject, 100) || bad
 		}
 	}
 	if prTitle != "" {
-		bad = checkSubject(stdout, "PR title", prTitle, 90) || bad
+		bad = checkSubject(w.stdout, "PR title", prTitle, 90) || bad
 	}
 	return bad, nil
 }
 
 // checkMessage is the commit-msg hook's check of one commit message file: its first line that is not a
 // comment and not blank.
-func checkMessage(file string, stdout io.Writer) (bool, error) {
-	msg, err := os.ReadFile(file)
+func checkMessage(w world, file string) (bool, error) {
+	p, err := w.abs(file)
+	if err != nil {
+		return false, err
+	}
+	msg, err := os.ReadFile(p)
 	if err != nil {
 		return false, err
 	}
@@ -92,5 +115,5 @@ func checkMessage(file string, stdout io.Writer) (bool, error) {
 	if gitOwnRE.MatchString(subject) {
 		return false, nil
 	}
-	return checkSubject(stdout, "commit message", subject, 100), nil
+	return checkSubject(w.stdout, "commit message", subject, 100), nil
 }

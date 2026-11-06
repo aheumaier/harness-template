@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,13 +39,18 @@ var (
 )
 
 type protector struct {
+	w         world
 	root, cwd string
 	patterns  []string // protected-paths.txt, read on first use
 	roots     []string // root and every worktree, physical, listed on first use
 }
 
-func protectHarness(root string, stdin io.Reader) error {
-	in, err := parseHookInput(stdin)
+func init() {
+	commands.register(hookGuard("protect-harness", "PreToolUse guard for harness files (.claude/hooks/protect-harness.sh)", protectHarness))
+}
+
+func protectHarness(w world, root string) error {
+	in, err := parseHookInput(w.stdin)
 	if err != nil {
 		return blockf("%v", err)
 	}
@@ -54,7 +58,7 @@ func protectHarness(root string, stdin io.Reader) error {
 	if err != nil {
 		return blockf("repository root: %v", err)
 	}
-	p := &protector{root: r, cwd: physicalDir(in.Cwd)}
+	p := &protector{w: w, root: r, cwd: physicalDir(in.Cwd, w.cwd)}
 	if in.ToolName != "Bash" {
 		target := in.ToolInput.FilePath
 		if target == "" {
@@ -116,6 +120,9 @@ func (p *protector) checkCommand(cmd string) error {
 func (p *protector) check(path, name string) error {
 	if path == "" {
 		return nil
+	}
+	if p.cwd == "" && !filepath.IsAbs(path) {
+		return blockf("%s: no working directory to resolve the relative path against", path)
 	}
 	full := osPath(p.cwd, path)
 	dir, err := resolveExisting(filepath.Dir(full))
@@ -217,7 +224,7 @@ func under(dir, file string) (string, bool) {
 // globbed reports whether rel matches a glob of this checkout's protected-paths.txt.
 func (p *protector) globbed(rel string) (bool, error) {
 	if p.patterns == nil {
-		file := filepath.Join(p.root, "scripts/harness/protected-paths.txt")
+		file := filepath.Join(p.root, protectedPathsFile)
 		entries, err := protectedPaths(file)
 		if err != nil {
 			return false, blockf("cannot read the protected paths in %s (%v)", file, err)
@@ -238,9 +245,9 @@ func (p *protector) worktrees() ([]string, error) {
 	if p.roots != nil {
 		return p.roots, nil
 	}
-	cmd := exec.Command("git", "-C", p.root, "worktree", "list", "--porcelain", "-z")
+	cmd := p.w.command("git", "-C", p.root, "worktree", "list", "--porcelain", "-z")
 	// The repository is root's, whatever a caller's environment points git at.
-	cmd.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool {
+	cmd.Env = slices.DeleteFunc(slices.Clone(p.w.environ), func(kv string) bool {
 		k, _, _ := strings.Cut(kv, "=")
 		return k == "GIT_DIR" || k == "GIT_WORK_TREE" || k == "GIT_COMMON_DIR"
 	})

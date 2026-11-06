@@ -54,7 +54,9 @@ func TestSwiftTests(t *testing.T) {
 			}
 			root := linkRepo(t, files)
 			wantFindings(t, func(out io.Writer) (bool, error) {
-				return swiftTests(root, "apps/ios", strings.NewReader(tt.describe), out)
+				w := testWorld(t, out)
+				w.stdin = strings.NewReader(tt.describe)
+				return swiftTests(w, root, "apps/ios")
 			}, tt.want)
 		})
 	}
@@ -75,7 +77,9 @@ func TestSwiftTestsLinks(t *testing.T) {
 				t.Fatal(err)
 			}
 			wantFindings(t, func(out io.Writer) (bool, error) {
-				return swiftTests(root, "apps/ios", strings.NewReader(`{"targets": []}`), out)
+				w := testWorld(t, out)
+				w.stdin = strings.NewReader(`{"targets": []}`)
+				return swiftTests(w, root, "apps/ios")
 			}, []string{tt.link + ":1: is a link, so the tests behind it are not checked: make it a folder or a file [ios-tests-pass]"})
 		})
 	}

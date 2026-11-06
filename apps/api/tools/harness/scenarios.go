@@ -33,7 +33,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -71,13 +70,17 @@ type scenario struct {
 	text string
 }
 
+func init() {
+	commands.register(rootSensor("specs-tested", "specs-scenarios-tested (make specs-tested)", scenariosTested))
+}
+
 // scenariosTested prints one line per finding to stdout and reports whether there was any. root is the repo.
-func scenariosTested(root string, stdout io.Writer) (bool, error) {
-	pt, err := loadProductTests(root)
+func scenariosTested(w world, root string) (bool, error) {
+	pt, err := loadProductTests(w, root)
 	if err != nil {
 		return false, err
 	}
-	specs, err := gitFiles(root, "specs/*/spec.md")
+	specs, err := w.gitFiles(root, "specs/*/spec.md")
 	if err != nil {
 		return false, err
 	}
@@ -95,7 +98,7 @@ func scenariosTested(root string, stdout io.Writer) (bool, error) {
 		}
 		if !regular { // CI reads an untrusted tree: never follow a link out of it
 			bad = true
-			fmt.Fprintf(stdout, "%s:1: is not a regular file (a symlink?); commit the spec itself [%s]\n", spec, scenarioRule)
+			printFinding(w.stdout, spec, 1, scenarioRule, "is not a regular file (a symlink?); commit the spec itself")
 			continue
 		}
 		src, err := os.ReadFile(filepath.Join(root, spec))
@@ -107,7 +110,7 @@ func scenariosTested(root string, stdout io.Writer) (bool, error) {
 			return false, fmt.Errorf("%s: %w", spec, err)
 		}
 		if named == nil && len(scenarios) > 0 {
-			if named, err = testedIDs(root, pt); err != nil {
+			if named, err = testedIDs(w, root, pt); err != nil {
 				return false, err
 			}
 		}
@@ -119,7 +122,7 @@ func scenariosTested(root string, stdout io.Writer) (bool, error) {
 		sort.SliceStable(findings, func(i, j int) bool { return findings[i].line < findings[j].line })
 		for _, f := range findings {
 			bad = true
-			fmt.Fprintf(stdout, "%s:%d: %s [%s]\n", spec, f.line, f.msg, scenarioRule)
+			printFinding(w.stdout, spec, f.line, scenarioRule, "%s", f.msg)
 		}
 	}
 	return bad, nil
@@ -145,8 +148,8 @@ func untested(s scenario, named map[string]bool) (finding, bool) {
 }
 
 // testedIDs returns the scenario ids named in the product's test files.
-func testedIDs(root string, pt productTests) (map[string]bool, error) {
-	files, err := gitFiles(root, testFilePathspecs...)
+func testedIDs(w world, root string, pt productTests) (map[string]bool, error) {
+	files, err := w.gitFiles(root, testFilePathspecs...)
 	if err != nil {
 		return nil, err
 	}

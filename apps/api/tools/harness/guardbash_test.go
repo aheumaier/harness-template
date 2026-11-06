@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -144,6 +145,32 @@ func TestGuardBashFailsClosed(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"guard-bash"}, strings.NewReader("{}"), &stdout, &stderr); code != exitUsage {
 		t.Errorf("no root: exit %d, want %d", code, exitUsage)
+	}
+}
+
+// TestGuardBashNoGit: when git cannot start, a bare push may be from main, so it blocks (it used to read as "no
+// branch" and pass).
+func TestGuardBashNoGit(t *testing.T) {
+	onMain := gitRepo(t, "main")
+	var stderr bytes.Buffer
+	w := testWorld(t, io.Discard, "PATH="+t.TempDir())
+	w.stdin, w.stderr = strings.NewReader(payload(t, onMain, "Bash", "git push")), &stderr
+	if code := commands.dispatch(w, []string{"guard-bash", onMain}); code != 2 || !strings.Contains(stderr.String(), "git cannot run") {
+		t.Errorf("git push without git on PATH: exit %d, stderr %q; want 2", code, stderr.String())
+	}
+}
+
+// TestGuardBashNoCwd: with neither a usable payload cwd (none, or a relative one) nor a working directory, nothing
+// can be judged, so it blocks.
+func TestGuardBashNoCwd(t *testing.T) {
+	root := gitRepo(t, "main")
+	for _, tt := range []struct{ payloadCwd, cwd string }{{"", ""}, {".", root}, {"sub", root}} {
+		var stderr bytes.Buffer
+		w := testWorld(t, io.Discard)
+		w.cwd, w.stdin, w.stderr = tt.cwd, strings.NewReader(payload(t, tt.payloadCwd, "Bash", "git push")), &stderr
+		if code := commands.dispatch(w, []string{"guard-bash", root}); code != 2 || !strings.Contains(stderr.String(), "no working directory") {
+			t.Errorf("git push from payload cwd %q, cwd %q: exit %d, stderr %q; want 2", tt.payloadCwd, tt.cwd, code, stderr.String())
+		}
 	}
 }
 

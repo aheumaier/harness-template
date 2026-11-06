@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -364,7 +365,7 @@ func TestIntegrityCheck(t *testing.T) {
 				root = own
 			}
 			var out bytes.Buffer
-			bad, err := integrityCheck(own, root, "main", tt.approved, &out)
+			bad, err := integrityCheck(testWorld(t, &out), own, root, "main", tt.approved)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -402,7 +403,7 @@ func TestIntegrityCheckRealListSparesProductWorkflows(t *testing.T) {
 	add(t, own, ".github/workflows/new.yml", "on: push")
 	add(t, own, ".github/actions/setup/extra.sh", "make release")
 	var out bytes.Buffer
-	bad, err := integrityCheck(own, own, "main", false, &out)
+	bad, err := integrityCheck(testWorld(t, &out), own, own, "main", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -418,7 +419,7 @@ func TestIntegrityCheckRealListSparesProductWorkflows(t *testing.T) {
 func TestIntegrityCheckFailsClosed(t *testing.T) {
 	t.Run("BASE_REF does not resolve", func(t *testing.T) {
 		own := integrityRepo(t)
-		_, err := integrityCheck(own, own, "no-such-branch", false, &bytes.Buffer{})
+		_, err := integrityCheck(testWorld(t, io.Discard), own, own, "no-such-branch", false)
 		if err == nil || !strings.Contains(err.Error(), "BASE_REF 'no-such-branch' is not a commit") {
 			t.Errorf("err = %v", err)
 		}
@@ -426,7 +427,7 @@ func TestIntegrityCheckFailsClosed(t *testing.T) {
 	t.Run("no config entries", func(t *testing.T) {
 		own := integrityRepo(t)
 		writeLines(t, own, "scripts/harness/protected-paths.txt", "# emptied")
-		_, err := integrityCheck(own, own, "main", true, &bytes.Buffer{})
+		_, err := integrityCheck(testWorld(t, io.Discard), own, own, "main", true)
 		if err == nil || !strings.Contains(err.Error(), "refusing to pass") {
 			t.Errorf("err = %v", err)
 		}
@@ -436,7 +437,7 @@ func TestIntegrityCheckFailsClosed(t *testing.T) {
 		if err := os.Remove(filepath.Join(own, "docs/harness/rules.md")); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := integrityCheck(own, own, "main", true, &bytes.Buffer{}); err == nil {
+		if _, err := integrityCheck(testWorld(t, io.Discard), own, own, "main", true); err == nil {
 			t.Error("passed without rules.md")
 		}
 	})
@@ -445,7 +446,7 @@ func TestIntegrityCheckFailsClosed(t *testing.T) {
 		if err := os.Remove(filepath.Join(own, layoutFile)); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := integrityCheck(own, own, "main", false, &bytes.Buffer{}); err == nil {
+		if _, err := integrityCheck(testWorld(t, io.Discard), own, own, "main", false); err == nil {
 			t.Error("passed without layout.env")
 		}
 	})
@@ -453,7 +454,7 @@ func TestIntegrityCheckFailsClosed(t *testing.T) {
 		own := integrityRepo(t)
 		gitT(t, own, "checkout", "-q", "--orphan", "other")
 		commitAll(t, own, "unrelated")
-		_, err := integrityCheck(own, own, "main", false, &bytes.Buffer{})
+		_, err := integrityCheck(testWorld(t, io.Discard), own, own, "main", false)
 		if err == nil || !strings.Contains(err.Error(), "have no merge base") {
 			t.Errorf("err = %v", err)
 		}

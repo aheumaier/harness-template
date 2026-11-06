@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -150,7 +152,7 @@ func TestProtectHarnessWorktrees(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if roots, err := (&protector{root: repo}).worktrees(); err != nil || !slices.Contains(roots, repo+"/scripts") {
+		if roots, err := (&protector{w: testWorld(t, io.Discard), root: repo}).worktrees(); err != nil || !slices.Contains(roots, repo+"/scripts") {
 			t.Fatalf("git worktree list: %v, %v; want it to list %s/scripts", roots, err, repo)
 		}
 		wantProtect(t, repo, repo, "Edit", true, "scripts/harness/run.sh", repo+"/scripts/harness/protected-paths.txt")
@@ -196,6 +198,34 @@ func TestProtectHarnessWorktrees(t *testing.T) {
 			t.Errorf("exit %d, want 2 with cannot read the protected paths; stderr:\n%s", code, out)
 		}
 		wantProtect(t, repo, repo, "Bash", false, "ls") // a command that writes nothing needs no list
+	})
+
+	t.Run("fails closed on a relative path without a working directory", func(t *testing.T) {
+		repo, _ := worktreeSandbox(t)
+		for tool, arg := range map[string]string{"Write": ".claude/settings.json", "Bash": "echo x > .claude/settings.json"} {
+			var stderr bytes.Buffer
+			w := testWorld(t, io.Discard)
+			w.cwd, w.stderr = "", &stderr // os.Getwd failed, and the payload names no cwd
+			w.stdin = strings.NewReader(payload(t, "", tool, arg))
+			if code := commands.dispatch(w, []string{"protect-harness", repo}); code != 2 ||
+				!strings.Contains(stderr.String(), "no working directory") {
+				t.Errorf("%s %q: exit %d, want 2 with no working directory; stderr:\n%s", tool, arg, code, stderr.String())
+			}
+		}
+	})
+
+	t.Run("a relative payload cwd counts as no working directory", func(t *testing.T) {
+		repo, _ := worktreeSandbox(t)
+		for cwd, file := range map[string]string{".": ".claude/settings.json", "docs": "../.claude/settings.json"} {
+			var stderr bytes.Buffer
+			w := testWorld(t, io.Discard)
+			w.cwd, w.stderr = repo, &stderr // falling back to it would read docs/../ from the repo's parent
+			w.stdin = strings.NewReader(payload(t, cwd, "Write", file))
+			if code := commands.dispatch(w, []string{"protect-harness", repo}); code != 2 ||
+				!strings.Contains(stderr.String(), "no working directory") {
+				t.Errorf("Write %s from payload cwd %q: exit %d, stderr %q; want 2", file, cwd, code, stderr.String())
+			}
+		}
 	})
 }
 

@@ -12,6 +12,25 @@ import (
 // The path helpers the hooks and sensors share: protected-paths.txt entries, git-style pathspec matching and
 // symlink resolution.
 
+const (
+	// rulesFile is the rule catalogue (fixture-claims, rule-lists, integrity-check).
+	rulesFile = "docs/harness/rules.md"
+	// protectedPathsFile lists the harness files (protect-harness, integrity-check, test-file).
+	protectedPathsFile = "scripts/harness/protected-paths.txt"
+)
+
+var (
+	// skippedPath is what world.gitFiles and test-file leave out: fixtures hold deliberate violations, and
+	// node_modules is not ours.
+	skippedPath = regexp.MustCompile(`(^|/)(node_modules|fixtures)/`)
+	// commentRE is a line that does nothing: only `#` lines and blank lines are comments. `//` and `/* */` can
+	// comment out a JSONC, JS or Go line without the commented line itself looking like code. A `#` line that
+	// holds another line break (CR, VT, FF, U+0085, U+2028, U+2029; one CR may end it) is not: YAML, SwiftLint
+	// and swift-format read a line after it. Nor is one ending in `\`: make continues the comment onto the next
+	// line, commenting that line out.
+	commentRE = regexp.MustCompile(`^[[:space:]]*(#([^\r\v\f\x{85}\x{2028}\x{2029}]*[^\\\r\v\f\x{85}\x{2028}\x{2029}])?\r?)?$`)
+)
+
 // protectedPath is one entry of protected-paths.txt: a pathspec and what follows it (`config`, or nothing).
 type protectedPath struct{ pattern, kind string }
 
@@ -68,14 +87,14 @@ func pathspecMatch(p, rel string) bool {
 	return ok && err == nil
 }
 
-// resolveExisting makes p absolute and resolves symlinks in its longest existing prefix; the rest (a file or
-// directories still to be created) is appended as given. A dangling link is an error: writing through it
-// would create its target, wherever that is.
+// resolveExisting resolves symlinks in the longest existing prefix of the absolute path p (world.abs makes one);
+// the rest (a file or directories still to be created) is appended as given. A dangling link is an error:
+// writing through it would create its target, wherever that is.
 func resolveExisting(p string) (string, error) {
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return "", err
+	if !filepath.IsAbs(p) {
+		return "", fmt.Errorf("%s is not an absolute path", p)
 	}
+	abs := filepath.Clean(p)
 	dir, rest := abs, ""
 	for {
 		if _, err := os.Lstat(dir); err == nil {

@@ -13,18 +13,32 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
 
-// specRefs prints each external `$ref` of the files and reports whether there was any.
-func specRefs(files []string, stdout io.Writer) (bool, error) {
+func init() {
+	commands.register(sensor("spec-refs", "harness spec-refs <file>...",
+		"no $ref points outside its file: contract-check.sh, upstream-drift.sh (ADR 0037)",
+		func(w world, args []string) (bool, error) {
+			if len(args) == 0 {
+				return false, errUsage
+			}
+			return specRefs(w, args)
+		}))
+}
+
+// specRefs prints each external `$ref` of the files, each named as given, and reports whether there was any.
+func specRefs(w world, files []string) (bool, error) {
 	bad := false
 	for _, f := range files {
-		b, err := os.ReadFile(f)
+		p, err := w.abs(f)
+		if err != nil {
+			return bad, err
+		}
+		b, err := os.ReadFile(p)
 		if err != nil {
 			return bad, err
 		}
@@ -34,7 +48,7 @@ func specRefs(files []string, stdout io.Writer) (bool, error) {
 		}
 		for _, r := range externalRefs(&doc) {
 			bad = true
-			fmt.Fprintf(stdout, "%s:%d: $ref %s points outside this file (want '#/...')\n", f, r.line, r.value)
+			fmt.Fprintf(w.stdout, "%s:%d: $ref %s points outside this file (want '#/...')\n", f, r.line, r.value)
 		}
 	}
 	return bad, nil

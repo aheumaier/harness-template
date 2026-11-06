@@ -109,7 +109,7 @@ func TestQualityShape(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := qualityTestRepo(t, tt.rows, tt.domains)
-			wantFindings(t, func(w io.Writer) (bool, error) { return qualityShape(root, w) }, tt.want)
+			wantFindings(t, func(w io.Writer) (bool, error) { return qualityShape(testWorld(t, w), root) }, tt.want)
 		})
 	}
 }
@@ -122,7 +122,7 @@ func TestQualityShapeFollowsLayout(t *testing.T) {
 		qualityTestRow(qualityTestLink("billing"), "A | A | A | A", "2026-10-29"),
 	}, []string{"billing", "orders", "platform"})
 	writeLines(t, root, templateDomains+"users/x.go", "package x")
-	wantFindings(t, func(w io.Writer) (bool, error) { return qualityShape(root, w) }, []string{
+	wantFindings(t, func(w io.Writer) (bool, error) { return qualityShape(testWorld(t, w), root) }, []string{
 		"docs/QUALITY.md:3: Domain link [billing](../apps/api/internal/billing/AGENTS.md) does not point at its domain: write [billing](../" + dir + "billing/AGENTS.md) [docs-quality-rows-well-formed]",
 		"docs/QUALITY.md:4: domain orders (" + dir + "orders/) has no row: add one before the marker and grade it [docs-quality-rows-match-domains]",
 	})
@@ -149,10 +149,10 @@ func TestQualityShapeFailsClosedOnLayout(t *testing.T) {
 				files[layoutFile] = tt.layout
 			}
 			root := linkRepo(t, files)
-			if _, err := qualityShape(root, io.Discard); err == nil || !strings.Contains(err.Error(), tt.want) {
+			if _, err := qualityShape(testWorld(t, io.Discard), root); err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("want an error containing %q, got %v", tt.want, err)
 			}
-			wantFindings(t, func(w io.Writer) (bool, error) { return qualityFresh(root, today, w) }, nil)
+			wantFindings(t, func(w io.Writer) (bool, error) { return qualityFresh(testWorld(t, w), root, today) }, nil)
 		})
 	}
 }
@@ -184,7 +184,7 @@ func TestQualityFresh(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := qualityTestRepo(t, tt.rows, nil)
-			wantFindings(t, func(w io.Writer) (bool, error) { return qualityFresh(root, today, w) }, tt.want)
+			wantFindings(t, func(w io.Writer) (bool, error) { return qualityFresh(testWorld(t, w), root, today) }, tt.want)
 		})
 	}
 }
@@ -228,8 +228,8 @@ func TestQualityRowTemplateMatchesHeader(t *testing.T) {
 	}
 	root := linkRepo(t, map[string][]string{qualityFile: table, layoutFile: templateLayout, templateDomains + "billing_run/AGENTS.md": {"# billing_run"}})
 	today := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
-	wantFindings(t, func(w io.Writer) (bool, error) { return qualityShape(root, w) }, nil)
-	wantFindings(t, func(w io.Writer) (bool, error) { return qualityFresh(root, today, w) }, nil)
+	wantFindings(t, func(w io.Writer) (bool, error) { return qualityShape(testWorld(t, w), root) }, nil)
+	wantFindings(t, func(w io.Writer) (bool, error) { return qualityFresh(testWorld(t, w), root, today) }, nil)
 }
 
 func TestQualityRowsFailsClosed(t *testing.T) {
@@ -252,8 +252,8 @@ func TestQualityRowsFailsClosed(t *testing.T) {
 			}
 			root := linkRepo(t, files)
 			for mode, check := range map[string]func(io.Writer) (bool, error){
-				"shape": func(w io.Writer) (bool, error) { return qualityShape(root, w) },
-				"fresh": func(w io.Writer) (bool, error) { return qualityFresh(root, today, w) },
+				"shape": func(w io.Writer) (bool, error) { return qualityShape(testWorld(t, w), root) },
+				"fresh": func(w io.Writer) (bool, error) { return qualityFresh(testWorld(t, w), root, today) },
 			} {
 				if _, err := check(io.Discard); err == nil || !strings.Contains(err.Error(), tt.want) {
 					t.Fatalf("%s: want an error containing %q, got %v", mode, tt.want, err)

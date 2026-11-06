@@ -10,6 +10,25 @@ import (
 
 // The helpers the PreToolUse hooks share (guard-bash, protect-harness).
 
+// hookGuard is a command run as `harness <name> <root>` with the hook JSON on stdin: guard gets root made
+// absolute, and any error blocks with exit 2 (fail closed).
+func hookGuard(name, about string, guard func(w world, root string) error) command {
+	return command{name: name, usage: "harness " + name + " <root>", about: about, run: func(w world, args []string) int {
+		if len(args) != 1 {
+			return exitBadArgs
+		}
+		root, err := w.abs(args[0])
+		if err == nil {
+			err = guard(w, root)
+		}
+		if err != nil {
+			fmt.Fprintf(w.stderr, "%s: blocked: %v\n", name, err)
+			return 2
+		}
+		return 0
+	}}
+}
+
 type blockError struct{ msg string }
 
 func (e *blockError) Error() string { return e.msg }
@@ -24,8 +43,14 @@ func set(words ...string) map[string]bool {
 	return m
 }
 
-// physicalDir is dir with symlinks resolved, like `cd dir && pwd -P`; the working directory if dir is unusable.
-func physicalDir(dir string) string {
+// physicalDir is dir with symlinks resolved, like `cd dir && pwd -P`; the working directory cwd if dir is
+// unusable; "" if cwd is "" too (filepath.EvalSymlinks would make it ".", so a relative path would resolve
+// against wherever the process happens to be). A relative dir is "": relative to what is unknown (Claude Code
+// sends an absolute cwd), and falling back to cwd would read `../AGENTS.md` from the wrong directory.
+func physicalDir(dir, cwd string) string {
+	if dir != "" && !filepath.IsAbs(dir) {
+		return ""
+	}
 	if dir != "" {
 		if p, err := filepath.EvalSymlinks(dir); err == nil {
 			if st, err := os.Stat(p); err == nil && st.IsDir() {
@@ -33,11 +58,13 @@ func physicalDir(dir string) string {
 			}
 		}
 	}
-	wd, _ := os.Getwd()
-	if p, err := filepath.EvalSymlinks(wd); err == nil {
+	if cwd == "" {
+		return ""
+	}
+	if p, err := filepath.EvalSymlinks(cwd); err == nil {
 		return p
 	}
-	return wd
+	return cwd
 }
 
 var separator = regexp.MustCompile("[;&|\n`]|\\$\\(")

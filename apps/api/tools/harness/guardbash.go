@@ -1,7 +1,7 @@
 package main
 
 import (
-	"io"
+	"errors"
 	"os/exec"
 	"path"
 	"regexp"
@@ -38,19 +38,27 @@ var (
 	shells = set("bash", "sh", "zsh")
 )
 
-func guardBash(root string, stdin io.Reader) error {
-	in, err := parseHookInput(stdin)
+func init() {
+	commands.register(hookGuard("guard-bash", "PreToolUse guard for Bash commands (.claude/hooks/guard-bash.sh)", guardBash))
+}
+
+func guardBash(w world, root string) error {
+	in, err := parseHookInput(w.stdin)
 	if err != nil {
 		return blockf("%v", err)
 	}
 	if in.ToolInput.Command == "" {
 		return nil
 	}
-	g := &guard{root: root, cwd: physicalDir(in.Cwd)}
+	g := &guard{w: w, root: root, cwd: physicalDir(in.Cwd, w.cwd)}
+	if g.cwd == "" { // neither the payload's cwd nor ours: relative paths and the branch cannot be judged
+		return blockf("no working directory to check the command against")
+	}
 	return g.check(in.ToolInput.Command, 0)
 }
 
 type guard struct {
+	w         world
 	root, cwd string
 	branch    *string // current branch of cwd, looked up on the first git push
 }
@@ -182,7 +190,11 @@ func (g *guard) gitPush(ws []word) error {
 		for _, ref := range positional[1:] {
 			dst := ref[strings.LastIndex(ref, ":")+1:]
 			if dst == "HEAD" || dst == "@" {
-				dst = g.currentBranch()
+				b, err := g.currentBranch()
+				if err != nil {
+					return err
+				}
+				dst = b
 			}
 			if mainBranch.MatchString(dst) {
 				return blockf("push to %s. Push a feature branch and open a PR.", dst)
@@ -191,19 +203,28 @@ func (g *guard) gitPush(ws []word) error {
 		return nil
 	}
 	// No refspec: pushes the current branch.
-	if b := g.currentBranch(); b == "main" || b == "master" {
+	b, err := g.currentBranch()
+	if err != nil {
+		return err
+	}
+	if b == "main" || b == "master" {
 		return blockf("`git push` from %s pushes main. Create a branch first.", b)
 	}
 	return nil
 }
 
-func (g *guard) currentBranch() string {
+// currentBranch is HEAD's branch: "" when HEAD is detached or cwd is no repository, a block when git cannot
+// start (the push may be from main).
+func (g *guard) currentBranch() (string, error) {
 	if g.branch == nil {
-		out, _ := exec.Command("git", "-C", g.cwd, "symbolic-ref", "--short", "-q", "HEAD").Output()
+		out, err := g.w.command("git", "-C", g.cwd, "symbolic-ref", "--short", "-q", "HEAD").Output()
+		if exit := (*exec.ExitError)(nil); err != nil && !errors.As(err, &exit) {
+			return "", blockf("git cannot run to read the current branch (%v)", err)
+		}
 		b := strings.TrimSpace(string(out))
 		g.branch = &b
 	}
-	return *g.branch
+	return *g.branch, nil
 }
 
 // rm checks that every path of a recursive rm is a literal path inside the repo.

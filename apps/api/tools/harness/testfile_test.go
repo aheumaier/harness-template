@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -67,7 +68,7 @@ func TestTestFile(t *testing.T) {
 		if p != "" && !filepath.IsAbs(p) {
 			p = root + "/" + p
 		}
-		err := testFile(root, p)
+		err := testFile(testWorld(t, io.Discard), root, p)
 		switch {
 		case tt.want == "" && err != nil:
 			t.Errorf("%s: %v, want allowed", tt.path, err)
@@ -129,16 +130,17 @@ func TestProductTestFileVectors(t *testing.T) {
 		t.Fatal("no vectors in testdata/test-files.txt")
 	}
 	root := scenarioRepo(t, files)
-	pt, err := loadProductTests(root)
+	w := testWorld(t, io.Discard)
+	pt, err := loadProductTests(w, root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	named, err := testedIDs(root, pt)
+	named, err := testedIDs(w, root, pt)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, r := range rows {
-		if err := testFile(root, filepath.Join(root, r.path)); (err == nil) != r.allow {
+		if err := testFile(w, root, filepath.Join(root, r.path)); (err == nil) != r.allow {
 			t.Errorf("%s: harness test-file: %v; want allow=%v", r.path, err, r.allow)
 		}
 		if named[r.id] != r.allow {
@@ -224,10 +226,11 @@ func TestLoadProductTestsFailsClosed(t *testing.T) {
 		"layout [":      {layoutFile: replaced(t, templateLayout, "GENERATED_GLOBS=", "GENERATED_GLOBS=[a]*.gen.go:")},
 	} {
 		root := scenarioRepo(t, files)
-		if _, err := loadProductTests(root); err == nil {
+		w := testWorld(t, io.Discard)
+		if _, err := loadProductTests(w, root); err == nil {
 			t.Errorf("%s: loaded, want an error", name)
 		}
-		if err := testFile(root, filepath.Join(root, "apps/api/internal/x/model/x_test.go")); err == nil {
+		if err := testFile(w, root, filepath.Join(root, "apps/api/internal/x/model/x_test.go")); err == nil {
 			t.Errorf("%s: harness test-file allowed a path, want it to fail closed", name)
 		}
 	}

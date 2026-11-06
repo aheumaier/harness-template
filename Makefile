@@ -250,9 +250,12 @@ $(GCL): $(API_DIR)/.custom-gcl.yml $(ANALYZERS_SRC) scripts/tool-versions.env | 
 	@cd $(API_DIR) && golangci-lint custom
 	@touch $@
 
-# The hooks' parser (ADR 0012); every hook fails closed without it.
+# The hooks' parser (ADR 0012); every hook fails closed without it. A build that panics at start (a subcommand
+# name registered twice) is never installed: `help` must run before the binary replaces the old one. One line and
+# a temp name per build, so two builds at once (make -j) never share or remove each other's file.
 $(HARNESS): $(HARNESS_SRC) scripts/tool-versions.env
-	@cd $(API_DIR)/tools/harness && go build -o $(CURDIR)/$@ .
+	@tmp="$(CURDIR)/$@.$$$$"; trap 'rm -f "$$tmp"' EXIT; \
+	(cd $(API_DIR)/tools/harness && go build -o "$$tmp" .) && "$$tmp" help >/dev/null && mv "$$tmp" $@
 
 ##@ Go sensors
 .PHONY: fmt lint-go arch-go test-go test-analyzers test-harness vuln-go deadcode-go

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -177,21 +176,45 @@ func checkRenameArgs(name, module, owner string) error {
 	return nil
 }
 
+func init() {
+	commands.register(command{name: "rename", usage: "harness rename [-write] <root> <name> <module|skip> <owner>",
+		about: "rename the template identity once for a new product (make rename)",
+		run: func(w world, args []string) int {
+			write := len(args) > 0 && args[0] == "-write"
+			if write {
+				args = args[1:]
+			}
+			if len(args) != 4 {
+				return exitBadArgs
+			}
+			root, err := w.abs(args[0])
+			if err == nil {
+				err = renameRepo(w, root, args[1], args[2], args[3], write)
+			}
+			if err != nil {
+				fmt.Fprintf(w.stderr, "harness rename: %v\n", err)
+				return 2
+			}
+			return 0
+		}})
+}
+
 // renameRepo renames the template identity in every tracked text file under root. Without write it only
 // lists the files that would change. The output names each file and its number of changed lines, then every
 // path and line that still holds a template token, for a hand fix. It also names the harness tool's module
 // path (harnessModule). Module skip keeps every module path.
-func renameRepo(root, name, module, owner string, write bool, stdout io.Writer) error {
+func renameRepo(w world, root, name, module, owner string, write bool) error {
+	stdout := w.stdout
 	module = moduleArg(module)
 	if err := checkRenameArgs(name, module, owner); err != nil {
 		return err
 	}
-	l, err := loadLayout(root) // fails closed, before anything is written
+	l, err := loadLayout(w, root) // fails closed, before anything is written
 	if err != nil {
 		return err
 	}
 	// Tracked files only: untracked work in progress is not ours to rewrite.
-	files, err := lsFiles(root, "-c")
+	files, err := w.lsFiles(root, "-c")
 	if err != nil {
 		return err
 	}

@@ -68,13 +68,17 @@ type ruleListsRepo struct {
 	known    map[string]bool     // rule id → true
 }
 
+func init() {
+	commands.register(rootSensor("rule-lists", "harness-rule-lists-match: skip lists in review agents (make rule-lists)", ruleLists))
+}
+
 // ruleLists prints one line per finding to stdout and reports whether there was any. root is the repo.
-func ruleLists(root string, stdout io.Writer) (bool, error) {
-	return checkRuleLists(root, stdout, requiredSkips)
+func ruleLists(w world, root string) (bool, error) {
+	return checkRuleLists(w, root, requiredSkips)
 }
 
 // checkRuleLists is ruleLists with the required entries as a parameter (the tests use their own).
-func checkRuleLists(root string, stdout io.Writer, required map[string][]string) (bool, error) {
+func checkRuleLists(w world, root string, required map[string][]string) (bool, error) {
 	src, err := os.ReadFile(filepath.Join(root, rulesFile))
 	if err != nil {
 		return false, err
@@ -93,7 +97,7 @@ func checkRuleLists(root string, stdout io.Writer, required map[string][]string)
 	}
 	var files []string
 	for _, p := range ruleListFiles {
-		matched, err := gitKnown(root, p)
+		matched, err := w.gitKnown(root, p)
 		if err != nil {
 			return false, err
 		}
@@ -107,7 +111,7 @@ func checkRuleLists(root string, stdout io.Writer, required map[string][]string)
 	}
 	bad := false
 	for _, f := range files {
-		b, err := r.file(root, f, required[f], stdout)
+		b, err := r.file(root, f, required[f], w.stdout)
 		if err != nil {
 			return false, err
 		}

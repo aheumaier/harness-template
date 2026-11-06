@@ -46,7 +46,10 @@ func TestHookInputFailsClosed(t *testing.T) {
 	if code := run(nil, strings.NewReader(""), &stdout, &stderr); code != exitUsage {
 		t.Errorf("no subcommand: exit %d, want %d", code, exitUsage)
 	}
-	if code := run([]string{"hook-input", "nope"}, strings.NewReader("{}"), &stdout, &stderr); code != exitUsage {
-		t.Errorf("unknown field: exit %d, want %d", code, exitUsage)
+	stderr.Reset()
+	// Exit 64 tells the hook the binary is stale; the message names the field, not the whole usage text.
+	if code := run([]string{"hook-input", "nope"}, strings.NewReader("{}"), &stdout, &stderr); code != exitUsage ||
+		!strings.HasPrefix(stderr.String(), `harness hook-input: unknown field "nope"`) || strings.Contains(stderr.String(), "usage: harness") {
+		t.Errorf("unknown field: exit %d, stderr %q; want %d and the field named", code, stderr.String(), exitUsage)
 	}
 }

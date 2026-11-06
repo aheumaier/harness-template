@@ -102,7 +102,7 @@ func TestSwiftResolved(t *testing.T) {
 			for _, f := range tt.staged {
 				gitT(t, root, "add", "--", f)
 			}
-			wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(root, out) }, tt.want)
+			wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(testWorld(t, out), root) }, tt.want)
 		})
 	}
 }
@@ -115,7 +115,7 @@ func TestSwiftResolvedSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	gitT(t, root, "add", "--", "Package.resolved")
-	wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(root, out) },
+	wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(testWorld(t, out), root) },
 		[]string{"Package.swift:1: declares a remote package, but Package.resolved is not a file in git that pins one [deps-swift-resolved]"})
 }
 
@@ -125,7 +125,7 @@ func TestSwiftResolvedIntentToAdd(t *testing.T) {
 		"Package.resolved": {lockfile},
 	})
 	gitT(t, root, "add", "-N", "--", "Package.resolved") // stages the empty blob
-	wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(root, out) },
+	wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(testWorld(t, out), root) },
 		[]string{"Package.swift:1: declares a remote package, but Package.resolved is not a file in git that pins one [deps-swift-resolved]"})
 }
 
@@ -134,7 +134,7 @@ func TestSwiftResolvedLinkedManifest(t *testing.T) {
 	if err := os.Symlink("x.swift", filepath.Join(root, "Package.swift")); err != nil {
 		t.Fatal(err)
 	}
-	wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(root, out) },
+	wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(testWorld(t, out), root) },
 		[]string{"Package.swift:1: is not a regular file, so it is not read: make it one [deps-swift-resolved]"})
 }
 
@@ -154,6 +154,6 @@ func TestSwiftResolvedStagedLink(t *testing.T) {
 	if err := os.WriteFile(resolved, []byte(lockfile), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(root, out) },
+	wantFindings(t, func(out io.Writer) (bool, error) { return swiftResolved(testWorld(t, out), root) },
 		[]string{"Package.swift:1: declares a remote package, but Package.resolved is not a file in git that pins one [deps-swift-resolved]"})
 }

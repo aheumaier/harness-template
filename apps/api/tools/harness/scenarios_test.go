@@ -215,7 +215,7 @@ func TestScenariosTested(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := scenarioRepo(t, tt.files)
-			wantFindings(t, func(w io.Writer) (bool, error) { return scenariosTested(root, w) }, tt.want)
+			wantFindings(t, func(w io.Writer) (bool, error) { return scenariosTested(testWorld(t, w), root) }, tt.want)
 		})
 	}
 }
@@ -253,7 +253,7 @@ func TestScenariosTestedLinks(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	wantFindings(t, func(w io.Writer) (bool, error) { return scenariosTested(root, w) }, []string{
+	wantFindings(t, func(w io.Writer) (bool, error) { return scenariosTested(testWorld(t, w), root) }, []string{
 		"specs/001-a/spec.md:1: is not a regular file (a symlink?); commit the spec itself [specs-scenarios-tested]",
 		"specs/002-b/spec.md:11: 002/US1-AS1 has no test naming it: **Given** b [specs-scenarios-tested]",
 	})

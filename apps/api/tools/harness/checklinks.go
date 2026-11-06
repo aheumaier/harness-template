@@ -25,17 +25,20 @@ import (
 )
 
 var (
-	// Vendored spec-kit (ADR 0011) is not ours to fix; fixtures hold deliberate violations.
-	mdSpec      = []string{"*.md", ":!:.specify/templates/*", ":!:.claude/skills/speckit-*"}
-	skippedPath = regexp.MustCompile(`(^|/)(node_modules|fixtures)/`)
-	schemeRE    = regexp.MustCompile(`^[a-z][a-z0-9+.-]*:`)
-	markdown    = goldmark.New(goldmark.WithExtensions(extension.GFM))
+	// Vendored spec-kit (ADR 0011) is not ours to fix; gitFiles skips fixtures (skippedPath).
+	mdSpec   = []string{"*.md", ":!:.specify/templates/*", ":!:.claude/skills/speckit-*"}
+	schemeRE = regexp.MustCompile(`^[a-z][a-z0-9+.-]*:`)
+	markdown = goldmark.New(goldmark.WithExtensions(extension.GFM))
 )
 
+func init() {
+	commands.register(rootSensor("check-links", "docs-links-resolve, docs-claude-imports-agents (make docs-links)", checkLinks))
+}
+
 // checkLinks prints one line per finding to stdout and reports whether there was any. root is the repo.
-func checkLinks(root string, stdout io.Writer) (bool, error) {
-	c := &linkChecker{root: root, out: stdout, slugs: map[string]map[string]bool{}}
-	mds, err := gitFiles(root, mdSpec...)
+func checkLinks(w world, root string) (bool, error) {
+	c := &linkChecker{root: root, out: w.stdout, slugs: map[string]map[string]bool{}}
+	mds, err := w.gitFiles(root, mdSpec...)
 	if err != nil {
 		return false, err
 	}
@@ -44,7 +47,7 @@ func checkLinks(root string, stdout io.Writer) (bool, error) {
 			return false, err
 		}
 	}
-	agents, err := gitFiles(root, "*AGENTS.md")
+	agents, err := w.gitFiles(root, "*AGENTS.md")
 	if err != nil {
 		return false, err
 	}
@@ -58,46 +61,6 @@ func checkLinks(root string, stdout io.Writer) (bool, error) {
 		}
 	}
 	return c.bad, nil
-}
-
-// gitFiles is gitKnown without skippedPath.
-func gitFiles(root string, pathspecs ...string) ([]string, error) {
-	known, err := gitKnown(root, pathspecs...)
-	if err != nil {
-		return nil, err
-	}
-	var files []string
-	for _, f := range known {
-		if !skippedPath.MatchString(f) {
-			files = append(files, f)
-		}
-	}
-	return files, nil
-}
-
-// gitKnown lists tracked and untracked, not ignored files matching the pathspecs, without tracked files
-// deleted from the working tree (`rm docs/x.md` leaves them in ls-files -c): their links are gone, and links
-// to them are reported where they are.
-func gitKnown(root string, pathspecs ...string) ([]string, error) {
-	return lsFiles(root, append([]string{"-co", "--exclude-standard", "--"}, pathspecs...)...)
-}
-
-// lsFiles runs git ls-files with args and keeps the files that still exist in the working tree.
-func lsFiles(root string, args ...string) ([]string, error) {
-	out, err := git(root, append([]string{"ls-files", "-z"}, args...)...)
-	if err != nil {
-		return nil, err
-	}
-	var files []string
-	for _, f := range strings.Split(string(out), "\x00") {
-		if f == "" {
-			continue
-		}
-		if _, err := os.Lstat(filepath.Join(root, f)); err == nil {
-			files = append(files, f)
-		}
-	}
-	return files, nil
 }
 
 type linkChecker struct {

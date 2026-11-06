@@ -195,17 +195,10 @@ func copyFile(src, dst string, mode os.FileMode) error {
 	return out.Close()
 }
 
-// execIn runs a file in dir with env added to the environment (env wins) and returns its exit code and combined
-// output. The environment has no latency budgets (a loaded machine must not add warnings to tested output), no
-// scope or stack override, like scripts/test/helpers.bash, and no HARNESS_EDIT (a human's session would let every
-// protect-harness case through). execInput also gives it stdin.
-func execIn(t *testing.T, dir string, env []string, name string, args ...string) (int, string) {
-	t.Helper()
-	return execInput(t, dir, env, "", name, args...)
-}
-
-func execInput(t *testing.T, dir string, env []string, stdin, name string, args ...string) (int, string) {
-	t.Helper()
+// testEnv is the test process's environment with env added (env wins). It has no latency budgets (a loaded
+// machine must not add warnings to tested output), no scope or stack override, like scripts/test/helpers.bash,
+// and no HARNESS_EDIT (a human's session would let every protect-harness case through).
+func testEnv(env ...string) []string {
 	var all []string
 	for _, kv := range os.Environ() {
 		switch k, _, _ := strings.Cut(kv, "="); k {
@@ -214,10 +207,33 @@ func execInput(t *testing.T, dir string, env []string, stdin, name string, args 
 			all = append(all, kv)
 		}
 	}
-	env = append(append(all, "HARNESS_BUDGETS=/dev/null"), env...)
+	return append(append(all, "HARNESS_BUDGETS=/dev/null"), env...)
+}
+
+// testWorld is the world of an in-process subcommand: testEnv(env...) as its environment, both for lookupEnv and
+// the processes it runs, the test's working directory, empty stdin, stdout into out and stderr to the test's.
+func testWorld(t *testing.T, out io.Writer, env ...string) world {
+	t.Helper()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	environ := testEnv(env...)
+	return world{stdin: strings.NewReader(""), stdout: out, stderr: os.Stderr, lookupEnv: lookupIn(environ), environ: environ, cwd: cwd}
+}
+
+// execIn runs a file in dir with testEnv(env...) and returns its exit code and combined output. execInput also
+// gives it stdin.
+func execIn(t *testing.T, dir string, env []string, name string, args ...string) (int, string) {
+	t.Helper()
+	return execInput(t, dir, env, "", name, args...)
+}
+
+func execInput(t *testing.T, dir string, env []string, stdin, name string, args ...string) (int, string) {
+	t.Helper()
 	var out bytes.Buffer
 	cmd := exec.Command(name, args...)
-	cmd.Dir, cmd.Env, cmd.Stdin, cmd.Stdout, cmd.Stderr = dir, env, strings.NewReader(stdin), &out, &out
+	cmd.Dir, cmd.Env, cmd.Stdin, cmd.Stdout, cmd.Stderr = dir, testEnv(env...), strings.NewReader(stdin), &out, &out
 	var exit *exec.ExitError
 	switch err := cmd.Run(); {
 	case err == nil:
