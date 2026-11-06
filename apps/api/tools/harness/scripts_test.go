@@ -16,6 +16,7 @@ import (
 //	                                             stdout and stderr then hold its output
 //	shortsha <var> <rev>                         sets $var to the abbreviated sha of rev in $WORK
 func TestScripts(t *testing.T) {
+	t.Parallel()
 	testscript.Run(t, testscript.Params{
 		Dir: "testdata/script",
 		Setup: func(env *testscript.Env) error {

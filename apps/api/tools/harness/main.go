@@ -14,8 +14,9 @@
 // to any of them is a breaking change and says so in its PR:
 //
 //   - command.go: the command type (name, usage, about, run), commands.register, sensor and rootSensor,
-//     errUsage, exitBadArgs, the finding type, printFinding. A wrong call returns exitBadArgs (dispatch prints the usage text);
-//     exitUsage (main.go) directly is only for a command that prints its own reason, as hook-input does;
+//     errUsage, exitBadArgs, the finding type, printFinding. A wrong call returns exitBadArgs (dispatch prints the
+//     usage text); exitUsage (main.go) directly is only for a command that prints its own reason, as hook-input
+//     does;
 //   - world.go: the world type (stdin, stdout, stderr, lookupEnv, environ, cwd), lookupIn, and the methods
 //     getenv, harnessRoot, abs, command, git, gitFiles, gitKnown, lsFiles, mergeBase. A subcommand reads the
 //     environment and the working directory only through its world, never through os; rootSensor and hookGuard
@@ -23,11 +24,19 @@
 //     except where testscript cannot list its variables (scriptWorld);
 //   - layout.go: loadLayout and parseLayout, the layout type and its methods get, list, has, apiPath and
 //     domainsDir, and isDomainDir;
-//   - hookinput.go: parseHookInput and the hookInput type; hook.go: hookGuard and blockf;
+//   - hookinput.go: parseHookInput and the hookInput type; hook.go: hookGuard, blockf, set, physicalDir and
+//     segments;
 //   - paths.go: rulesFile, protectedPathsFile, fixturesDir, skippedPath, commentRE, the protectedPath type,
 //     protectedPaths, pathspecMatch, pathspecMatchFold, matchesAny, matchesAnyFold, isRegular, resolveExisting;
 //   - markdown.go: markdown, plainText, hasLine, the ruleHeading type and ruleHeadings;
-//   - in tests, testWorld and the sandbox helper of helpers_test.go.
+//   - in tests, helpers_test.go: testWorld builds a world from testEnv (the process's environment without a
+//     caller's HARNESS_*, BASE_REF and PR_TITLE, plus the test's variables); runTest and runHook dispatch a
+//     subcommand in it and set nothing in the process, so every test but TestRunPhysicalCwd (it tests run
+//     itself) calls t.Parallel(). payload builds a hook payload and wantFindings checks a sensor's output.
+//     sandbox, sandboxFrom, place, own, linkHarness and repoRoot build a copy of the repo; gitRepo, linkRepo,
+//     templateRepo, templateLayout, withLayout, protectedList, gitT, commitAll and writeLines build a git repo.
+//     Go tests run git and other programs only through gitT, execIn and execInput; testscript scripts use their
+//     own exec. helpers_test.go's other names (copyFile, checksum, writtenThrough, linked) are the sandbox's own.
 //
 // A name two subcommands use lives in one of these shared files, not in either subcommand's file. The exceptions
 // are a subcommand's own subject that others read: layout.go's layout, and testfile.go's productTests,

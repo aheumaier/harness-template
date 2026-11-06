@@ -10,6 +10,7 @@ import (
 // TestRegistry checks the contract every subcommand file relies on (ADR 0045): a name registers once, the usage
 // text and `harness help` list every command, and a wrong call prints the usage text and exits exitUsage.
 func TestRegistry(t *testing.T) {
+	t.Parallel()
 	t.Run("a second registration panics", func(t *testing.T) {
 		r := newRegistry()
 		defer func() {

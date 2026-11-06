@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"io"
 	"io/fs"
@@ -45,26 +44,8 @@ func qualityLayoutRepo(t *testing.T, layout []string, dir string, rows, domains 
 	return linkRepo(t, files)
 }
 
-// wantFindings fails unless check printed exactly want (nothing when want is empty) and reported it.
-func wantFindings(t *testing.T, check func(io.Writer) (bool, error), want []string) {
-	t.Helper()
-	var out bytes.Buffer
-	bad, err := check(&out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(want) == 0 {
-		if bad || out.Len() != 0 {
-			t.Fatalf("want no findings, got bad=%v:\n%s", bad, out.String())
-		}
-		return
-	}
-	if got := strings.TrimSuffix(out.String(), "\n"); !bad || got != strings.Join(want, "\n") {
-		t.Fatalf("got bad=%v:\n%s\nwant:\n%s", bad, got, strings.Join(want, "\n"))
-	}
-}
-
 func TestQualityShape(t *testing.T) {
+	t.Parallel()
 	link := qualityTestLink
 	row := qualityTestRow
 	tests := []struct {
@@ -117,6 +98,7 @@ func TestQualityShape(t *testing.T) {
 // With the domains moved (LAYER_GLOB=pkg/domains/*/*), rows are demanded and links checked under the new
 // directory, and a directory under the old apps/api/internal/ is no domain.
 func TestQualityShapeFollowsLayout(t *testing.T) {
+	t.Parallel()
 	const dir = "apps/api/pkg/domains/"
 	root := qualityLayoutRepo(t, withLayout("LAYER_GLOB", "pkg/domains/*/*"), dir, []string{
 		qualityTestRow(qualityTestLink("billing"), "A | A | A | A", "2026-10-29"),
@@ -131,6 +113,7 @@ func TestQualityShapeFollowsLayout(t *testing.T) {
 // The shape mode reads the domains' directory from layout.env, so it fails closed without a usable one; the
 // age check needs no domain and still runs.
 func TestQualityShapeFailsClosedOnLayout(t *testing.T) {
+	t.Parallel()
 	today := time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name   string
@@ -158,6 +141,7 @@ func TestQualityShapeFailsClosedOnLayout(t *testing.T) {
 }
 
 func TestQualityFresh(t *testing.T) {
+	t.Parallel()
 	// 2026-10-30 locally, 2026-10-29 23:30 in UTC: the rows are measured against the UTC date.
 	today := time.Date(2026, 10, 30, 0, 30, 0, 0, time.FixedZone("CET", 3600))
 	row := qualityTestRow
@@ -193,6 +177,7 @@ func TestQualityFresh(t *testing.T) {
 // on the day it is written: the generator and the sensor agree on the table's shape. A repo that dropped
 // make new-domain with its generator (README "(b) Brownfield project" step 5) has nothing to agree with.
 func TestQualityRowTemplateMatchesHeader(t *testing.T) {
+	t.Parallel()
 	repo := repoRoot(t)
 	tmpl, err := os.ReadFile(filepath.Join(repo, "scripts/templates/new-domain/quality-row.md.tmpl"))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -233,6 +218,7 @@ func TestQualityRowTemplateMatchesHeader(t *testing.T) {
 }
 
 func TestQualityRowsFailsClosed(t *testing.T) {
+	t.Parallel()
 	today := time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name  string

@@ -9,6 +9,7 @@ import (
 )
 
 func TestSpecRefs(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		name, doc string
 		want      string // stdout; "" means no finding
@@ -40,6 +41,7 @@ func TestSpecRefs(t *testing.T) {
 }
 
 func TestSpecRefsUnparsable(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	f := filepath.Join(dir, "f.yaml")
 	if err := os.WriteFile(f, []byte("openapi: [\n"), 0o600); err != nil {

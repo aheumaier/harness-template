@@ -11,6 +11,7 @@ import (
 const lockfile = `{"pins": [{"identity": "b", "kind": "remoteSourceControl", "location": "https://github.com/a/b"}], "version": 3}`
 
 func TestSwiftResolved(t *testing.T) {
+	t.Parallel()
 	const remote = `.package(url: "https://github.com/a/b", exact: "1.0.0")`
 	manifest := func(deps ...string) []string {
 		lines := []string{"// swift-tools-version: 6.0", "import PackageDescription", "let package = Package(", "  name: \"P\",", "  dependencies: ["}
@@ -108,6 +109,7 @@ func TestSwiftResolved(t *testing.T) {
 }
 
 func TestSwiftResolvedSymlink(t *testing.T) {
+	t.Parallel()
 	root := linkRepo(t, map[string][]string{
 		"Package.swift": {`.package(url: "https://github.com/a/b", exact: "1.0.0")`},
 	})
@@ -120,6 +122,7 @@ func TestSwiftResolvedSymlink(t *testing.T) {
 }
 
 func TestSwiftResolvedIntentToAdd(t *testing.T) {
+	t.Parallel()
 	root := linkRepo(t, map[string][]string{
 		"Package.swift":    {`.package(url: "https://github.com/a/b", exact: "1.0.0")`},
 		"Package.resolved": {lockfile},
@@ -130,6 +133,7 @@ func TestSwiftResolvedIntentToAdd(t *testing.T) {
 }
 
 func TestSwiftResolvedLinkedManifest(t *testing.T) {
+	t.Parallel()
 	root := linkRepo(t, map[string][]string{"x.swift": {`.package(url: "https://github.com/a/b", exact: "1.0.0")`}})
 	if err := os.Symlink("x.swift", filepath.Join(root, "Package.swift")); err != nil {
 		t.Fatal(err)
@@ -139,6 +143,7 @@ func TestSwiftResolvedLinkedManifest(t *testing.T) {
 }
 
 func TestSwiftResolvedStagedLink(t *testing.T) {
+	t.Parallel()
 	root := linkRepo(t, map[string][]string{
 		"Package.swift": {`.package(url: "https://github.com/a/b", exact: "1.0.0")`},
 	})

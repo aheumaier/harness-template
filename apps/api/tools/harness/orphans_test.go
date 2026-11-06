@@ -18,6 +18,7 @@ func orphanTarget(line int, name string) string {
 }
 
 func TestOrphans(t *testing.T) {
+	t.Parallel()
 	const ok = "ok: ## An entry point needs no caller"
 	tests := []struct {
 		name  string
@@ -180,6 +181,7 @@ func TestOrphans(t *testing.T) {
 }
 
 func TestOrphansFailsClosed(t *testing.T) {
+	t.Parallel()
 	if _, err := orphans(testWorld(t, io.Discard), linkRepo(t, map[string][]string{"scripts/a.sh": {"echo"}})); err == nil {
 		t.Error("no Makefile: want an error")
 	}

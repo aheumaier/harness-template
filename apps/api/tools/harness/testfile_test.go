@@ -12,7 +12,8 @@ import (
 )
 
 func TestTestFile(t *testing.T) {
-	root := scenarioRepo(t, map[string][]string{"apps/api/internal/x/model/x.go": {"package model"}})
+	t.Parallel()
+	root := templateRepo(t, map[string][]string{"apps/api/internal/x/model/x.go": {"package model"}})
 	outside := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "apps/web/src"), 0o755); err != nil {
 		t.Fatal(err)
@@ -84,6 +85,7 @@ func TestTestFile(t *testing.T) {
 // template protected paths the rows meet; only-test-files.bats runs the same rows through the hook with the
 // repo's own layout.env and protected-paths.txt.
 func TestProductTestFileVectors(t *testing.T) {
+	t.Parallel()
 	protected := append(slices.Clone(protectedList), "*playwright.config.* config", "scripts/test/*",
 		"apps/api/tools/analyzers/* config", "apps/api/internal/platform/approvaltest/* config")
 	var hinges []string // the third fields a row may carry: entries the template has
@@ -129,7 +131,7 @@ func TestProductTestFileVectors(t *testing.T) {
 	if len(rows) == 0 {
 		t.Fatal("no vectors in testdata/test-files.txt")
 	}
-	root := scenarioRepo(t, files)
+	root := templateRepo(t, files)
 	w := testWorld(t, io.Discard)
 	pt, err := loadProductTests(w, root)
 	if err != nil {
@@ -150,7 +152,8 @@ func TestProductTestFileVectors(t *testing.T) {
 }
 
 func TestTestFileExitCodes(t *testing.T) {
-	root := scenarioRepo(t, nil)
+	t.Parallel()
+	root := templateRepo(t, nil)
 	noLayout := t.TempDir() // fails closed: without the layout no path is a product test
 	for _, tt := range []struct {
 		args []string
@@ -163,7 +166,7 @@ func TestTestFileExitCodes(t *testing.T) {
 		{[]string{"test-file", root}, exitUsage},
 	} {
 		var stdout, stderr bytes.Buffer
-		if code := run(tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.code {
+		if code := runTest(t, tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.code {
 			t.Errorf("%v: exit %d, want %d (%s)", tt.args[1:], code, tt.code, stderr.String())
 		}
 		if stdout.Len() != 0 {
@@ -175,6 +178,7 @@ func TestTestFileExitCodes(t *testing.T) {
 // TestTestFileForms holds testFileForms, the words every reject prints, to testFileRE: each form it names is a
 // test file, and the near misses are not.
 func TestTestFileForms(t *testing.T) {
+	t.Parallel()
 	forms := []string{"a_test.go"}
 	for _, kind := range []string{"test", "spec", "e2e"} {
 		for _, ext := range []string{"js", "ts", "jsx", "tsx", "mjs", "cjs", "mts", "cts"} {
@@ -218,6 +222,7 @@ func TestTestFileForms(t *testing.T) {
 // TestLoadProductTestsFailsClosed: without harness entries, or with a pattern pathspecMatch cannot read as git
 // does, the predicate refuses to decide rather than allow too much.
 func TestLoadProductTestsFailsClosed(t *testing.T) {
+	t.Parallel()
 	for name, files := range map[string]map[string][]string{
 		"comments only": {"scripts/harness/protected-paths.txt": {"# harness files", "", "  # none"}},
 		"protected ?":   {"scripts/harness/protected-paths.txt": {"apps/api/tools/harnes? tool"}},
@@ -225,7 +230,7 @@ func TestLoadProductTestsFailsClosed(t *testing.T) {
 		"protected \\":  {"scripts/harness/protected-paths.txt": {`apps/api/tools/harness/\* tool`}},
 		"layout [":      {layoutFile: replaced(t, templateLayout, "GENERATED_GLOBS=", "GENERATED_GLOBS=[a]*.gen.go:")},
 	} {
-		root := scenarioRepo(t, files)
+		root := templateRepo(t, files)
 		w := testWorld(t, io.Discard)
 		if _, err := loadProductTests(w, root); err == nil {
 			t.Errorf("%s: loaded, want an error", name)

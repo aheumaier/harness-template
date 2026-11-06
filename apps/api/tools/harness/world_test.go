@@ -13,6 +13,7 @@ import (
 
 // TestLookPath pins how world.command finds a program: in the world's PATH, never the process's.
 func TestLookPath(t *testing.T) {
+	t.Parallel()
 	tool := func(mode os.FileMode) string {
 		t.Helper()
 		dir := t.TempDir()
@@ -88,6 +89,7 @@ func TestRunPhysicalCwd(t *testing.T) {
 }
 
 func TestWorldAbs(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct{ cwd, p, want string }{
 		{"/w", "/a/b", "/a/b"},
 		{"", "/a/b", "/a/b"},

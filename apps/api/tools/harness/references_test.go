@@ -33,6 +33,7 @@ const (
 )
 
 func TestReferencesPinned(t *testing.T) {
+	t.Parallel()
 	env := []string{"# pins", "", "TOOL_VERSION=v1.2.3", "BARE_VERSION=1.3.0"}
 	pkg := []string{`{"dependencies": {"lib": "2.0.0"}, "devDependencies": {"gen": "8.45.0", "pre": "1.0.0-next.1",
 		"caret": "^8.45.0", "wild": "8.x", "hyphen": "1.0.0 - 2.0.0", "or": "1.0.0 || 2.0.0"}}`}
@@ -174,6 +175,7 @@ func TestReferencesPinned(t *testing.T) {
 }
 
 func TestReferencesPinnedCannotRun(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		args func(t *testing.T) []string
@@ -194,7 +196,7 @@ func TestReferencesPinnedCannotRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			if got := run(tt.args(t), strings.NewReader(""), &stdout, &stderr); got != tt.want {
+			if got := runTest(t, tt.args(t), strings.NewReader(""), &stdout, &stderr); got != tt.want {
 				t.Errorf("exit %d, want %d; stdout %q stderr %q", got, tt.want, stdout.String(), stderr.String())
 			}
 		})

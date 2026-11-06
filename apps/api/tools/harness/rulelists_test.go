@@ -23,6 +23,7 @@ var (
 )
 
 func TestRuleLists(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		skill    []string
@@ -78,6 +79,7 @@ func TestRuleLists(t *testing.T) {
 }
 
 func TestRuleListsFailsClosed(t *testing.T) {
+	t.Parallel()
 	both := map[string][]string{rulesFile: listRules, skillFile: {"## Skip"}, agentFile: listAgent}
 	tests := []struct {
 		name     string

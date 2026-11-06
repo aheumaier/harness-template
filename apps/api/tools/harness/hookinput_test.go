@@ -7,6 +7,7 @@ import (
 )
 
 func TestHookInput(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		in     string
 		fields []string
@@ -21,7 +22,7 @@ func TestHookInput(t *testing.T) {
 	}
 	for _, tt := range tests {
 		var stdout, stderr bytes.Buffer
-		if code := run(append([]string{"hook-input"}, tt.fields...), strings.NewReader(tt.in), &stdout, &stderr); code != 0 {
+		if code := runTest(t, append([]string{"hook-input"}, tt.fields...), strings.NewReader(tt.in), &stdout, &stderr); code != 0 {
 			t.Errorf("%s: exit %d: %s", tt.in, code, stderr.String())
 		}
 		if stdout.String() != tt.want {
@@ -31,11 +32,12 @@ func TestHookInput(t *testing.T) {
 }
 
 func TestHookInputFailsClosed(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct{ in, field string }{
 		{"not json", "command"}, {"", "command"}, {"null", "command"}, {`{"cwd":3}`, "cwd"}, {`{}x`, "cwd"},
 	} {
 		var stdout, stderr bytes.Buffer
-		if code := run([]string{"hook-input", tt.field}, strings.NewReader(tt.in), &stdout, &stderr); code != 2 {
+		if code := runTest(t, []string{"hook-input", tt.field}, strings.NewReader(tt.in), &stdout, &stderr); code != 2 {
 			t.Errorf("%q %s: exit %d, want 2", tt.in, tt.field, code)
 		}
 		if stdout.Len() != 0 {
@@ -43,12 +45,12 @@ func TestHookInputFailsClosed(t *testing.T) {
 		}
 	}
 	var stdout, stderr bytes.Buffer
-	if code := run(nil, strings.NewReader(""), &stdout, &stderr); code != exitUsage {
+	if code := runTest(t, nil, strings.NewReader(""), &stdout, &stderr); code != exitUsage {
 		t.Errorf("no subcommand: exit %d, want %d", code, exitUsage)
 	}
 	stderr.Reset()
 	// Exit 64 tells the hook the binary is stale; the message names the field, not the whole usage text.
-	if code := run([]string{"hook-input", "nope"}, strings.NewReader("{}"), &stdout, &stderr); code != exitUsage ||
+	if code := runTest(t, []string{"hook-input", "nope"}, strings.NewReader("{}"), &stdout, &stderr); code != exitUsage ||
 		!strings.HasPrefix(stderr.String(), `harness hook-input: unknown field "nope"`) || strings.Contains(stderr.String(), "usage: harness") {
 		t.Errorf("unknown field: exit %d, stderr %q; want %d and the field named", code, stderr.String(), exitUsage)
 	}
