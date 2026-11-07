@@ -41,8 +41,9 @@ The frontend mirrors this: `packages/domain` is pure TS (no React, no browser AP
 4. **Fix the code, not the sensor.** A red sensor prints the rule and its remediation; follow it. A
    suppression (`//nolint`, `eslint-disable`, `@ts-expect-error`, `# shellcheck disable`) needs
    `reason: … (rule: <id>)` on the same line; `@ts-ignore` is never allowed.
-5. **Harness files are not yours to change.** Linter configs, `scripts/harness/**`, `.claude/**`,
-   `.github/**` and this file are protected. If a rule is wrong, propose the change in the PR description.
+5. **Harness files are not yours to change.** Linter configs, `scripts/harness/**`,
+   `apps/api/tools/harness/**`, `.claude/**`, `.github/**` and this file are protected. If a rule is wrong,
+   propose the change in the PR description.
 6. **Done means green.** `make check` before you say a task is done; `make check-all` before a PR.
 7. **The repo is the system of record.** Decisions go in [docs/adr/](docs/adr/README.md); new product
    capabilities in `specs/NNN-slug/` via spec-kit (`/speckit-specify` → `/speckit-plan` → `/speckit-tasks`);
