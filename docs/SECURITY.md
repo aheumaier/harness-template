@@ -18,6 +18,12 @@ Defaults this template ships with, and what a product built on it must do before
   pinned per OS/arch in `scripts/tool-versions.env` and not installed on a mismatch or a missing pin;
   scanners and CI agents run only as these release binaries, never as GitHub Actions, npm packages or
   container images ([ADR 0016](adr/0016-tool-supply-chain.md)).
+- **A self-hosted Mac runs branch code.** While a Mac runner is registered to the repo, anyone who can push a
+  branch can run code on it, whether or not the repo variable `IOS_RUNNER` points `check-ios` at it, and what a
+  job leaves there stays for the next job. So it runs as a dedicated standard macOS user with no keychain items,
+  SSH keys or personal files, under its own label (`ios-mac`), only for a private repo whose writers are trusted;
+  before the repo goes public, unset `IOS_RUNNER` and remove the runner (`./config.sh remove`)
+  ([ci.md](harness/ci.md#self-hosted-mac-runner)).
 - **The CI PR reviewer's key trusts write-access collaborators.** `pr-review.yml` runs on `pull_request`,
   where GitHub runs the PR's own copy of the workflow with the `ANTHROPIC_API_KEY` secret: anyone who can push
   a branch can read or spend it. It must be a dedicated Anthropic workspace key with a hard spend limit. The

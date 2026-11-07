@@ -2,8 +2,12 @@
 
 CI runs the same `make` targets you run locally; a workflow adds no checks of its own. If CI is red, the
 same target is red on your machine (with `BASE_REF=origin/main` for diff-based sensors). CI sets
-`HARNESS_SCOPE=full`, so every sensor runs; a local `make check` skips those whose inputs did not change
-([harness-scope](rules.md#harness-scope)). Inferential sensors are the exception
+`HARNESS_SCOPE=full`, so every sensor in a job that runs runs; a local `make check` skips those whose inputs did
+not change ([harness-scope](rules.md#harness-scope)). Since 2026-11-07, two required jobs pass without running when their
+inputs did not change, to save Actions minutes: `check-ios` is skipped after `ios-gate` prints a notice, and
+`generator-probe` prints one itself
+([ADR 0044](../adr/0044-ios-ci-on-macos.md)); `check-all` and `harness-selftest` still run on every PR.
+Inferential sensors are the exception
 ([ADR 0019](../adr/0019-inferential-sensors-are-advisory.md)): `pr-review.yml` and `drift.yml`'s scheduled
 `reviews` and `agent-gc` jobs run agents that no `make` target runs, and they never block.
 
@@ -21,9 +25,10 @@ check's name: branch protection matches checks by name, so such a job could stan
 |----------|---------|----------------------|------|----------|
 | `ci.yml` | PR, push to main | `check-all` | `make setup && make check-all` minus `contract-check`, `harness-integrity`, `commits` and `specs` (own workflows, PR title, label waivers); needs Docker and pulls `OBS_IMAGE` (2.58 GB) for `make test-obs` on each fresh runner, no image cache ([ADR 0017](../adr/0017-per-worktree-observability-stack.md)); the only job that installs a browser: `make e2e-deps` installs the system libraries of Playwright's Chromium headless shell (unpinned apt, [ADR 0025](../adr/0025-browser-e2e-is-the-nfr-b2-sensor.md) known gap) and `make e2e` the browser itself, which `.github/actions/setup` (input `browser: "true"`) caches as `.bin/playwright` apart from the rest of `.bin`, keyed on the locked Playwright version; uploads `.cache/harness/timings.jsonl` as `harness-timings-check-all` (8 days) and shows latency-budget warnings as annotations; on failure uploads `.tmp/e2e` and `.tmp/dev` as `e2e-failure` (3 days) | yes |
 | | | `harness-selftest` | every fixture rejected by its sensor ([rules.md](rules.md)) | yes |
-| | | `generator-probe` | `make new-domain NAME=zzz_probe && make check`, then `make docs-quality-shape` (the generated `QUALITY.md` row is well-formed and matches its domain; deterministic, [ADR 0028](../adr/0028-quality-grades-per-domain-and-layer.md)), then `make test-scaffold NAME=zzz_probe`: the probe's generated service, handler and integration tests through `go test -json`, red unless each ran and passed, none skipped (NFR-B1); restores only the paths the generator touched and asserts a clean tree | yes |
+| | | `generator-probe` | `make new-domain NAME=zzz_probe && make check`, then `make docs-quality-shape` (the generated `QUALITY.md` row is well-formed and matches its domain; deterministic, [ADR 0028](../adr/0028-quality-grades-per-domain-and-layer.md)), then `make test-scaffold NAME=zzz_probe`: the probe's generated service, handler and integration tests through `go test -json`, red unless each ran and passed, none skipped (NFR-B1); restores only the paths the generator touched and asserts a clean tree; on a PR that changes no harness file, no generator file and nothing the generated domain builds on (the API's `cmd`, `internal/platform`, Go module, sqlc and Atlas config, migrations, queries, contract, client, the JS workspace, the Postgres setup (`compose.yaml`, `setup-worktree.sh`), `docs/QUALITY.md`, `docs/generated`; `scripts/harness/unchanged.sh`, failing closed), it prints a notice and passes without running; a push to main always runs it ([ADR 0044](../adr/0044-ios-ci-on-macos.md), amended 2026-11-07) | yes |
 | | | `adoption-probe` | `make adoption-probe`: README.md "(b) Brownfield project" followed step by step on the root-`go.mod` repo in `scripts/templates/adoption-probe/`, then `make setup`, `make check` and `make harness-selftest` there (rule `harness-adoption-probe`); uploads its timing as `harness-timings-adoption-probe`. Required, not a weekly drift report, because README (b) breaks on the harness PR that causes it ([ADR 0038](../adr/0038-readme-brownfield-adoption-is-probed.md)). Template-only: in a product, where `scripts/tool-versions.env` sets `HARNESS_UPSTREAM` (README (a) step 3's `make rename WRITE=1`, [ADR 0026](../adr/0026-template-sync-is-a-drift-report.md); the file is protected config, so setting it in the template needs the label), the job prints a notice and passes without running anything, and `make adoption-probe` passes silently. Likewise when `scripts/harness/adoption-probe.sh` is removed and declined (`.harness-version` has `# declined scripts/harness/adoption-probe.sh: <why>`), as README (b) step 6 has an adopted repo do, the job prints a notice and passes without running anything (the decline line alone does not skip it: harness-integrity skips `#` lines, while removing the script needs the label), so the required check stays green and an adopted repo never edits this job, the target or the check list (the rule is not linked here because such a repo drops its rules.md entry) | yes |
-| `ios.yml` | PR, push to main | `check-ios` | on a `macos-26` runner, `XCODE_VERSION` from `scripts/tool-versions.env` selected (red when the image lacks `/Applications/Xcode_<version>.app` or `xcode-select -p` stays the command-line tools), then `make setup` without Postgres (`SKIP_DB=1`; it also generates the app's Xcode project), `make check-ios` (Xcode pin, SwiftLint, swift-format, `swift test`, the app build) and `make harness-selftest` with only the fixtures that need Docker skipped, so each iOS rule rejects its fixture there (NFR-R5); uploads `harness-timings-check-ios`. No `check-all`: hosted macOS runners have no Docker. Always starts, so it can be required, and passes with a notice when `STACK` has no `ios`, or on a PR that changes no Swift file, Swift package, `project.yml`, file in `IOS_DIR` or harness file; a push to main always runs. macOS minutes cost ten times Linux minutes in a private repo; when they run out (a $0 spending limit), macOS runners are blocked or hosted macOS is down, every PR waits on this check: raise the limit, merge as an admin, or drop `check-ios` from `REQUIRED_CHECKS` until it is back ([ADR 0044](../adr/0044-ios-ci-on-macos.md)). `.github/actions/setup` caches `.bin/swift-format` (built from source, about 3 minutes) apart from the rest of `.bin`, keyed on its commit and `scripts/swift-format/Package.resolved` | yes |
+| `ios.yml` | PR, push to main, manual | `ios-gate` | on Ubuntu, decides whether `check-ios` runs (below); red only when the gate itself breaks, and then `check-ios` runs too | yes |
+| | | `check-ios` | on a `macos-26` runner, or the owner's Mac when the repo variable `IOS_RUNNER` names its runner label ([self-hosted Mac runner](#self-hosted-mac-runner)), `XCODE_VERSION` from `scripts/tool-versions.env` selected through `DEVELOPER_DIR` (red when none of `/Applications/Xcode_<version>.app` (the hosted image) and xcodes' `Xcode-<version>.app` or `Xcode-<version>.0.app` is there, or it has no `Contents/Developer`), then `make setup` without Postgres (`SKIP_DB=1`; it also generates the app's Xcode project), `make check-ios` (Xcode pin, SwiftLint, swift-format, `swift test`, the app build) and `make harness-selftest` with only the fixtures that need Docker skipped, so each iOS rule rejects its fixture there (NFR-R5); uploads `harness-timings-check-ios`. No `check-all`: hosted macOS runners have no Docker. Skipped, which GitHub reports as a success for a required check, when `ios-gate` prints a notice: `STACK` has no `ios`, or a PR (against its merge base) or a push to main (against the commit before it; none means run) changes no Swift file, Swift package, `project.yml`, file in `IOS_DIR` or harness file the iOS sensors read (their configs and scripts, their Go in `swift*.go`, the `Makefile`, `install-tools.sh`, `setup-worktree.sh`, `run.sh`, the `ios-*` fixtures, `selftest.sh`, `layout.env`, `tool-versions.env`, `ios.yml`, the setup action; amended 2026-11-07). A manual run (Actions → ios → Run workflow) always runs it: use it to prove main after a run that did not finish or after switching runners. macOS minutes cost ten times Linux minutes in a private repo; when they run out (a $0 spending limit), macOS runners are blocked or hosted macOS is down, every PR waits on this check (as it does while a self-hosted Mac is offline): unset `IOS_RUNNER`, raise the limit, merge as an admin, or drop `check-ios` from `REQUIRED_CHECKS` until it is back ([ADR 0044](../adr/0044-ios-ci-on-macos.md)). `.github/actions/setup` caches `.bin/swift-format` (built from source, about 3 minutes) apart from the rest of `.bin`, keyed on its commit and `scripts/swift-format/Package.resolved` | yes |
 | `coverage.yml` | PR, push to main | `coverage` | `make setup && make coverage` into the job summary ([coverage](#coverage)); a report, not a sensor: a failure to measure turns it red, never blocking | no |
 | `pr-review.yml` | PR (`pull_request`, never `pull_request_target`) | `review`, `comment` | the `code-reviewer` prompt, headless, on the PR's diff → one top-level PR comment, replaced on each push ([PR review](#pr-review)); an inferential sensor, advisory ([ADR 0019](../adr/0019-inferential-sensors-are-advisory.md)) | no |
 | `contract-gate.yml` | PR via `pull_request_target` (incl. label changes) | `api-no-breaking-change` | the **base branch's** `make contract-check` against the PR's spec when `api/openapi.yaml` changed (oasdiff, red only on breaking changes) | yes |
@@ -266,7 +271,7 @@ path, and the base-branch `harness-integrity` gate stays red until a human adds 
 
 ## Branch protection
 
-`scripts/github-branch-protection.sh` configures `main` via `gh api`: the eight required checks above,
+`scripts/github-branch-protection.sh` configures `main` via `gh api`: the nine required checks above,
 strict (branch up to date), one approving review including a code owner (`.github/CODEOWNERS`), stale
 reviews dismissed, linear history, no force pushes or deletions. Admins are not included
 (`enforce_admins: false`): with a single code owner, GitHub forbids approving your own PR. It is not run by any
@@ -279,6 +284,42 @@ CONFIRM=1 scripts/github-branch-protection.sh   # applies it (gh auth with admin
 ```
 
 When a workflow job is renamed, update `REQUIRED_CHECKS` in the script and re-run it.
+
+## Self-hosted Mac runner
+
+`check-ios` runs on the hosted `macos-26` image unless the repo variable `IOS_RUNNER` names another runner label
+([ADR 0044](../adr/0044-ios-ci-on-macos.md), amended 2026-11-07). A self-hosted Mac costs no Actions minutes
+(hosted macOS minutes count ten times in a private repo). What it costs instead:
+
+- **Anyone who can push a branch to the repo can run code on that Mac**, as the runner's user, while the runner is
+  registered, whether or not `IOS_RUNNER` is set: a branch can change `ios.yml` to target the runner's labels. So
+  register it only for a private repo whose writers you trust, and remove it (step 5) before the repo goes public
+  or gains a writer you would not give a shell on that Mac.
+- **The runner is persistent.** Its work folder, caches and anything a job leaves in its user's home survive to
+  the next job, so one PR can affect another's run.
+- **While the Mac is offline or asleep, every PR with something iOS in it waits** on the required check. PRs with
+  nothing iOS skip it on Linux and do not wait.
+
+1. Create a standard (not admin) macOS user for the runner, with no keychain items, SSH keys, cloud logins or
+   your own files.
+2. As an admin, install Xcode `XCODE_VERSION` from `scripts/tool-versions.env` as
+   `/Applications/Xcode-<version>.app` (the name `xcodes install <version>` gives) or
+   `/Applications/Xcode_<version>.app`, then finish its first launch and add the iOS simulator, which `build-ios`
+   builds for: `export DEVELOPER_DIR=/Applications/Xcode-<version>.app/Contents/Developer`, then
+   `sudo xcodebuild -license accept && sudo xcodebuild -runFirstLaunch && xcodebuild -downloadPlatform iOS`. The
+   job selects Xcode through `DEVELOPER_DIR`, so the runner needs no `sudo` and leaves the Mac's `xcode-select`
+   choice alone. Docker is not needed: the job skips the Postgres fixtures. Do the remaining steps as the runner
+   user.
+3. In the repo, Settings → Actions → Runners → New self-hosted runner (macOS, ARM64): download the runner into
+   its own folder and run its `./config.sh` with the token the page shows, adding
+   `--no-default-labels --labels ios-mac` (the token is single-use; never paste it into a chat or a file). Run it
+   as a service, so it starts again after a reboot once that user is logged in: `./svc.sh install && ./svc.sh start`.
+4. Point `check-ios` at it: `gh variable set IOS_RUNNER --body ios-mac`. Without the default labels (`self-hosted`,
+   `macOS`, `ARM64`), a job added later for self-hosted Linux runners cannot land on this Mac. Runs already waiting
+   keep the runner they asked for: cancel them and re-run them (or run the `ios` workflow by hand on `main`).
+5. Back to hosted: `gh variable delete IOS_RUNNER`, then remove the runner, since a registered runner still runs
+   any job that asks for its labels: `./svc.sh stop && ./svc.sh uninstall`, then `./config.sh remove` with the
+   removal token from the runner's page in Settings.
 
 ## Agent GC
 

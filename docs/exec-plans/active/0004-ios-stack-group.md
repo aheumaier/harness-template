@@ -231,6 +231,8 @@ learn a new one. By phase:
   is a documented rule, not a narrower glob.
 - **macOS minutes.** In this template almost every PR touches the harness, so the always-started macOS job
   runs real work on most of them; GitHub bills macOS at ten times Linux for private repos (public: free).
+  Happened: the free minutes ran out on 2026-11-07; the gate was narrowed and a self-hosted Mac made possible
+  (Log, 2026-11-07).
 - **A third copy of the test-file patterns** (`testFilePathspecs` and the Makefile's `specs-tested` list).
 - **TD-147 matters more once fixtures build Swift:** `.build/` and Xcode output must not carry over between
   fixtures (`.gitignore` covers git, not the selftest's shared state).
@@ -299,3 +301,10 @@ the `test-writer` and `swift test` into Phase 2. Each phase is its own branch an
   15 minutes, capacity), so no CI ran the Xcode parts. Run locally with Xcode 26.1 (`DEVELOPER_DIR`, not the
   pinned 26.6), `make build-ios` failed: through the `.bin/xcodegen` link XcodeGen found no setting presets, so
   the app had no `PRODUCT_NAME`. `.bin/xcodegen` is now a script that runs it by its real path.
+- 2026-11-07: the account's 2,000 free Actions minutes for November were gone; `check-ios` was 2,090 of the 3,259
+  billed from 2026-11-01. The owner reversed the 2026-11-02 ruling: a push to main runs the macOS job only when
+  something iOS changed, and the gate counts only the harness files the iOS sensors read. `runs-on` reads the
+  repo variable `IOS_RUNNER`, so the job can run on a self-hosted Mac, and Xcode is selected by `DEVELOPER_DIR`
+  instead of `sudo xcode-select`. Recorded as a dated amendment of ADR 0044. After the architect review the gate
+  moved to its own Ubuntu job, `ios-gate`, and `check-ios` is skipped when it says skip: GitHub counts a skipped
+  job as a passed required check, so Q7's "always starts" is no longer needed. A manual run always runs it.

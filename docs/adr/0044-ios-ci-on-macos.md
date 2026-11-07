@@ -1,7 +1,11 @@
 # ADR 0044: iOS CI on macOS, the app target and Swift lockfiles (amends 0042, 0043)
 
-Status: proposed · 2026-11-02 · amends [ADR 0042](0042-swift-unit-tests-in-make-check.md),
-[ADR 0043](0043-swift-lint-format-and-xcode-pin.md)
+Status: proposed · 2026-11-02 · amended 2026-11-07 (Actions minutes: the gate narrowed and applied to pushes to
+main and run on Ubuntu, a manual run, the runner a repo variable, Xcode by `DEVELOPER_DIR`, the generator probe
+gated on PRs) · amends
+[ADR 0042](0042-swift-unit-tests-in-make-check.md), [ADR 0043](0043-swift-lint-format-and-xcode-pin.md),
+since 2026-11-07 [ADR 0014](0014-make-check-scoped-to-the-change.md) (CI no longer runs every required job on
+every PR)
 
 ## Context
 [ADR 0042](0042-swift-unit-tests-in-make-check.md) and [ADR 0043](0043-swift-lint-format-and-xcode-pin.md) (the
@@ -16,8 +20,11 @@ that the app is described by an XcodeGen spec (Q2). This ADR records the third p
 ## Decision
 - **The macOS job.** `.github/workflows/ios.yml`, job `check-ios` on `macos-26`, a required status check and a
   protected harness file. It selects `/Applications/Xcode_<XCODE_VERSION>.app` by path (red when the image lacks
-  it), asserts that `xcode-select -p` is not the command-line tools (otherwise `xcode-pinned` and `build-ios` skip
-  by name and the job proves nothing), runs `make setup` with `SKIP_DB=1`, then `make check-ios` and
+  it; amended 2026-11-07: through `DEVELOPER_DIR` instead of `sudo xcode-select -s`, and also as xcodes names it,
+  `Xcode-<version>.app` or `Xcode-<version>.0.app`, so a self-hosted Mac needs no admin rights), asserts that
+  `xcode-select -p` is not the command-line tools (otherwise `xcode-pinned` and `build-ios` skip by name and the
+  job proves nothing; amended 2026-11-07: that the app has a `Contents/Developer`, since `xcode-select -p` only
+  echoes `DEVELOPER_DIR`), runs `make setup` with `SKIP_DB=1`, then `make check-ios` and
   `make harness-selftest` with `SELFTEST_SKIP_DOCKER=1`, and uploads its timings as `harness-timings-check-ios`.
   Hosted macOS runners have no Docker, so no Postgres: the job never runs `check-all`, and the selftest skips by
   name only the fixtures that need Docker, which the Ubuntu `harness-selftest` job runs.
@@ -26,6 +33,44 @@ that the app is described by an XcodeGen spec (Q2). This ADR records the third p
   and no harness file (`scripts/harness/unchanged.sh`, which adds every protected path); phase 3 adds the
   contract once Swift is generated from it. **Ruling: a push to main always runs it**, so the newest main is proven
   whatever the PR's gate said (the concurrency group drops a pending run that a newer push overtakes).
+  **Amended 2026-11-07 (the owner): a push to main runs it only when something iOS changed**, and "a harness file"
+  narrows to the ones the iOS sensors read and no Ubuntu job runs: their configs and scripts, their Go
+  (`swift*.go` in the harness module, tests left out), the `Makefile` (their recipes, which Ubuntu drops by
+  `HOST_OFF`), `install-tools.sh` (its macOS-only SwiftLint, swift-format and XcodeGen installs),
+  `setup-worktree.sh` (its `SKIP_DB` and Xcode project branches, which only this job runs), `run.sh`, the
+  `ios-*` fixtures, `selftest.sh`, `layout.env`, `tool-versions.env`, `ios.yml` and the setup action. On a push, the base is the commit before the push (`github.event.before`; none, as on a force
+  push, means run), and each push has its own concurrency group, so a newer push no longer drops an older one's
+  run. The free 2,000 minutes a month were gone on 2026-11-07: from 2026-11-01 to 11-07, `check-ios` billed 2,090
+  of 3,259 minutes (23 jobs averaging 8.4 minutes; GitHub rounds each job up to a whole minute, then counts macOS
+  ten times), most on harness PRs and pushes with nothing iOS in them. Replayed on the 22 of those runs whose
+  base is still in the history, the narrowed gate runs 13 (7 without the `Makefile`, `install-tools.sh` and
+  `run.sh`, which harness PRs change often but which nothing else runs for iOS). Other harness changes, such as
+  `unchanged.sh`, `layout.sh` or the rest of the harness Go, are run by the Ubuntu jobs; what the narrowing gives
+  up is their macOS proof until the next iOS change. Skipping on a push is sound because branch protection is
+  `strict` and a PR's run tests its merge with main, so a merged PR's tip was already proven; an admin merge that
+  bypasses the checks is the exception, and a manual run (`workflow_dispatch`, which always runs) proves main
+  after it or after a run that never finished. No weekly scheduled run: it would cost at least 10 macOS-billed
+  minutes a week whether anything changed or not.
+  **Amended 2026-11-07 (architect review): the gate is its own Ubuntu job, `ios-gate`**, and `check-ios` needs it
+  and is skipped by a job-level `if` when it says skip. GitHub reports a skipped job as a success, also as a
+  required check, so the premise of Q7 ("always starts, so it can be required") no longer holds and no longer
+  matters: a PR with nothing iOS costs one Linux minute instead of a macOS start, and does not wait for a
+  self-hosted Mac. When `ios-gate` itself fails, its output is empty and `check-ios` runs. `ios-gate` is required
+  too, as every job of a required workflow is (`REQUIRED_CHECKS`), so a broken gate blocks the PR; a repo admin
+  re-runs `scripts/github-branch-protection.sh` once it has reported.
+- **The runner (amended 2026-11-07).** `runs-on` reads the repo variable `IOS_RUNNER`: unset, the hosted
+  `macos-26`; otherwise the label of a Mac the owner registered (`ios-mac`), which costs no minutes but must be
+  online when something iOS changed. While it is registered, anyone who can push a branch can run code on it, so it
+  runs as a dedicated standard user and suits a private repo only ([ci.md](../harness/ci.md#self-hosted-mac-runner),
+  [SECURITY.md](../SECURITY.md)).
+- **The generator probe (amended 2026-11-07).** `generator-probe` in `ci.yml` stays required and always starts,
+  but on a PR it passes with a notice when `unchanged.sh` finds none of its inputs changed: every protected path,
+  the generator, and what the generated domain builds on (its Postgres setup, any `compose*.y*ml` included). A push to main always
+  runs it. The probe gate stays in this amendment rather than an ADR of its own: it is the same decision (skip a
+  required job whose inputs did not change, to save minutes) on the same date. `harness-selftest` is
+  not gated: its fixtures patch product files (`health.go`, `api/openapi.yaml`, the API client) and run tools
+  whose versions live in unprotected files (`package.json`, `pnpm-lock.yaml`, `go.mod`), so no hand-kept list
+  is its inputs; reviewers made such a gate skip a PR that broke a fixture (TD-173).
 - **The Ubuntu jobs** keep `SELFTEST_SKIP_SWIFT=1` and add `SELFTEST_SKIP_XCODE=1`. It is redundant (off macOS a
   `NEEDS_XCODE` fixture is skipped by its Swift check first) and set so the skip does not depend on that order.
 - **The app target (Q2).** `apps/ios/project.yml` describes an iOS application `App` (sources in `App/`, iOS 17)
@@ -74,22 +119,30 @@ that the app is described by an XcodeGen spec (Q2). This ADR records the third p
   `make tools` rebuild a restored binary whose pins differ.
 
 ## Consequences
-- Every PR that touches Swift, `IOS_DIR` or the harness has its Swift built, tested, linted and
-  formatted, the app built for the simulator, and every ios fixture (`ios-xcode-mismatch` included) proven on a Mac
-  with Xcode. NFR-R5 ("selftest on macOS") is met per PR rather than weekly. TD-151 and TD-155 close once the
+- Every PR that touches Swift, `IOS_DIR` or (amended 2026-11-07: instead of any) a harness file the iOS sensors
+  read has its Swift built, tested, linted and formatted, the app built for the simulator, and every ios fixture
+  (`ios-xcode-mismatch` included) proven on a Mac with Xcode. NFR-R5 ("selftest on macOS") is met on those PRs
+  rather than weekly; a portability difference in another harness file shows on the next of them. TD-151 and TD-155 close once the
   first run on the PR is green.
 - **Cost.** The repo is private, so GitHub bills macOS minutes at ten times Linux minutes; in the template almost
   every PR touches the harness, so the job does real work on most PRs and on every push to main. A public repo pays
-  nothing.
+  nothing. (Amended 2026-11-07: with the narrowed gate it would have run 13 of the 22 replayed runs; a self-hosted
+  Mac costs no minutes. This change alone does not bring the repo under the free 2,000 minutes a month: from
+  2026-11-01 to 11-07 the Linux jobs billed 1,169 minutes, about 5,000 a month at that pace, before any macOS
+  minute. Hosted macOS after the gate, at the same pace, is about 2,090 × 13/22 ≈ 1,240 billed minutes a week,
+  about 5,300 a month: some 10,000 a month in all, or about 5,000 with the self-hosted Mac. Staying under it needs a spending budget, self-hosted runners for the Linux jobs too, or fewer runs;
+  that is the owner's decision.)
 - **Adopters.** `check-ios` is a new required check: a repo admin re-runs `scripts/github-branch-protection.sh`.
-  A product without `ios` gets a job that passes with a notice. A product with `ios` keeps `project.yml` with the
+  A product without `ios` gets a job that passes with a notice (amended 2026-11-07: `ios-gate` prints it and
+  `check-ios` is skipped; `ios-gate` is a second new required check). A product with `ios` keeps `project.yml` with the
   app's sources in `App/` and its scheme named `App`: `build-ios` skips without a `project.yml`, but the
   `ios-app-build-broken` fixture writes into `App/` and expects the build to fail, so the selftest fails until the
   app follows that shape. It commits `Package.resolved` once a remote package appears.
-- A required check needs a macOS runner even to print its notice: when the repo's minutes run out under a $0
-  spending limit, an org policy blocks macOS runners or hosted macOS is down, every PR is blocked, also in a
-  product without `ios`. Remedies: raise the limit, merge as an admin, or drop `check-ios` from `REQUIRED_CHECKS`
-  until it is back ([ci.md](../harness/ci.md)).
+- A required check needs a macOS runner (amended 2026-11-07: only when something iOS changed; a skip runs on
+  Ubuntu): when the repo's minutes run out under a $0 spending limit, an org policy blocks macOS runners or
+  hosted macOS is down, or `IOS_RUNNER` names a Mac that is offline, every such PR is blocked. Remedies: unset `IOS_RUNNER`, raise
+  the limit, merge as an admin, or drop `check-ios` from `REQUIRED_CHECKS` until it is back
+  ([ci.md](../harness/ci.md)).
 - When the `macos-26` image drops Xcode `XCODE_VERSION`, the job fails on the missing path; the fix is a harness
   PR that bumps it (ADR 0043).
 - **Blind spots.** The build is a simulator build only: no device build, signing, archive, app tests or UI tests
@@ -97,7 +150,10 @@ that the app is described by an XcodeGen spec (Q2). This ADR records the third p
   `deps-swift-resolved` does not see them, and their lockfile is not in git; for the same reason `build-ios`
   resolves the app's packages afresh, the package's `Package.resolved` notwithstanding (TD-162). The gate's inputs
   are paths, not the build graph: a `.package(path:)` or a symlink target outside `IOS_DIR` is no input, so a PR
-  that changes only it skips the job until the push to main, and a guide-only harness change runs it (TD-164).
+  that changes only it skips the job, since 2026-11-07 also on the push to main (TD-164); so does a file a
+  `project.yml` `include:` names outside `IOS_DIR`. Since 2026-11-07 a push diffs against the push before it,
+  so when that push's run never finished (the self-hosted Mac was offline, the run was cancelled), the next
+  push with nothing iOS in it passes main's tip unproven until someone runs the workflow by hand.
   Nothing reads the `harness-timings-check-ios` artifact yet, so the ios rules' timings and fires stay out of the
   weekly reports (TD-163). The Postgres fixtures never run on macOS. A Mac with only the command-line tools still
   cannot run `build-ios` or the `NEEDS_XCODE` fixtures.

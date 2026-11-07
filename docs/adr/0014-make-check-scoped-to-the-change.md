@@ -1,6 +1,8 @@
 # ADR 0014: make check runs what the change can affect; check-all and CI run everything uncached
 
-Status: accepted · 2026-10-28
+Status: accepted · 2026-10-28 · amended 2026-11-07 by [ADR 0044](0044-ios-ci-on-macos.md) (to save Actions
+minutes, `check-ios` and `generator-probe` pass without running when their inputs did not change; `check-all`
+and `harness-selftest` still run everything on every PR)
 
 ## Context
 Agents run `make check` after every change, so its wall time is agent throughput (NFR-H3, ADR 0013). Most of

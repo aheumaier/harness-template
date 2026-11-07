@@ -31,8 +31,8 @@ while Swift code stays and `ios` is gone, and while `ios` stays without a `Packa
   `make check-ios` adds the check that the selected Xcode is `XCODE_VERSION`
   ([ios-xcode-pinned](../../docs/harness/rules.md#ios-xcode-pinned), [ADR 0043](../../docs/adr/0043-swift-lint-format-and-xcode-pin.md))
   and the app's simulator build (`make build-ios`: [ios-app-builds](../../docs/harness/rules.md#ios-app-builds));
-  CI's `check-ios` job runs it on macOS with Xcode on every PR that touches Swift, this directory or the
-  harness. A Swift file in `Tests/` must belong to a test target in `Package.swift`, or `make test-ios`
+  CI's `check-ios` job runs it on macOS with Xcode on every PR and push to main that touches Swift, this
+  directory or a harness file the iOS sensors read ([ADR 0044](../../docs/adr/0044-ios-ci-on-macos.md)). A Swift file in `Tests/` must belong to a test target in `Package.swift`, or `make test-ios`
   fails ([ios-tests-pass](../../docs/harness/rules.md#ios-tests-pass)).
 - No remote Swift package dependencies yet: once there are, commit `Package.resolved` with them
   ([deps-swift-resolved](../../docs/harness/rules.md#deps-swift-resolved)); it is scanned for known
