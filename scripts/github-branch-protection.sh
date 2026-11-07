@@ -13,7 +13,7 @@
 set -euo pipefail
 
 BRANCH="${BRANCH:-main}"
-REQUIRED_CHECKS=(check-all harness-selftest generator-probe adoption-probe check-ios api-no-breaking-change harness-integrity pr-conventions)
+REQUIRED_CHECKS=(check-all harness-selftest generator-probe adoption-probe ios-gate check-ios api-no-breaking-change harness-integrity pr-conventions)
 
 # app_id 15368 = GitHub Actions: only a workflow job can satisfy a required check, not any app posting
 # a status with the same name.

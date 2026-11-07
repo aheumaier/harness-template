@@ -844,8 +844,8 @@ These are stack-independent; reuse them as they are.
 | [docs-references-pinned](harness/rules.md#docs-references-pinned) | C |
 | [rules-fixture-claims](harness/rules.md#rules-fixture-claims) | C |
 
-**Required CI checks** (eight): `check-all`, `harness-selftest`, `generator-probe`, `adoption-probe`,
-`check-ios`, `api-no-breaking-change`, `harness-integrity`, `pr-conventions`. See [harness/ci.md](harness/ci.md)
+**Required CI checks** (nine): `check-all`, `harness-selftest`, `generator-probe`, `adoption-probe`,
+`ios-gate`, `check-ios`, `api-no-breaking-change`, `harness-integrity`, `pr-conventions`. See [harness/ci.md](harness/ci.md)
 for jobs, label waivers and scheduled workflows.
 
 ---
