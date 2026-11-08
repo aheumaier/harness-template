@@ -2,7 +2,8 @@
 
 Status: proposed · 2026-11-02 · amended 2026-11-07 (Actions minutes: the gate narrowed and applied to pushes to
 main and run on Ubuntu, a manual run, the runner a repo variable, Xcode by `DEVELOPER_DIR`, the generator probe
-gated on PRs) · amends
+gated on PRs) · amended 2026-11-08 (why skipping on a push is sound, without branch protection; the repo made
+public) · amends
 [ADR 0042](0042-swift-unit-tests-in-make-check.md), [ADR 0043](0043-swift-lint-format-and-xcode-pin.md),
 since 2026-11-07 [ADR 0014](0014-make-check-scoped-to-the-change.md) (CI no longer runs every required job on
 every PR)
@@ -46,18 +47,22 @@ that the app is described by an XcodeGen spec (Q2). This ADR records the third p
   base is still in the history, the narrowed gate runs 13 (7 without the `Makefile`, `install-tools.sh` and
   `run.sh`, which harness PRs change often but which nothing else runs for iOS). Other harness changes, such as
   `unchanged.sh`, `layout.sh` or the rest of the harness Go, are run by the Ubuntu jobs; what the narrowing gives
-  up is their macOS proof until the next iOS change. Skipping on a push is sound because branch protection is
-  `strict` and a PR's run tests its merge with main, so a merged PR's tip was already proven; an admin merge that
-  bypasses the checks is the exception, and a manual run (`workflow_dispatch`, which always runs) proves main
-  after it or after a run that never finished. No weekly scheduled run: it would cost at least 10 macOS-billed
-  minutes a week whether anything changed or not.
+  up is their macOS proof until the next iOS change. Skipping on a push is sound because a push that changes an
+  iOS input runs `check-ios` on the new tip of main, merged PRs and admin pushes alike, and a push that changes
+  none cannot change its result (apart from the Blind spots). (Amended 2026-11-08: this replaces the reason
+  given on 2026-11-07, that branch protection is `strict` so a merged PR's tip was already proven. The repo was
+  private on GitHub Free, where branch protection is not available ([TD-2](../exec-plans/tech-debt-tracker.md)),
+  so that reason never held. Where protection is on, `strict` adds a proven merge before the push.) A push whose
+  run never finished (Mac offline, cancelled) can be followed by one that skips; a manual run
+  (`workflow_dispatch`, which always runs) proves main after it. No weekly scheduled run: it would cost at least
+  10 macOS-billed minutes a week whether anything changed or not.
   **Amended 2026-11-07 (architect review): the gate is its own Ubuntu job, `ios-gate`**, and `check-ios` needs it
   and is skipped by a job-level `if` when it says skip. GitHub reports a skipped job as a success, also as a
   required check, so the premise of Q7 ("always starts, so it can be required") no longer holds and no longer
   matters: a PR with nothing iOS costs one Linux minute instead of a macOS start, and does not wait for a
   self-hosted Mac. When `ios-gate` itself fails, its output is empty and `check-ios` runs. `ios-gate` is required
-  too, as every job of a required workflow is (`REQUIRED_CHECKS`), so a broken gate blocks the PR; a repo admin
-  re-runs `scripts/github-branch-protection.sh` once it has reported.
+  too, as every job of a required workflow is (`REQUIRED_CHECKS`), so a broken gate blocks the PR where branch
+  protection is on; a repo admin re-runs `scripts/github-branch-protection.sh` once it has reported.
 - **The runner (amended 2026-11-07).** `runs-on` reads the repo variable `IOS_RUNNER`: unset, the hosted
   `macos-26`; otherwise the label of a Mac the owner registered (`ios-mac`), which costs no minutes but must be
   online when something iOS changed. While it is registered, anyone who can push a branch can run code on it, so it
@@ -131,7 +136,9 @@ that the app is described by an XcodeGen spec (Q2). This ADR records the third p
   2026-11-01 to 11-07 the Linux jobs billed 1,169 minutes, about 5,000 a month at that pace, before any macOS
   minute. Hosted macOS after the gate, at the same pace, is about 2,090 × 13/22 ≈ 1,240 billed minutes a week,
   about 5,300 a month: some 10,000 a month in all, or about 5,000 with the self-hosted Mac. Staying under it needs a spending budget, self-hosted runners for the Linux jobs too, or fewer runs;
-  that is the owner's decision.)
+  that is the owner's decision.) (Amended 2026-11-08: the owner made the repo public, so GitHub's standard
+  runners, macOS included, bill no minutes, and branch protection becomes available. A public repo must not
+  keep a self-hosted runner, so `IOS_RUNNER` stays unset here; it remains an option for a private adopter.)
 - **Adopters.** `check-ios` is a new required check: a repo admin re-runs `scripts/github-branch-protection.sh`.
   A product without `ios` gets a job that passes with a notice (amended 2026-11-07: `ios-gate` prints it and
   `check-ios` is skipped; `ios-gate` is a second new required check). A product with `ios` keeps `project.yml` with the

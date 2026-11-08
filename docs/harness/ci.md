@@ -276,7 +276,9 @@ strict (branch up to date), one approving review including a code owner (`.githu
 reviews dismissed, linear history, no force pushes or deletions. Admins are not included
 (`enforce_admins: false`): with a single code owner, GitHub forbids approving your own PR. It is not run by any
 workflow or by `make`. A repository admin runs it once, after the first push (checks must have reported
-once before GitHub accepts them as required):
+once before GitHub accepts them as required). On a private repo this needs GitHub Pro, Team or Enterprise:
+on GitHub Free the API answers HTTP 403 and the required checks only advise, since a red PR can still be
+merged. A public repo has branch protection on every plan.
 
 ```sh
 scripts/github-branch-protection.sh             # dry run: prints the request
