@@ -650,10 +650,12 @@ agents create modules.
 Be honest with your team about these; most will apply to a port too. Details are in the
 [tech-debt tracker](exec-plans/tech-debt-tracker.md).
 
-- **Required checks need branch protection.** This repository is private on GitHub Free and `main` has no
-  branch protection (TD-2), so the required checks are advisory in practice. The protection script exists
-  ([github-branch-protection.sh](../scripts/github-branch-protection.sh)) but cannot be applied on that plan.
-  Without branch protection and CODEOWNERS, the harness-integrity gate is not a control.
+- **Required checks need branch protection.** A private repository on GitHub Free gets none (HTTP 403), so
+  [github-branch-protection.sh](../scripts/github-branch-protection.sh) cannot be applied and the required
+  checks only advise. This repository was private on Free until 2026-11-08; since then it is public and the
+  script is applied. Admins are exempt (`enforce_admins: false`): with a single code owner, who cannot approve
+  their own PR, every merge here is an admin merge, which skips the checks too. Without branch protection and
+  CODEOWNERS, the harness-integrity gate is not a control.
 - **The local protect hook is bypassable** from Bash in ways the heuristic does not catch, such as writes from `python -c` or `node -e` (TD-73). Treat it as
   a fast warning; the CI gate is the control.
 - **`evasion-reviewer` has Bash with no hook**; its limits are in its prompt only.
