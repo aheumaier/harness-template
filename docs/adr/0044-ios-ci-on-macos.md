@@ -51,7 +51,7 @@ that the app is described by an XcodeGen spec (Q2). This ADR records the third p
   iOS input runs `check-ios` on the new tip of main, merged PRs and admin pushes alike, and a push that changes
   none cannot change its result (apart from the Blind spots). (Amended 2026-11-08: this replaces the reason
   given on 2026-11-07, that branch protection is `strict` so a merged PR's tip was already proven. The repo was
-  private on GitHub Free, where branch protection is not available ([TD-2](../exec-plans/tech-debt-tracker.md)),
+  private on GitHub Free, where branch protection is not available (TD-2, closed the same day),
   so that reason never held. Where protection is on, `strict` adds a proven merge before the push.) A push whose
   run never finished (Mac offline, cancelled) can be followed by one that skips; a manual run
   (`workflow_dispatch`, which always runs) proves main after it. No weekly scheduled run: it would cost at least
