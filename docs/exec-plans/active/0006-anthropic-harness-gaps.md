@@ -79,7 +79,8 @@ PR; **–** needs none.
 - [ ] V2 H `app-evaluator` agent file and its hook confinement
 - [ ] V3 H finding-to-journey rule: `drive-app` skill and `code-reviewer` updated
 - [ ] V4 H wiring: `CLAUDE.md`, loop prompts' checker step, PR template line
-- [ ] S1 – Stop-hook semantics verified against the hooks reference; findings in Open assumptions
+- [x] S1 – 2d78eb2 — Stop-hook behaviour taken from a summary → verified against the hooks reference on
+  2026-11-24; `stop_hook_active` tells a repeated stop, so no marker file is needed
 - [ ] S2 H `.bin/harness stop-gate`, hook entry in `.claude/settings.json`, rule and tests
 - [ ] E1 H eval corpus for `code-reviewer` and (if kept) `app-evaluator`
 - [ ] E2 H `.bin/harness agent-evals` and `make agent-evals`
