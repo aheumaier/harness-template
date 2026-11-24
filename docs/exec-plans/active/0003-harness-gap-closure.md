@@ -45,7 +45,7 @@ From a comparison on 2026-10-28 (`perf/harness-nfr` @ 53ec497). ✅ present · �
 | G15 | Defaults an agent picked without asking are recorded and reviewable | Thoughtworks (explicit defaults instead of guesses) | loop slices record Decisions; other PRs have no place for them; `speckit-clarify` covers specs only | 🟡 |
 | G16 | Tests written apart from the implementation, so the implementer cannot fit the test to its code | Thoughtworks (RED test agent, GREEN implementer agent) | the same agent writes test and code; weekly mutation testing (P2.6) finds weak tests only afterwards | 🟡 |
 | G17 | Leftover runtime: per-worktree compose stacks outlive their worktree or session | CLAUDE.md "leave no loose ends"; OpenAI (garbage collection) | `make down` exists but nothing calls it; lane close (loop prompt §5g) tears down by prose only; on 2026-10-29 five `harness-*` Postgres stacks ran, one from a scratchpad copy that was no git worktree | ❌ |
-| — | Enforced merge gates | Fowler (human input where it matters) | out of scope: [TD-2](../tech-debt-tracker.md), blocked on the GitHub plan | — |
+| — | Enforced merge gates | Fowler (human input where it matters) | out of scope: TD-2, blocked on the GitHub plan; closed 2026-11-08, when the repo went public and branch protection was applied | — |
 
 **Doc drift found** (Phase 0 fixes it and adds the sensor that would have caught the first item):
 
