@@ -1,6 +1,6 @@
 # 0006 — Close the gaps to Anthropic's harness guidance
 
-Status: proposed · Owner: @aheumaier · Started: 2026-11-24
+Status: active · Owner: @aheumaier · Started: 2026-11-24
 
 ## Goal
 
@@ -59,7 +59,7 @@ nothing (0003 loop prompt), orchestrator and lanes, builder and checker kept apa
 
 | # | Phase | Exit criterion | State |
 |---|-------|----------------|-------|
-| 0 | Decision | ADR 0046 proposed: what an app-driving evaluator's verdict counts for, agent evals as a drift report, the assumption ledger (amends 0019, 0032, 0039). The stop gate and the frozen-tests rule get their own ADRs with S2 and T1 | open |
+| 0 | Decision | ADR 0046 proposed: what an app-driving evaluator's verdict counts for, agent evals as a drift report, the assumption ledger (amends 0019, 0032, 0039). The stop gate and the frozen-tests rule get their own ADRs with S2 and T1 | done 2026-11-24 |
 | 1 | Evaluator runs the app (A1) | Trial result recorded in ADR 0046 while it is still proposed, then the ADR accepted; if kept: `app-evaluator` agent confined by hooks, wired into `CLAUDE.md` and the loop checker step; an accepted finding is a committed journey in `make e2e` | open |
 | 2 | Done gate at stop (A2) | Stopping the main session with a changed tree and a red `make check` is blocked once with the sensor output; budget and escape rules hold | open |
 | 3 | Agent evals (A3) | `make agent-evals` reports hit rate, false positives, run-to-run flips and cost per agent; result appears in the weekly drift issue once TD-38 is paid | open |
@@ -76,7 +76,8 @@ start after it is accepted.
 `[ ]` open, `[x]` done (`sha — before → after`), `[!]` blocked (reason). **H** needs a human-approved harness
 PR; **–** needs none.
 
-- [ ] D0 – ADR 0046 proposed (Phase 0)
+- [x] D0 – f186bda — no decision record for A1, A3 and A4 → ADR 0046 proposed, amending
+  0019, 0032 and 0039
 - [ ] V1 – evaluator trial run on a clone of `strength_planner`, numbers recorded in ADR 0046 (design below;
   the owner approves the design and cost before the run)
 - [ ] V2 H `app-evaluator` agent file and its hook confinement
@@ -398,7 +399,7 @@ the Go port of `pr-review` (plan 0005), not in the shell script.
   said a separate clone with other ports fits, and that it could not vouch for the cases. Findings left for
   their slices: what a Stop hook's exit-0 output reaches, an explicit timeout, the stamp's key and a second
   blocking Stop hook (S2); the rule id `agent-stop-is-green` against the `harness-` prefix; this file's
-  "Status: proposed".
+  "Status: proposed" (now `active`).
 - 2026-11-24 — S1 and D0 rebased and reviewed again by `code-reviewer`; S1's claims checked against the hooks
   reference. Fixed: what the continuation cap bounds (S1), and in D0 the keep bar, what
   `only-test-files.sh` accepts, the red working tree an uncommitted journey causes, and what a drop leaves
