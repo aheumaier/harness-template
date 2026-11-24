@@ -247,9 +247,38 @@ the Go port of `pr-review` (plan 0005), not in the shell script.
 
 ## Open assumptions
 
-- **Stop-hook behaviour is unverified.** The description in A2 comes from a summary of the best-practices
-  page. S1 verifies it before S2 is designed in detail; if a first stop cannot be told from a repeated one,
-  the escape rule needs another mechanism (a marker file under `.cache/harness/`).
+- **Stop-hook behaviour: verified on 2026-11-24 (S1)** against the
+  [hooks reference](https://code.claude.com/docs/en/hooks). What S2 builds on:
+  - **Input.** The common fields (among them `session_id`, `transcript_path`, `cwd`, `permission_mode` and
+    `hook_event_name`) plus `stop_hook_active`, `last_assistant_message`, `background_tasks` (the tasks
+    still running) and `session_crons`.
+  - **Exit 2** blocks the stop and the hook's stderr goes to the model as the reason. Exit 0 lets the
+    session stop. Any other exit code is a non-blocking error: the stop goes ahead. Exit 0 with
+    `{"decision":"block","reason":"…"}` on stdout blocks too; a hook uses one form.
+  - **First stop or repeated stop.** `stop_hook_active` is `true` "when Claude Code is already continuing as
+    a result of a stop hook". The escape rule reads it; no marker file is needed. The field is about any
+    stop hook, not this one: when a user-level Stop hook blocked first, the gate sees `true` and lets the
+    stop pass without having run. S2 accepts that or says why not.
+  - **A built-in cap.** After eight stop-hook continuations in a row Claude Code overrides the next block and
+    ends the turn; `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` raises the cap. The count resets each time the model calls
+    a tool, so the cap does not stop a broken gate whose agent keeps working. The block-once rule must.
+  - **Subagents.** `Stop` runs "when the main Claude Code agent has finished responding"; a subagent's stop
+    is the separate `SubagentStop` event (with `agent_id`, `agent_type`, `agent_transcript_path`). So a `Stop`
+    entry in `.claude/settings.json` should be the main-session gate the plan wants; S2 tests that it does not
+    run for a subagent.
+  - **Timeout.** 600 s by default for a command hook, set per hook with `timeout` (seconds). A hook that
+    times out is cancelled and its output discarded.
+  - **Not fired** when the user interrupts. A turn that ends on an API error fires `StopFailure`, whose
+    output and exit code are ignored.
+  - **The wrapper can tell a repeated stop without the binary.** `scripts/harness/hook-bootstrap.sh`
+    already matches the raw hook input when `.bin/harness` is missing; the same kind of match on
+    `"stop_hook_active": true` gives block-once there. A repeated stop that passes without the binary is still
+    a hook that fails open: S2's ADR argues why that meets ADR 0045 and NFR-R2, or records the exception.
+  - **Not stated in the reference, to be tested in S2:** that a timed-out Stop hook lets the stop go ahead
+    (the reference says so for "most events"); whether `stop_hook_active` stays `true` when the model
+    calls tools between the block and its next stop; that `agent_id` is absent from a main-session `Stop`;
+    what a Stop hook's plain output at exit 0 reaches (the events whose stdout reaches the model are listed,
+    and Stop is not one of them).
 - **The trial's planted defects are chosen by the plan's author.** They may flatter the evaluator. V1
   therefore takes half of them from defect classes the two source posts report finding, and the keep bar is
   relative to `code-reviewer` on the same cases.
