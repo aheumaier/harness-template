@@ -1,6 +1,6 @@
 # ADR 0039: Tests are written apart from the implementation, from the spec (amends 0019)
 
-Status: accepted · 2026-10-30 · amends [ADR 0019](0019-inferential-sensors-are-advisory.md) · amended 2026-11-01 by [ADR 0042](0042-swift-unit-tests-in-make-check.md) (the `test-writer` writes Swift unit tests)
+Status: accepted · 2026-10-30 · amends [ADR 0019](0019-inferential-sensors-are-advisory.md) · amended 2026-11-01 by [ADR 0041](0041-ios-stack-group.md) (the `test-writer`'s guard covers Swift tests) · amended 2026-11-01 by [ADR 0042](0042-swift-unit-tests-in-make-check.md) (the `test-writer` writes Swift unit tests) · amended 2026-11-24 by [ADR 0046](0046-agent-verdicts-are-advisory-and-measured.md) (proposed: the evaluator may write a journey; every new agent gets a trial)
 
 ## Context
 Gap G16 of exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`, slice P5.4), from Nandyala and

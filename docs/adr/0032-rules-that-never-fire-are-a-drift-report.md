@@ -1,6 +1,6 @@
 # ADR 0032: Rules that never fire are a drift report; retirement is a human PR (amends ADR 0013)
 
-Status: accepted · 2026-10-29
+Status: accepted · 2026-10-29 · amended 2026-11-24 by [ADR 0046](0046-agent-verdicts-are-advisory-and-measured.md) (proposed: the question is extended to agents, skills, hooks and loop prompts)
 
 Amends [ADR 0013](0013-harness-nfr-budgets.md): `.cache/harness/timings.jsonl` and ci.yml's
 `harness-timings-check-all` artifact, kept for the latency report, now also carry each rule's finding count
