@@ -166,7 +166,8 @@ owner approves the cost the pilot measured.
 - **Keep bar** (ADR 0046 holds the binding text). A hit is a `FAIL` on the scenario a planted defect breaks,
   with evidence, in both runs; for `code-reviewer`, a finding naming the defect's file and behaviour, in both
   runs. `NOT EXERCISED` is a miss on the scenario a planted defect breaks and a `FAIL` on a counted scenario
-  of a clean case; any other `FAIL` or `NOT EXERCISED` on a planted case is reported apart, with its count.
+  of a clean case; any other `FAIL` or `NOT EXERCISED` on a planted case is reported apart, with its count,
+  and counts for neither side.
   **Keep** if the evaluator hits at least two planted defects `code-reviewer` did not, and in each run fails
   at most one counted scenario across the two clean cases. A `FAIL` on a clean case is a found bug, reported
   apart and counting for neither side, only when its journey reproduces it on the pinned commit and the
@@ -210,13 +211,13 @@ owner approves the cost the pilot measured.
 
 **V3 — a finding is a journey (H).** An evaluator `FAIL` is reported with the journey that shows it, left
 uncommitted in `apps/web/e2e/`, where it makes `make e2e` red until it is accepted or deleted. When the
-builder accepts the finding, the journey is committed with the fix,
-in a commit that quotes the `FAIL` line, and `make e2e` (in `check-all`) holds the behaviour from then on; a
-rejected finding's journey is deleted, with the reason in the report (ADR 0046). ADR 0019 turns a finding
-class seen twice into a computational rule; here a single accepted finding becomes a test at once, because a
-journey is cheap and specific to the feature. Update `drive-app` §3 and §5 (a journey written to prove an
-accepted failure is kept, not deleted) and `code-reviewer` (how it treats a journey the evaluator added;
-T1's ADR decides whether it is frozen).
+builder accepts the finding, the journey is committed with the fix, in a commit that quotes the `FAIL` line
+and its scenario id, and `make e2e` (in `check-all`) holds the behaviour from then on; a rejected finding's
+journey is deleted, with the reason in the report (ADR 0046). ADR 0019 turns a finding class seen twice into a
+computational rule; here a single accepted finding becomes a test at once, because a journey is cheap and
+specific to the feature. Update `drive-app` §3 and §5 (a journey written to prove an accepted failure is
+kept, not deleted) and `code-reviewer` (how it treats a journey the evaluator added; T1's ADR decides whether
+it is frozen).
 
 **V4 — wiring (H).** `CLAUDE.md`: a change that alters what the web app shows or how it talks to the API
 also gets `app-evaluator`, before it is called done. The 0003 loop prompt's checker step and the PR template
