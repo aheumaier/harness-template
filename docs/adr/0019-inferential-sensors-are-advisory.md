@@ -1,6 +1,6 @@
 # ADR 0019: Inferential sensors are advisory; a finding class seen twice becomes a computational rule
 
-Status: accepted · 2026-10-28 · amended 2026-10-30 by [ADR 0040](0040-ci-agents-may-use-a-subscription-token.md) (subscription token, flags, cost cap)
+Status: accepted · 2026-10-28 · amended 2026-10-30 by [ADR 0039](0039-tests-are-written-apart-from-the-implementation.md) (`test-writer` is a workflow step, not a reviewer) · amended 2026-10-30 by [ADR 0040](0040-ci-agents-may-use-a-subscription-token.md) (subscription token, flags, cost cap) · amended 2026-11-24 by [ADR 0046](0046-agent-verdicts-are-advisory-and-measured.md) (proposed: app evaluator output, finding to journey, agent evals)
 
 ## Context
 Gap G3 of exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`, slice P3.1). Today the only
