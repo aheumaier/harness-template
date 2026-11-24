@@ -58,7 +58,8 @@ decision go here as a dated amendment.
   deleted, with the reason in the report. A journey is never committed red and never before the finding is
   accepted, so a wrong verdict blocks no commit and no merge. Until it is accepted or deleted, the
   uncommitted journey makes `make e2e`, and so `make check-all`, red in that working tree: the builder
-  decides on each finding before running them.
+  decides on each finding before running them. Until then it also counts as a test for its scenario (the
+  scenario check reads untracked files), so the builder reruns `make check` after deleting one.
 - **Keep or drop, decided by the trial** (defaults, decided here):
   - Before the run, each case lists the scenario ids a user can reach in the browser. Only those count.
   - A **hit** is a `FAIL` on the scenario a planted defect breaks, with evidence, in both runs. For
