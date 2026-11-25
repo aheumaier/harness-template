@@ -130,6 +130,14 @@ check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=
 	@$(if $(and $(call stack_has,ios),$(HOST_OFF)),echo "this host (not macOS) leaves out: $(HOST_OFF) (ADR 0042)" >&2,true)
 	@$(MAKE) -k -j4 $(call stacked,layout-check no-new-shell lint-go lint-harness arch-go test-go test-analyzers test-harness lint-sh fmt-check-sh test-sh lint-ci secrets schema-doc-fresh docs-links references-pinned swift-resolved fixture-claims rule-lists approved-check specs-tested lint-web arch-web typecheck-web test-web $(IOS_SWIFT_TARGETS))
 	@$(MAKE) gen-check
+	@$(STAMP) "$(if $(findstring i,$(filter-out --%,$(foreach w,$(MAKEFLAGS),$(if $(findstring =,$w),,$w)))),,$(shell $(STAMP)))"
+
+# The last line of check stamps a green tree for the stop gate (ADR 0048). make expands a recipe before it runs it, so
+# the key in the $(shell) is the one from before the sensors; check-stamp compares it with the one after them. Under -i
+# red sensors end green, so the key is empty and nothing is stamped: an i in any word of MAKEFLAGS that is neither a
+# long option nor a variable (3.81 writes -ki -j4 as "k … -j -i"). -I, -Oline and a variable whose value holds a space
+# and an i look the same and silently give no stamp. No $(MAKE) in the line: make -n would run it.
+STAMP = BASE_REF="$(BASE_REF)" HARNESS_STACK="$(STACK)" $(HARNESS) check-stamp .
 
 # CI skips the sensors that run in their own base-branch workflow (contract-gate, harness-integrity).
 CHECK_ALL_SKIP ?=
@@ -250,9 +258,10 @@ $(GCL): $(API_DIR)/.custom-gcl.yml $(ANALYZERS_SRC) scripts/tool-versions.env | 
 	@cd $(API_DIR) && golangci-lint custom
 	@touch $@
 
-# The hooks' parser (ADR 0012); every hook fails closed without it. A build that panics at start (a subcommand
-# name registered twice) is never installed: `help` must run before the binary replaces the old one. One line and
-# a temp name per build, so two builds at once (make -j) never share or remove each other's file.
+# The hooks' parser (ADR 0012); every hook fails closed without it (stop-gate once per turn, ADR 0048). A build that
+# panics at start (a subcommand name registered twice) is never installed: `help` must run before the binary replaces
+# the old one. One line and a temp name per build, so two builds at once (make -j) never share or remove each other's
+# file.
 $(HARNESS): $(HARNESS_SRC) scripts/tool-versions.env
 	@tmp="$(CURDIR)/$@.$$$$"; trap 'rm -f "$$tmp"' EXIT; \
 	(cd $(API_DIR)/tools/harness && go build -o "$$tmp" .) && "$$tmp" help >/dev/null && mv "$$tmp" $@

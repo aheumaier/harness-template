@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # scripts/harness/hook-bootstrap.sh: without .bin/harness every hook fails closed (exit 2, "run make setup"),
-# except for the commands that build the binary, so the repo cannot lock itself (ADR 0012).
+# except for the commands that build the binary, so the repo cannot lock itself (ADR 0012). stop-gate.sh, which fails
+# closed once per turn (ADR 0048), is tested in apps/api/tools/harness/stopgate_test.go.
 bats_require_minimum_version 1.5.0
 load helpers
 

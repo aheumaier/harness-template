@@ -317,9 +317,9 @@ func TestProtectHarnessHook(t *testing.T) {
 				if in == "" {
 					in = payload(t, dir, c.tool, c.arg)
 				}
-				code, out := execInput(t, dir, tt.env, in, filepath.Join(dir, hook))
-				if code != c.code || (c.output == "") != (out == "") || !strings.Contains(out, c.output) {
-					t.Errorf("%s %q: exit %d, want %d; output:\n%s\nwant it to contain %q", c.tool, c.arg, code, c.code, out, c.output)
+				code, stdout, out := execInput(t, dir, tt.env, in, filepath.Join(dir, hook))
+				if code != c.code || stdout != "" || (c.output == "") != (out == "") || !strings.Contains(out, c.output) {
+					t.Errorf("%s %q: exit %d, want %d; stdout %q, want none; stderr:\n%s\nwant it to contain %q", c.tool, c.arg, code, c.code, stdout, out, c.output)
 				}
 				if strings.Contains(out, "usage: harness") {
 					t.Errorf("%s %q: the usage text reached the agent:\n%s", c.tool, c.arg, out)

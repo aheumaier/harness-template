@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -8,6 +9,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
+	"time"
 )
 
 // world is everything a subcommand reads from outside its arguments (ADR 0045): run builds it from the process,
@@ -22,6 +25,7 @@ type world struct {
 	lookupEnv      func(key string) (string, bool) // the environment the subcommand reads
 	environ        []string                        // the environment of the processes it runs (git)
 	cwd            string                          // where relative paths start
+	ctx            context.Context                 // when set, its end ends the processes and all they started
 }
 
 func (w world) getenv(key string) string {
@@ -68,11 +72,36 @@ func (w world) abs(p string) (string, error) {
 // its environment and starts in its working directory. A name that is not found fails when the command starts,
 // as with exec.Command.
 func (w world) command(name string, args ...string) *exec.Cmd {
-	cmd := &exec.Cmd{Path: name, Args: append([]string{name}, args...), Env: w.environ, Dir: w.cwd}
+	ctx := w.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env, cmd.Dir = w.environ, w.cwd
 	if !strings.Contains(name, string(filepath.Separator)) {
 		cmd.Path, cmd.Err = lookPath(name, w.environ)
 	}
+	if w.ctx != nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.Cancel = func() error { endGroup(cmd.Process.Pid); return nil }
+		cmd.WaitDelay = killGrace // for a pipe that a process outside the group keeps open
+	}
 	return cmd
+}
+
+// killGrace is the time a process group gets to end on TERM.
+const killGrace = 2 * time.Second
+
+// endGroup ends a process group: TERM, and KILL when a process is left after killGrace. Signalling a group that is
+// gone is an error (ESRCH, EPERM on macOS for zombies; on Linux a zombie nobody reaps costs the whole killGrace).
+func endGroup(pgid int) {
+	_ = syscall.Kill(-pgid, syscall.SIGTERM)
+	for end := time.Now().Add(killGrace); time.Now().Before(end); time.Sleep(50 * time.Millisecond) {
+		if syscall.Kill(-pgid, 0) != nil {
+			return
+		}
+	}
+	_ = syscall.Kill(-pgid, syscall.SIGKILL)
 }
 
 // lookPath finds an executable name in environ's PATH (its last PATH=, the one exec.Cmd passes on), with

@@ -15,6 +15,7 @@
 .claude/hooks/only-make-check.sh bootstrap
 .claude/hooks/only-test-files.sh bootstrap
 .claude/hooks/protect-harness.sh bootstrap
+.claude/hooks/stop-gate.sh bootstrap
 scripts/git-hooks/commit-msg bootstrap
 scripts/git-hooks/pre-commit bootstrap
 scripts/harness/hook-bootstrap.sh bootstrap

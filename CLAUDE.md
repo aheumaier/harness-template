@@ -4,6 +4,8 @@
 
 - After every Edit/Write, `.claude/hooks/fast-check.sh` runs the cheapest sensor for that file. Silent when the
   file is fine; if it blocks, fix what it prints before moving on.
+- When you finish, `.claude/hooks/stop-gate.sh` holds you back once if this tree is not known to be green. Run
+  `make check` before your final answer and it stays silent; a second stop passes.
 - Harness files (golden principle 5) are guarded by a PreToolUse hook. Do not work around it; propose the change
   in the PR description.
 - For new domains, endpoints and migrations, use the skills in `.claude/skills/`; do not improvise the workflow.

@@ -2,7 +2,8 @@
 
 Status: accepted · 2026-11-02 · amends [ADR 0012](0012-parsing-sensors-in-go.md),
 [ADR 0024](0024-size-and-complexity-limits-are-maintainability-sensors.md),
-[ADR 0031](0031-no-orphan-scripts-or-make-targets.md)
+[ADR 0031](0031-no-orphan-scripts-or-make-targets.md) · amended 2026-11-25 by
+[ADR 0048](0048-stop-gate.md) (proposed: a Stop hook without its binary blocks once, then lets go)
 
 The work is planned in [exec plan 0005](../exec-plans/active/0005-harness-scripts-in-go.md). The plan and this
 decision were written in the product `prostrength_new` (its ADR 0054), where the user ruled option (a) on the

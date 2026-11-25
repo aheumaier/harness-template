@@ -25,21 +25,8 @@ harness_builds "$input" && exit 0
 
 rc=0
 out="$("$ROOT/.bin/harness" protect-harness "$ROOT" <<<"$input" 2>&1)" || rc=$?
-case $rc in
-  0) exit 0 ;;
-  64) out="" ;; # a usage error: the binary is older than this hook (ADR 0045)
-  2)
-    if [[ $'\n'"$out" == *$'\n''usage: harness'* ]]; then
-      out="" # the usage text on any line: a binary from before exit 64, without this subcommand
-    elif [[ "$out" == protect-harness:* ]]; then
-      printf '%s\n' "$out" >&2 # the binary's own block
-      exit 2
-    fi
-    ;;
-esac
-# A stale binary, one that cannot run (126, 127) or one that failed otherwise (1, a panic's 2, killed: 137): only
-# exit 2 blocks in Claude Code, so each is turned into a block. The binary's own output, unless it is the usage
-# text, says why.
-[[ -z "$out" ]] || printf '%s\n' "$out" >&2
-echo "protect-harness: blocked: .bin/harness is out of date or failed (exit $rc); rebuild it with \`make .bin/harness\`" >&2
+((rc == 0)) && exit 0
+# Only exit 2 blocks in Claude Code, so a stale binary, one that cannot run (126, 127) or one that failed otherwise
+# (1, a panic's 2, killed: 137) is turned into a block too.
+harness_stale protect-harness "$rc" "$out" >&2
 exit 2

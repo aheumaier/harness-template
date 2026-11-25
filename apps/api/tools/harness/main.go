@@ -17,7 +17,7 @@
 //     errUsage, exitBadArgs, the finding type, printFinding. A wrong call returns exitBadArgs (dispatch prints the
 //     usage text); exitUsage (main.go) directly is only for a command that prints its own reason, as hook-input
 //     does;
-//   - world.go: the world type (stdin, stdout, stderr, lookupEnv, environ, cwd), lookupIn, and the methods
+//   - world.go: the world type (stdin, stdout, stderr, lookupEnv, environ, cwd, ctx), lookupIn, and the methods
 //     getenv, harnessRoot, abs, command, git, gitFiles, gitKnown, lsFiles, baseRef, mergeBase. A subcommand reads
 //     the environment and the working directory only through its world, never through os; rootSensor and hookGuard
 //     hand it <root> made absolute. A world is built by run or a test helper, lookupEnv always from environ
@@ -29,16 +29,19 @@
 //   - paths.go: rulesFile, protectedPathsFile, fixturesDir, skippedPath, specDirRE, commentRE, the protectedPath type,
 //     protectedPaths, pathspecMatch, pathspecMatchFold, matchesAny, matchesAnyFold, isRegular, resolveExisting;
 //   - diff.go: the change type, diffLines, splitLines;
+//   - treekey.go: the treeKey type, its methods stamped and stamp, and the world methods treeKey and workingTree
+//     (ADR 0048);
 //   - markdown.go: markdown, plainText, hasLine, the ruleHeading type and ruleHeadings;
 //   - in tests, helpers_test.go: testWorld builds a world from testEnv (the process's environment without a
 //     caller's HARNESS_*, BASE_REF and PR_TITLE, plus the test's variables); runTest and runHook dispatch a
 //     subcommand in it and set nothing in the process, so every test but TestRunPhysicalCwd (it tests run
 //     itself) calls t.Parallel(). payload builds a hook payload and wantFindings checks a sensor's output.
-//     sandbox, sandboxFrom, place, own, linkHarness and repoRoot build a copy of the repo; gitRepo, linkRepo,
+//     sandbox, sandboxFrom, place, own, linkHarness and repoRoot build a copy of the repo; gitRepo, linkRepo, stampRepo,
 //     templateRepo, templateLayout, withLayout, protectedList, gitT, commitAll, writeLines, add and replace build a
-//     git repo.
-//     Go tests run git and other programs only through gitT, execIn and execInput; testscript scripts use their
-//     own exec. helpers_test.go's other names (copyFile, checksum, writtenThrough, linked) are the sandbox's own.
+//     git repo. keyOf takes such a repo's treeKey.
+//     Go tests run git and other programs only through gitT, execIn, execInput and startIn (with exitCode);
+//     testscript scripts use their own exec. helpers_test.go's other names (copyFile, checksum, writtenThrough,
+//     linked) are the sandbox's own.
 //
 // A name two subcommands use lives in one of these shared files, not in either subcommand's file. The exceptions
 // are a subcommand's own subject that others read: layout.go's layout, and testfile.go's productTests,
