@@ -22,7 +22,7 @@ import (
 // kill the gate and let the stop through.
 const (
 	stopLimit  = 15 * time.Second
-	afterLimit = time.Second
+	afterLimit = 3 * time.Second
 )
 
 const stopRule = "harness-stop-is-green"
@@ -84,10 +84,11 @@ func parseStopInput(r io.Reader) (in stopInput, err error) {
 	return in, err
 }
 
-// stopGate returns an error to hold the session back, once per turn. limit covers the key and the check, after the
-// second key (stopLimit and afterLimit; tests take others).
+// stopGate returns an error to hold the session back, once per turn and tree. limit covers the key and the check,
+// after the second key (stopLimit and afterLimit; tests take others).
 func stopGate(ctx context.Context, w world, root string, in stopInput, limit, after time.Duration) error {
-	ctx, cancel := context.WithTimeout(ctx, limit)
+	session := ctx // ends with a signal, not at the limit
+	ctx, cancel := context.WithTimeout(session, limit)
 	defer cancel()
 	w.ctx = ctx
 	if in.PermissionMode == "plan" {
@@ -95,48 +96,50 @@ func stopGate(ctx context.Context, w world, root string, in stopInput, limit, af
 	}
 	key, keyErr := w.treeKey(root)
 	switch {
-	case keyErr == nil && (key.stamped(root) || w.isBase(root, key)):
+	case keyErr == nil && (key.stamped(root, greenStamp) || w.isBase(root, key)):
 		return nil
-	case in.repeated():
-		msg := stopRule + ": " + root + " is not known to be green; make check did not run again at this stop"
+	case !in.repeated() && in.busy():
+		return nil
+	case in.repeated() || keyErr == nil && key.stamped(root, heldStamp):
+		msg := stopRule + ": " + root + " is not known to be green; make check did not run again at this stop; run it to know"
 		if keyErr != nil {
 			msg += fmt.Sprintf(" (cannot tell which tree this is: %v)", keyErr)
 		}
 		return json.NewEncoder(w.stdout).Encode(map[string]string{"systemMessage": msg})
-	case in.busy():
-		return nil
 	}
 	started := ctx.Err() == nil
 	out, err := w.check(root)
-	var red *exec.ExitError
-	switch {
-	case err == nil:
+	if err == nil {
 		return nil
-	case ctx.Err() != nil: // before red: a check that was ended has an exit status too
-		why := fmt.Sprintf("was not done after %s", limit)
-		if errors.Is(ctx.Err(), context.Canceled) {
-			why = "was ended by a signal"
+	}
+	ended := ctx.Err() // a check that was ended has an exit status too
+	if red := (*exec.ExitError)(nil); ended == nil && !errors.As(err, &red) {
+		return fmt.Errorf("[%s] cannot run `make check` in %s: %w", stopRule, root, err)
+	}
+	changed := started // unless the key says otherwise
+	if started && keyErr == nil {
+		if now, err := w.treeKeyWithin(root, after); err == nil {
+			changed = now.source() != key.source()
+			key.ignored = now.ignored // as the check left them
 		}
-		hint := ""
-		if started && w.changed(root, key, after) {
-			hint = " The check that was cut off may have left generated files half-written: run `make gen` first."
+		if session.Err() == nil {
+			_ = key.stamp(root, heldStamp) // best effort: without it the next turn is held back too
 		}
-		return blockf("[%s] `make check` %s in %s, so this tree is not checked. To proceed: run `make check` "+
-			"yourself, fix what you changed, then give your final answer again.%s", stopRule, why, root, hint)
-	case errors.As(err, &red):
+	}
+	if ended == nil {
 		return blockf("[%s] `make check` is red in %s. To proceed: fix what you changed and leave what is not yours, "+
 			"run `make check`, then give your final answer again.\n%s", stopRule, root, digest(out))
 	}
-	return fmt.Errorf("[%s] cannot run `make check` in %s: %w", stopRule, root, err)
-}
-
-// changed reports whether root's key is no longer k; so is one that takes longer than limit.
-func (w world) changed(root string, k treeKey, limit time.Duration) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), limit)
-	defer cancel()
-	w.ctx = ctx
-	now, err := w.treeKey(root)
-	return err != nil || now != k
+	why := fmt.Sprintf("was not done after %s", limit)
+	if errors.Is(ended, context.Canceled) {
+		why = "was ended by a signal"
+	}
+	hint := ""
+	if changed {
+		hint = " The check that was cut off may have left generated files half-written: run `make gen` first."
+	}
+	return blockf("[%s] `make check` %s in %s, so this tree is not checked. To proceed: run `make check` "+
+		"yourself, fix what you changed, then give your final answer again.%s", stopRule, why, root, hint)
 }
 
 // isBase reports whether k's tree is the one of its merge base: nothing changed.

@@ -133,8 +133,8 @@ check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=
 	@$(STAMP) "$(if $(findstring i,$(filter-out --%,$(foreach w,$(MAKEFLAGS),$(if $(findstring =,$w),,$w)))),,$(shell $(STAMP)))"
 
 # The last line of check stamps a green tree for the stop gate (ADR 0048). make expands a recipe before it runs it, so
-# the key in the $(shell) is the one from before the sensors; check-stamp compares it with the one after them. Under -i
-# red sensors end green, so the key is empty and nothing is stamped: an i in any word of MAKEFLAGS that is neither a
+# the key in the $(shell) is the one from before the sensors; check-stamp compares it, but for the ignored files, with
+# the one after them. Under -i red sensors end green, so the key is empty and nothing is stamped: an i in any word of MAKEFLAGS that is neither a
 # long option nor a variable (3.81 writes -ki -j4 as "k … -j -i"). -I, -Oline and a variable whose value holds a space
 # and an i look the same and silently give no stamp. No $(MAKE) in the line: make -n would run it.
 STAMP = BASE_REF="$(BASE_REF)" HARNESS_STACK="$(STACK)" $(HARNESS) check-stamp .

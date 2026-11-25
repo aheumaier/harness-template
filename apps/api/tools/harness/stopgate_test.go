@@ -97,20 +97,20 @@ func TestStopGate(t *testing.T) {
 		{name: "a subagent that is done", recipe: red, runs: 1, block: []string{"red"},
 			stdin: `{"stop_hook_active":false,"background_tasks":[{"status":"completed","type":"subagent"}]}`},
 		{name: "a stamped tree", recipe: red, stdin: firstStop, setup: func(t *testing.T, root string) {
-			if err := keyOf(t, root).stamp(root); err != nil {
+			if err := keyOf(t, root).stamp(root, greenStamp); err != nil {
 				t.Fatal(err)
 			}
 		}},
 		{name: "a tree stamped before another edit", recipe: red, stdin: firstStop, runs: 1, block: []string{"red"},
 			setup: func(t *testing.T, root string) {
-				if err := keyOf(t, root).stamp(root); err != nil {
+				if err := keyOf(t, root).stamp(root, greenStamp); err != nil {
 					t.Fatal(err)
 				}
 				writeLines(t, root, "a.go", "c")
 			}},
 		{name: "a tree stamped with another stack", recipe: red, stdin: firstStop, runs: 1, block: []string{"red"},
 			setup: func(t *testing.T, root string) {
-				if err := keyOf(t, root, "HARNESS_STACK=go").stamp(root); err != nil {
+				if err := keyOf(t, root, "HARNESS_STACK=go").stamp(root, greenStamp); err != nil {
 					t.Fatal(err)
 				}
 			}},
@@ -290,6 +290,9 @@ func TestStopGateEnded(t *testing.T) {
 			waitEnded(t, pid)
 			if _, err := os.Stat(filepath.Join(root, ".cache/term")); (err == nil) != tt.term {
 				t.Errorf("the child acted on TERM: %v, want %v", err == nil, tt.term)
+			}
+			if _, err := os.Stat(filepath.Join(root, heldStamp)); err == nil {
+				t.Error("a check ended by a signal counts as held back")
 			}
 			if left, err := os.ReadDir(tmp); err != nil || len(left) > 0 {
 				t.Errorf("left in TMPDIR: %v, %v", left, err)

@@ -84,10 +84,10 @@ PR; **–** needs none.
 - [ ] V3 H finding-to-journey rule: `drive-app` skill and `code-reviewer` updated
 - [ ] V4 H wiring: `CLAUDE.md`, loop prompts' checker step, PR template line
 - [x] S1 – 2d78eb2 — Stop-hook behaviour taken from a summary → verified against the hooks reference on
-  2026-11-24; `stop_hook_active` tells a repeated stop, so no marker file is needed
+  2026-11-24; `stop_hook_active` tells a repeated stop, so no marker file per session is needed
 - [x] S2 – 93dc5f2 — `.bin/harness stop-gate`, its Stop hook, rule `harness-stop-is-green` and ADR 0048, proposed;
-  one stop on 2026-11-25: 0.2 s on a stamped tree, 2.6 s (red) and 3.1 s (green) on a one-file Go edit with warm
-  caches, 15.3–15.7 s at the limit (harness edits, cold Go caches)
+  one stop on 2026-11-25: 0.45 s on a stamped tree (0.2 s before the key held ignored files), 2.6 s (red) and 3.1 s
+  (green) on a one-file Go edit with warm caches (both before it), 15.3–15.7 s at the limit (harness edits, cold Go caches)
 - [ ] E1 H eval corpus for `code-reviewer`; case format for product-owned `app-evaluator` cases
 - [ ] E2 H `.bin/harness agent-evals` and `make agent-evals`
 - [ ] E3 H corpora for the other reviewers; weekly run in `drift.yml`
@@ -240,13 +240,14 @@ bootstrap wrapper:
 
 - **Runs** `make check` when the tree is neither the one `make check` last called green (a stamp under
   `.cache/harness/`, written by `make check` on success) nor the merge base's. The stamp's key is the tree as
-  `git add -A` would stage it, untracked files included, with the merge base and `STACK`. Plan mode and a
-  turn that ends while a subagent or a background `make check` runs are not judged. No difference: silent,
-  exit 0.
+  `git add -A` would stage it, untracked files included, with the merge base and `STACK`. The
+  key also holds the files as they are on disk and the ignored files by size and time (owner's ruling, 2026-11-25).
+  No difference: silent, exit 0. Plan mode and a turn that ends while a subagent or a background `make check` runs
+  are not judged.
 - **Red:** prints the failed sensors, their rules and the last lines of the output, exit 2. The agent continues.
 - **Escape:** a stop that follows a Stop hook's block passes with a one-line `systemMessage` to the person (plain
-  output at exit 0 reaches nobody). The gate blocks once per turn, so a red tree the agent cannot fix (a
-  `test-writer` commit awaiting its implementation, a blocked slice) does not trap the session. A second
+  output at exit 0 reaches nobody). The gate blocks once per tree (owner's ruling, 2026-11-25), so a red tree
+  the agent cannot fix (a `test-writer` commit awaiting its implementation, a blocked slice) does not trap the session. A second
   blocking Stop hook of the person's own counts as the block for this one too. Both run on the first stop, so the gate
   has judged by then, unless that stop passed as busy; the ADR accepts that.
 - **Main session only.** Subagent stops are not gated: reviewers change nothing, and `test-writer` must leave
@@ -341,7 +342,7 @@ the Go port of `pr-review` (plan 0005), not in the shell script.
     session stop. Any other exit code is a non-blocking error: the stop goes ahead. Exit 0 with
     `{"decision":"block","reason":"…"}` on stdout blocks too; a hook uses one form.
   - **First stop or repeated stop.** `stop_hook_active` is `true` "when Claude Code is already continuing as
-    a result of a stop hook". The escape rule reads it; no marker file is needed. The field is about any
+    a result of a stop hook". The escape rule reads it; no marker file per session is needed. The field is about any
     stop hook, not this one: when a user-level Stop hook blocked, the gate sees `true` at the next stop
     and lets it pass. It has judged the first stop, where both run, unless that one passed as busy. ADR 0048 accepts
     that.
@@ -389,7 +390,7 @@ the Go port of `pr-review` (plan 0005), not in the shell script.
   below that to be kept as a default.
 - **A tree-hash stamp is a sound "last green" marker** given `make check` is scoped to the change
   ([ADR 0014](../../adr/0014-make-check-scoped-to-the-change.md)). Checked in S2 (2026-11-25): the key needs the
-  merge base and `STACK` beside the tree, and all but two sensors read the working tree, not the index
+  merge base, `STACK`, the files on disk and the ignored files beside the tree, and all but two sensors read the working tree, not the index
   ([ADR 0048](../../adr/0048-stop-gate.md), Consequences). Not seen: a red that comes from outside the tree
   or from a flaky test on a tree that was green once.
 
@@ -437,5 +438,6 @@ the Go port of `pr-review` (plan 0005), not in the shell script.
   reach the model, so a passing notice is a `systemMessage`; the `timeout` is explicit (30 s, the gate's own limit is
   15 s by the owner's ruling); the stamp's key holds untracked files, the merge base and `STACK`
   (`tool-versions.env` is in the tree); a second blocking Stop hook is accepted; the rule id is
-  `harness-stop-is-green`. S2's text above was changed to match. Open: whether an unchanged red tree blocks once per
-  turn (built) or once per tree.
+  `harness-stop-is-green`. S2's text above was changed to match. The owner ruled on 2026-11-25:
+  an unchanged tree that is red or not done blocks once; the key also covers ignored files, the tools in `.bin/` and git filters
+  (0.45 s a stop instead of 0.2 s); TD-178 is a harness PR of its own.
