@@ -381,27 +381,60 @@ func testWorld(t *testing.T, out io.Writer, env ...string) world {
 }
 
 // execIn runs a file in dir with testEnv(env...) and returns its exit code and combined output. execInput also
-// gives it stdin.
+// gives it stdin and returns its two outputs apart.
 func execIn(t *testing.T, dir string, env []string, name string, args ...string) (int, string) {
 	t.Helper()
-	return execInput(t, dir, env, "", name, args...)
+	var out bytes.Buffer
+	code := exitCode(t, startIn(t, dir, env, "", &out, &out, name, args...))
+	return code, out.String()
 }
 
-func execInput(t *testing.T, dir string, env []string, stdin, name string, args ...string) (int, string) {
+func execInput(t *testing.T, dir string, env []string, stdin, name string, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
-	var out bytes.Buffer
+	var out, errOut bytes.Buffer
+	code = exitCode(t, startIn(t, dir, env, stdin, &out, &errOut, name, args...))
+	return code, out.String(), errOut.String()
+}
+
+// startIn starts what execIn and execInput run; exitCode waits for it.
+func startIn(t *testing.T, dir string, env []string, stdin string, stdout, stderr io.Writer, name string, args ...string) *exec.Cmd {
+	t.Helper()
 	cmd := exec.Command(name, args...)
-	cmd.Dir, cmd.Env, cmd.Stdin, cmd.Stdout, cmd.Stderr = dir, testEnv(env...), strings.NewReader(stdin), &out, &out
-	var exit *exec.ExitError
-	switch err := cmd.Run(); {
-	case err == nil:
-		return 0, out.String()
-	case errors.As(err, &exit):
-		return exit.ExitCode(), out.String()
-	default:
+	cmd.Dir, cmd.Env, cmd.Stdin, cmd.Stdout, cmd.Stderr = dir, testEnv(env...), strings.NewReader(stdin), stdout, stderr
+	if err := cmd.Start(); err != nil {
 		t.Fatalf("%s: %v", name, err)
-		return 0, ""
 	}
+	return cmd
+}
+
+func exitCode(t *testing.T, cmd *exec.Cmd) int {
+	t.Helper()
+	var exit *exec.ExitError
+	if err := cmd.Wait(); err != nil && !errors.As(err, &exit) {
+		t.Fatalf("%s: %v", cmd.Path, err)
+	}
+	return cmd.ProcessState.ExitCode()
+}
+
+// keyOf is root's key, taken with env.
+func keyOf(t *testing.T, root string, env ...string) treeKey {
+	t.Helper()
+	k, err := testWorld(t, &bytes.Buffer{}, env...).treeKey(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return k
+}
+
+// stampRepo is a template repo on branch work with one commit, the same as main's.
+func stampRepo(t *testing.T, files map[string][]string) string {
+	t.Helper()
+	root := templateRepo(t, files)
+	writeLines(t, root, ".gitignore", ".bin/", ".cache/")
+	gitT(t, root, "checkout", "-q", "-b", "main")
+	commitAll(t, root, "start")
+	gitT(t, root, "checkout", "-q", "-b", "work")
+	return root
 }
 
 // TestSandbox checks the sandbox helper itself (exec plan 0005, A2): executables are the real files, a write

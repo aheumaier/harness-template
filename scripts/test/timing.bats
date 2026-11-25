@@ -11,7 +11,7 @@ setup() {
   unset GITHUB_ACTIONS GITHUB_STEP_SUMMARY HARNESS_EDIT
   sandbox scripts/harness/timing.sh scripts/harness/hook-bootstrap.sh scripts/harness/protected-paths.txt \
     scripts/tool-versions.env .claude/hooks/protect-harness.sh .claude/hooks/guard-bash.sh \
-    .claude/hooks/only-make-check.sh .claude/hooks/only-test-files.sh .claude/hooks/fast-check.sh .bin/harness
+    .claude/hooks/only-make-check.sh .claude/hooks/only-test-files.sh .claude/hooks/fast-check.sh .claude/hooks/stop-gate.sh .bin/harness
   export HARNESS_BUDGETS="$SANDBOX/budgets.txt"
   printf '%s\n' 'default 600000 NFR-H5' >"$HARNESS_BUDGETS"
   TIMINGS="$SANDBOX/.cache/harness/timings.jsonl"
@@ -31,8 +31,9 @@ payload() {
   done
   run -0 "$SANDBOX/.claude/hooks/only-test-files.sh" <<<"{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$SANDBOX/$DOMAINS_DIR/x/model/a_test.go\"}}"
   run -0 "$SANDBOX/.claude/hooks/fast-check.sh" budgets.txt
+  run -0 "$SANDBOX/.claude/hooks/stop-gate.sh" <<<'{"stop_hook_active":false,"permission_mode":"plan"}'
   run cat "$TIMINGS"
-  for h in protect-harness guard-bash only-make-check only-test-files fast-check; do
+  for h in protect-harness guard-bash only-make-check only-test-files fast-check stop-gate; do
     has "{\"sensor\":\"$h\",\"start_ms\":"
   done
   has '"exit":0,"scope":"hook","sha":"",'

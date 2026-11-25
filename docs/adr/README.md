@@ -53,3 +53,4 @@ only through a new ADR. Architectural PRs link an ADR in the PR template.
 | [0045](0045-harness-scripts-and-tests-in-go.md) | Harness scripts and their tests move to Go (amends 0012, 0024, 0031) | accepted |
 | [0046](0046-agent-verdicts-are-advisory-and-measured.md) | Agent verdicts stay advisory and are measured: the app evaluator, agent evals, the assumption ledger (amends 0019, 0032, 0039) | proposed |
 | [0047](0047-test-writer-tests-are-frozen.md) | The test writer's tests are frozen until the spec changes (amends 0039, 0046) | proposed |
+| [0048](0048-stop-gate.md) | A session that stops on an unchecked or red tree is held back once (amends 0013, 0045) | proposed |

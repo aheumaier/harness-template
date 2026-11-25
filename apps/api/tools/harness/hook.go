@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// The helpers the PreToolUse hooks share (guard-bash, protect-harness).
+// The helpers the Claude Code hooks share (guard-bash, protect-harness, stop-gate).
 
 // hookGuard is a command run as `harness <name> <root>` with the hook JSON on stdin: guard gets root made
 // absolute, and any error blocks with exit 2 (fail closed).

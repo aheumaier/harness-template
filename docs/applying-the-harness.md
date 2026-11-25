@@ -80,6 +80,7 @@ Sensors run at increasing cost and decreasing frequency. The earlier a mistake i
  agent says "done"
    ├─ make check       (≤ 10 s warm, ≤ 60 s worst case)   scoped to what changed
    ├─ code-reviewer subagent       advisory LLM review; runs make check itself
+   ├─ Stop hook        (≤ 18 s)    stop-gate: is this tree known to be green? holds the session back once
    │
  agent opens a PR
    ├─ make check-all               full, uncached: migrations, contract, vulns, dead code, e2e, integration
@@ -132,7 +133,7 @@ scripts/harness/run.sh <sensor-id> <rule-id[,rule-id…]> [--dir <d>] -- <comman
 | 2 | cannot run (missing tool, unparseable input) | **fails too** — fail closed |
 
 Claude Code hooks block only on exit 2, so hooks deliberately exit 2 for every block, and the hook wrappers
-convert any unexpected exit from the checker into a block.
+convert any unexpected exit from the checker into a block (`stop-gate.sh` only once per turn).
 
 ### 3.3 Fixtures and selftest
 
@@ -178,7 +179,7 @@ be guarding a mistake agents stopped making, or it may be dead.
 - `make check-all` and CI run with `HARNESS_SCOPE=full`, uncached.
 - [timing.sh](../scripts/harness/timing.sh) times every sensor and hook against
   [budgets.txt](../scripts/harness/budgets.txt) (default 5 s; PreToolUse 50 ms; fast-check 1 s; pre-commit
-  2 s), appends a row to `.cache/harness/timings.jsonl`, and **warns** when over budget. A nightly job reports
+  2 s; stop-gate 18 s), appends a row to `.cache/harness/timings.jsonl`, and **warns** when over budget. A nightly job reports
   p95 per sensor. Latency never fails a build: it is flaky on loaded machines. See
   [harness/nfr.md](harness/nfr.md) for the full NFR list.
 - Determinism **does** fail: a nightly job runs `make check` twice on the same tree and fails on any difference
@@ -382,13 +383,17 @@ plus CODEOWNERS, which only works with branch protection (see [caveats](#83-cave
 **Why.** It turns "done" from a claim into a verifiable state, and it is the one instruction every agent run
 can follow without judgement.
 
+| Rule | Sensor | Gate |
+|------|--------|------|
+| [harness-stop-is-green](harness/rules.md#harness-stop-is-green) | `Stop` hook [stop-gate.sh](../.claude/hooks/stop-gate.sh), and the stamp `make check` leaves when green | end of a Claude Code turn; blocks once |
+
 **Composition** (from the [Makefile](../Makefile)):
 
 - `make check` runs in parallel (`-k -j4`): layout check, Go lint, architecture, Go tests, analyzer and harness
   tests, shell lint, format and tests, workflow lint, secret scan, schema doc freshness, doc links, pinned
   references, fixture claims, rule lists, approved-file check, scenario tracing, web lint, architecture,
   typecheck and tests, the Swift lock file and, with the `ios` stack group, Swift lint, format and tests. Then
-  serially `gen-check`.
+  serially `gen-check`, and the stamp for the stop gate.
 - `make check-all` runs `check`, then in parallel: Go and dependency vulnerabilities, Atlas lint, squawk,
   append-only, Spectral, contract check, knip, deadcode, clone detection, quality-doc shape, harness integrity,
   orphans, commits, specs, frozen tests. Then serially: integration tests, observability end-to-end, browser e2e.
@@ -517,6 +522,10 @@ the source):
     "PostToolUse": [
       { "matcher": "Edit|Write|MultiEdit",
         "hooks": [{ "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/fast-check.sh", "timeout": 120 }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-gate.sh", "timeout": 30,
+          "statusMessage": "harness-stop-is-green: make check, 15 s at most" }] }
     ]
   }
 }
@@ -533,17 +542,20 @@ Notes:
 
 ### 7.3 Hooks
 
-All hooks read Claude Code's JSON on stdin (`cwd`, `tool_name`, `tool_input.command`, `tool_input.file_path`).
-`protect-harness`, `fast-check` and the subagent hooks parse it through `.bin/harness hook-input`; `guard-bash`
-hands it to `.bin/harness guard-bash`. All fail closed on unparseable input, and exit 2 to block. Stderr on exit 2 goes
-back to the agent, so every block message includes what to do instead. If `.bin/harness` is missing, every hook
-blocks and says to run `make setup`.
+All hooks read Claude Code's JSON on stdin (`cwd`, `tool_name`, `tool_input.command`, `tool_input.file_path`;
+for `Stop`, `stop_hook_active`, `permission_mode` and `background_tasks`).
+`fast-check` and the subagent hooks parse it through `.bin/harness hook-input`; `protect-harness`, `guard-bash` and
+`stop-gate` hand it to the `.bin/harness` subcommand of their name. They fail closed on unparseable input and on a
+missing `.bin/harness` (the message says to run `make setup`), and exit 2 to block. Stderr on exit 2 goes back to the
+agent, so every block message includes what to do instead. `stop-gate` does all of this once per turn, or the session
+could never end ([ADR 0048](adr/0048-stop-gate.md)).
 
 | Hook | Event / matcher | Scope | What it does | Budget |
 |------|-----------------|-------|--------------|--------|
 | [protect-harness.sh](../.claude/hooks/protect-harness.sh) | PreToolUse `Edit\|Write\|MultiEdit\|NotebookEdit\|Bash` | all agents | Blocks edits to paths matching `protected-paths.txt`, checked in every worktree. For Bash, a heuristic catches redirections, `tee`, `cp/mv/rm/chmod`, `sed -i`, `git checkout/restore`. Escape hatch: `HARNESS_EDIT=1`, set by a human. | 50 ms |
 | [guard-bash.sh](../.claude/hooks/guard-bash.sh) | PreToolUse `Bash` | all agents | Parses the command as a shell AST (Go, `mvdan.cc/sh`, without running it). Blocks force pushes, pushes to `main` (including a bare push while on `main`), `rm -r` outside the repo or with unexpanded paths, any command naming a `.env` file, nested `bash -c`/`eval` up to depth 4, and anything that does not parse. | 50 ms |
 | [fast-check.sh](../.claude/hooks/fast-check.sh) | PostToolUse `Edit\|Write\|MultiEdit`, timeout 120 s | all agents | Dispatches on the edited file's path to the cheapest sensor through `run.sh`: Go → custom golangci-lint on the package; migrations → append-only, hash, squawk; queries → `sqlc compile`; `openapi.yaml` → Spectral; TS → ESLint on the file; shell → shellcheck and shfmt; Markdown → link check; generated files → refuse and say "run `make gen`". Silent on success. | 1 s |
+| [stop-gate.sh](../.claude/hooks/stop-gate.sh) | Stop, timeout 30 s | main session | Silent when `make check` already called this tree green, when it is the merge base's, in plan mode, and while a subagent or a background `make check` runs. Otherwise runs `make check`, 15 s at most, and blocks once when it is red or not done. | 18 s |
 | [only-make-check.sh](../.claude/hooks/only-make-check.sh) | PreToolUse `Bash` | `code-reviewer`, `test-writer` (in their frontmatter) | Allows only `^make check(-all)?$`. | — |
 | [only-test-files.sh](../.claude/hooks/only-test-files.sh) | PreToolUse `Edit\|Write\|MultiEdit\|NotebookEdit` | `test-writer` | Allows writes only to product test files, using the same predicate as the `specs-scenarios-tested` sensor. | — |
 
@@ -687,7 +699,8 @@ the repository does not prescribe it for other stacks. Each step is useful on it
 3. **Fixtures and selftest** before you add any new sensor. Copy `selftest.sh` and the fixture layout.
 4. **`AGENTS.md` and `CLAUDE.md`.** Short. Commands, layer rule, golden principles, where to look.
 5. **Claude Code hooks.** `fast-check` with your stack's cheapest per-file sensors (Appendix C), the deny list,
-   and `guard-bash` (reuse the Go binary).
+   `guard-bash` and `stop-gate` (reuse the Go binary). `stop-gate` also needs the last line of the Makefile's `check`
+   with its `STAMP` variable, `hook-bootstrap.sh`, and `.bin/` and `.cache/` in `.gitignore`.
 6. **Protect the harness.** `protected-paths.txt`, the PreToolUse hook, CODEOWNERS, a base-branch CI gate,
    branch protection. Do this before agents start touching linter configs, not after.
 7. **Layer enforcement** with a baseline: Deptrac or project references / ArchUnitNET. Freeze existing
@@ -742,7 +755,7 @@ The PHP and .NET columns are suggestions, not tested in this repository.
 Every rule in [harness/rules.md](harness/rules.md) at the time of writing, with where each gates and a suggested equivalent. Follow
 the link for rule, why, sensor, remediation and fixture.
 
-**Gates:** `H` PreToolUse hook · `E` per-edit PostToolUse hook · `PC` pre-commit · `CM` commit-msg ·
+**Gates:** `H` PreToolUse hook · `S` Stop hook · `E` per-edit PostToolUse hook · `PC` pre-commit · `CM` commit-msg ·
 `C` `make check` · `CA` `make check-all` · `R` required CI job · `D` weekly drift · `N` nightly.
 Everything in `C` also runs in `CA` and in the required CI `check-all` job.
 
@@ -827,6 +840,7 @@ These are stack-independent; reuse them as they are.
 | [harness-suppression-reason](harness/rules.md#harness-suppression-reason) | CA, R |
 | [harness-config-not-loosened](harness/rules.md#harness-config-not-loosened) | CA, R |
 | [harness-files-protected](harness/rules.md#harness-files-protected) | H, CODEOWNERS |
+| [harness-stop-is-green](harness/rules.md#harness-stop-is-green) | S |
 | [harness-latency-budget](harness/rules.md#harness-latency-budget) | every run (warns), N |
 | [harness-deterministic](harness/rules.md#harness-deterministic) | N |
 | [harness-scope](harness/rules.md#harness-scope) | C |

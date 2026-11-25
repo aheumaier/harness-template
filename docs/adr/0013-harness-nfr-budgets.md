@@ -1,6 +1,7 @@
 # ADR 0013: Harness NFRs are budgets; latency alerts, reliability fails
 
-Status: accepted · 2026-10-27
+Status: accepted · 2026-10-27 · amended 2026-11-25 by [ADR 0048](0048-stop-gate.md) (proposed: the Stop hook fails
+closed once per turn, not on every call)
 
 ## Context
 Agents run the hooks on every tool call and `make check` after every change, so harness speed is agent

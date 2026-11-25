@@ -61,7 +61,7 @@ nothing (0003 loop prompt), orchestrator and lanes, builder and checker kept apa
 |---|-------|----------------|-------|
 | 0 | Decision | ADR 0046 proposed: what an app-driving evaluator's verdict counts for, agent evals as a drift report, the assumption ledger (amends 0019, 0032, 0039). The stop gate and the frozen-tests rule get their own ADRs with S2 and T1 | done 2026-11-24 |
 | 1 | Evaluator runs the app (A1) | Trial result recorded in ADR 0046 while it is still proposed, then the ADR accepted; if kept: `app-evaluator` agent confined by hooks, wired into `CLAUDE.md` and the loop checker step; an accepted finding is a committed journey in `make e2e` | open |
-| 2 | Done gate at stop (A2) | Stopping the main session with a changed tree and a red `make check` is blocked once with the sensor output; budget and escape rules hold | open |
+| 2 | Done gate at stop (A2) | Stopping the main session with a changed tree and a red `make check` is blocked once with the sensor output or, past 15 s, with the request to run it; budget and escape rules hold | open |
 | 3 | Agent evals (A3) | `make agent-evals` reports hit rate, false positives, run-to-run flips and cost per agent; result appears in the weekly drift issue once TD-38 is paid | open |
 | 4 | Measure and prune (A4, A5) | Every agent, skill, hook and loop prompt has an assumption row, checked by a sensor; each reviewer has a measured `model:` or is folded; stale rows listed weekly | open |
 | 5 | Frozen tests (A6) | A changed or deleted `test-writer` line without a spec change or a later test commit fails `make check-all`; TD-125 paid | open |
@@ -236,24 +236,30 @@ block, whether subagent stops are a separate event, and the timeout.
 **S2 (H).** `.bin/harness stop-gate`, called from a `Stop` entry in `.claude/settings.json` through the usual
 bootstrap wrapper:
 
-- **Runs** `make check` when tracked files differ from the tree of the last green `make check` (a stamp of
-  the tree hash under `.cache/harness/`, written by `make check` on success). No difference: silent, exit 0.
-- **Red:** prints the failing sensor's output and remediation, exit 2. The agent continues.
-- **Escape:** a stop that follows the gate's own block passes with a one-line notice. The gate blocks once
-  per stop, never twice in a row, so a red tree the agent cannot fix (a `test-writer` commit awaiting its
-  implementation, a blocked slice) does not trap the session.
+- **Runs** `make check` when the tree is neither the one `make check` last called green (a stamp under
+  `.cache/harness/`, written by `make check` on success) nor the merge base's. The stamp's key is the tree as
+  `git add -A` would stage it, untracked files included, with the merge base and `STACK`. Plan mode and a
+  turn that ends while a subagent or a background `make check` runs are not judged. No difference: silent,
+  exit 0.
+- **Red:** prints the failed sensors, their rules and the last lines of the output, exit 2. The agent continues.
+- **Escape:** a stop that follows a Stop hook's block passes with a one-line `systemMessage` to the person (plain
+  output at exit 0 reaches nobody). The gate blocks once per turn, so a red tree the agent cannot fix (a
+  `test-writer` commit awaiting its implementation, a blocked slice) does not trap the session. A second
+  blocking Stop hook of the person's own counts as the block for this one too. Both run on the first stop, so the gate
+  has judged by then, unless that stop passed as busy; the ADR accepts that.
 - **Main session only.** Subagent stops are not gated: reviewers change nothing, and `test-writer` must leave
-  red tests.
-- **Budget.** `make check` is ≤ 10 s only for a change without shell or harness files (NFR-H3); with them the
-  shell tests alone took 155–198 s ([TD-7](../tech-debt-tracker.md)). Until plan 0005 retires bats, the gate does not run the
-  check when the affected scope includes the shell tests: it prints "run `make check` before calling this
-  done" and exits 0. A `budgets.txt` row holds the gate itself to the NFR-H3 figure.
-- **Missing or stale binary:** the wrapper blocks with the bootstrap's notice, as every hook does (ADR 0045,
-  NFR-R2). The block-once rule must therefore also hold in the wrapper, so that a broken gate cannot keep a
-  session from ending. S1 showed the wrapper can tell a repeated stop; S2's ADR argues why letting it
-  pass meets ADR 0045 and NFR-R2, or records the exception.
-- Rule `agent-stop-is-green` in `rules.md`; Go tests for each branch above; its own ADR, written with this
-  slice.
+  red tests. `Stop` does not fire for them (tested, Open assumptions).
+- **Budget.** The gate ends a check that is not done after 15 s and blocks once with "run `make check`
+  yourself"; the next stop goes through. This covers the shell tests (155–198 s,
+  [TD-7](../tech-debt-tracker.md)) and every other slow check. `timeout` in `settings.json` is 30 s, above it. The
+  gate has a `budgets.txt` row and an NFR of its own, NFR-H10. (Before 2026-11-25 this text held the gate to NFR-H3's
+  10 s, which `make check` breaks on a Go edit, and had it skip the check and exit 0 when shell tests were in
+  scope, with a message the model would never see.)
+- **Missing or stale binary:** the wrapper blocks with the bootstrap's notice, once per turn: it reads
+  `stop_hook_active` from the raw input, so that a broken gate cannot keep a session from ending. ADR 0048 records
+  the exception to ADR 0013, ADR 0045 and NFR-R2.
+- Rule `harness-stop-is-green` in `rules.md` (named `agent-stop-is-green` before 2026-11-25; no rule has that
+  prefix); Go tests for each branch above; [ADR 0048](../../adr/0048-stop-gate.md), written with this slice.
 
 ### Phase 3 — agent evals
 
@@ -334,28 +340,34 @@ the Go port of `pr-review` (plan 0005), not in the shell script.
     `{"decision":"block","reason":"…"}` on stdout blocks too; a hook uses one form.
   - **First stop or repeated stop.** `stop_hook_active` is `true` "when Claude Code is already continuing as
     a result of a stop hook". The escape rule reads it; no marker file is needed. The field is about any
-    stop hook, not this one: when a user-level Stop hook blocked first, the gate sees `true` and lets the
-    stop pass without having run. S2 accepts that or says why not.
+    stop hook, not this one: when a user-level Stop hook blocked, the gate sees `true` at the next stop
+    and lets it pass. It has judged the first stop, where both run, unless that one passed as busy. ADR 0048 accepts
+    that.
   - **A built-in cap.** After eight stop-hook continuations in a row Claude Code overrides the next block and
     ends the turn; `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` raises the cap. The count resets each time the model calls
     a tool, so the cap does not stop a broken gate whose agent keeps working. The block-once rule must.
   - **Subagents.** `Stop` runs "when the main Claude Code agent has finished responding"; a subagent's stop
     is the separate `SubagentStop` event (with `agent_id`, `agent_type`, `agent_transcript_path`). So a `Stop`
-    entry in `.claude/settings.json` should be the main-session gate the plan wants; S2 tests that it does not
-    run for a subagent.
+    entry in `.claude/settings.json` is the main-session gate the plan wants; it does not run for a subagent
+    (tested, below).
   - **Timeout.** 600 s by default for a command hook, set per hook with `timeout` (seconds). A hook that
-    times out is cancelled and its output discarded.
+    times out is cancelled and its output discarded. The gate's is 30 s (ADR 0048).
   - **Not fired** when the user interrupts. A turn that ends on an API error fires `StopFailure`, whose
     output and exit code are ignored.
   - **The wrapper can tell a repeated stop without the binary.** `scripts/harness/hook-bootstrap.sh`
     already matches the raw hook input when `.bin/harness` is missing; the same kind of match on
-    `"stop_hook_active": true` gives block-once there. A repeated stop that passes without the binary is still
-    a hook that fails open: S2's ADR argues why that meets ADR 0045 and NFR-R2, or records the exception.
-  - **Not stated in the reference, to be tested in S2:** that a timed-out Stop hook lets the stop go ahead
-    (the reference says so for "most events"); whether `stop_hook_active` stays `true` when the model
-    calls tools between the block and its next stop; that `agent_id` is absent from a main-session `Stop`;
-    what a Stop hook's plain output at exit 0 reaches (the events whose stdout reaches the model are listed,
-    and Stop is not one of them).
+    `stop_hook_active` gives block-once there: it blocks only on `false` and nowhere `true`. A repeated stop that passes without the binary is still
+    a hook that fails open: ADR 0048 records the exception.
+  - **Not stated in the reference, tested in S2** on 2026-11-25 (Claude Code 2.1.311, `claude -p` in a scratch
+    repo, project settings only):
+    - `stop_hook_active` stays `true` when the model calls tools between the block and its next stop, and is
+      `false` again after the next prompt.
+    - A Stop hook that runs into its `timeout` (2 s, the hook slept 20 s) lets the stop go ahead.
+    - `agent_id` and `agent_type` are absent from a main-session `Stop`.
+    - `Stop` does not fire for a subagent; `SubagentStop` does. `Stop` fires each time the main turn ends while
+      background tasks still run, and again when they have finished. `background_tasks` holds one entry per
+      running task: `id`, `type` (`subagent` or `shell`), `status`, `description`, and `agent_type` or `command`.
+    - Plain output at exit 0 does not reach the model in the next turn.
 - **The trial's planted defects are chosen by the plan's author.** They may flatter the evaluator. V1
   therefore takes at least half of them from defect classes the two long-running-harness posts report, and
   the keep bar is relative to `code-reviewer` on the same cases.
@@ -374,7 +386,10 @@ the Go port of `pr-review` (plan 0005), not in the shell script.
   design post's full harness cost about 20 times its solo run; an evaluator pass per UI change must be far
   below that to be kept as a default.
 - **A tree-hash stamp is a sound "last green" marker** given `make check` is scoped to the change
-  ([ADR 0014](../../adr/0014-make-check-scoped-to-the-change.md)). S2 checks which scope the stamp may claim.
+  ([ADR 0014](../../adr/0014-make-check-scoped-to-the-change.md)). Checked in S2 (2026-11-25): the key needs the
+  merge base and `STACK` beside the tree, and all but two sensors read the working tree, not the index
+  ([ADR 0048](../../adr/0048-stop-gate.md), Consequences). Not seen: a red that comes from outside the tree
+  or from a flaky test on a tree that was green once.
 
 ## Not in this plan
 
@@ -416,3 +431,9 @@ the Go port of `pr-review` (plan 0005), not in the shell script.
 - 2026-11-25 — owner's ruling of 2026-11-24 on V1's case 019 story 2, whose session detail page has a bug of
   its own on the pinned commit: the case stays, and a hit counts only if its evidence shows the planted symptom.
   A `FAIL` whose evidence is that page's bug is not a hit. ADR 0046's keep bar is unchanged.
+- 2026-11-25 — S2 built, ADR 0048 written, status `proposed`. It answers D0's findings: plain exit-0 output does not
+  reach the model, so a passing notice is a `systemMessage`; the `timeout` is explicit (30 s, the gate's own limit is
+  15 s by the owner's ruling); the stamp's key holds untracked files, the merge base and `STACK`
+  (`tool-versions.env` is in the tree); a second blocking Stop hook is accepted; the rule id is
+  `harness-stop-is-green`. S2's text above was changed to match. Open: whether an unchanged red tree blocks once per
+  turn (built) or once per tree.

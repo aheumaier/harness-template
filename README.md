@@ -58,7 +58,7 @@ Never install a tool globally. `make setup` puts every pinned, checksum-verified
 
 Never read, print or copy `.env.local` between worktrees. `make setup` also points `core.hooksPath` at
 `scripts/git-hooks`, which installs the pre-commit and commit-msg hooks. Until `.bin/harness` is built, the
-Claude Code hooks fail closed.
+Claude Code hooks fail closed (the Stop hook once per turn, [ADR 0048](docs/adr/0048-stop-gate.md)).
 
 ## (a) New project
 
@@ -119,7 +119,7 @@ Claude Code hooks fail closed.
    - Create the labels `harness-change-approved`, `breaking-change-approved` and `no-spec-needed`
      ([ci.md](docs/harness/ci.md)).
    - Dry-run [scripts/github-branch-protection.sh](scripts/github-branch-protection.sh), then apply it with
-     `CONFIRM=1` to require the eight status checks. One of them, `adoption-probe`, passes without running once
+     `CONFIRM=1` to require the nine status checks. One of them, `adoption-probe`, passes without running once
      step 3's `make rename WRITE=1` has set `HARNESS_UPSTREAM`; another, `check-ios`, passes with a notice without
      `ios` in `STACK`.
 5. **Constitution.** Run `/speckit-constitution` to adapt `.specify/memory/constitution.md` to the product.
@@ -157,7 +157,8 @@ The harness has three kinds of parts:
   - the rules.md format (rule, why, sensor, remediation, fixture);
   - in `scripts/harness/`: `run.sh`, `unchanged.sh`, `determinism.sh`, `timing.sh`, `nfr-report.sh`,
     `merge-base.sh`, `trivy.sh`, `hook-bootstrap.sh`, `sync-check.sh`, and `selftest.sh`;
-  - in `.claude/hooks/`: `protect-harness.sh`, `guard-bash.sh`, `only-make-check.sh` and `only-test-files.sh`;
+  - in `.claude/hooks/`: `protect-harness.sh`, `guard-bash.sh`, `stop-gate.sh`, `only-make-check.sh` and
+    `only-test-files.sh`;
   - the Go harness tool in `<API_DIR>/tools/harness/` (integrity-check's excludes come from `GENERATED_GLOBS`);
   - the shape of CI and CODEOWNERS, ADRs and exec plans.
 - **Layout-coupled parts** read where the code lives from one file,
@@ -233,9 +234,12 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      [docs-claude-imports-agents](docs/harness/rules.md#docs-claude-imports-agents) rule requires exactly
      this: every `AGENTS.md` has a sibling `CLAUDE.md` with an `@AGENTS.md` line.
    - **`.claude/`.** Copy the template's hook scripts, agents and skills. In your own `.claude/settings.json`, add the
-     template's three hooks (`protect-harness.sh`, `guard-bash.sh`, `fast-check.sh`) and its
-     `permissions.deny` list next to what is there. Decide per existing hook whether it stays, and say so in
-     the PR. Never drop a Stop or dev-gate hook silently: it may be the repo's definition of done. Keep one
+     template's four hooks (`protect-harness.sh`, `guard-bash.sh`, `fast-check.sh`, `stop-gate.sh`) and its
+     `permissions.deny` list next to what is there. `stop-gate.sh` needs the last line of the Makefile's `check`, its
+     `STAMP` variable, `scripts/harness/hook-bootstrap.sh`, and `.bin/` and `.cache/` in `.gitignore`
+     ([ADR 0048](docs/adr/0048-stop-gate.md)): take all of it or none. Decide per existing hook
+     whether it stays, and say so in the PR. Never drop a Stop or dev-gate hook silently: it may be the repo's
+     definition of done, and a Stop hook of your own runs beside `stop-gate.sh`. Keep one
      copy of each `speckit-*` skill. Leave out the stack skills you have no use for: `add-endpoint` without
      the api set, `add-migration` without db, and `new-domain` when you drop `make new-domain` (step 5's table).
    - **`.specify/`.** Keep one copy. A repo that already runs spec-kit keeps its own constitution and
