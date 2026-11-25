@@ -144,19 +144,48 @@ func gitRepo(t *testing.T, branch string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gitT(t, dir, "init", "-q", "-b", branch)
+	gitT(t, dir, "init", "-q", "--template=", "-b", branch)
 	return dir
 }
 
 // linkRepo makes a git repo holding files (path → lines); untracked files count, as in the sensors.
 func linkRepo(t *testing.T, files map[string][]string) string {
 	t.Helper()
-	root := t.TempDir()
-	gitT(t, root, "init", "-q")
+	root := gitRepo(t, "main")
 	for p, lines := range files {
 		writeLines(t, root, p, lines...)
 	}
 	return root
+}
+
+// add appends lines to a file of the repo, creating it.
+func add(t *testing.T, root, p string, lines ...string) {
+	t.Helper()
+	f := filepath.Join(root, p)
+	if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h, err := os.OpenFile(f, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	if _, err := h.WriteString(strings.Join(lines, "\n") + "\n"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// replace rewrites a file of the repo with old replaced by new.
+func replace(t *testing.T, root, p, old, new string) {
+	t.Helper()
+	f := filepath.Join(root, p)
+	b, err := os.ReadFile(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(f, []byte(strings.Replace(string(b), old, new, 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // templateLayout is the template's scripts/harness/layout.env, without comments.

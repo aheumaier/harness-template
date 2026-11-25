@@ -52,3 +52,4 @@ only through a new ADR. Architectural PRs link an ADR in the PR template.
 | [0044](0044-ios-ci-on-macos.md) | iOS CI on macOS, the app target and Swift lockfiles (amends 0042, 0043) | proposed |
 | [0045](0045-harness-scripts-and-tests-in-go.md) | Harness scripts and their tests move to Go (amends 0012, 0024, 0031) | accepted |
 | [0046](0046-agent-verdicts-are-advisory-and-measured.md) | Agent verdicts stay advisory and are measured: the app evaluator, agent evals, the assumption ledger (amends 0019, 0032, 0039) | proposed |
+| [0047](0047-test-writer-tests-are-frozen.md) | The test writer's tests are frozen until the spec changes (amends 0039, 0046) | proposed |

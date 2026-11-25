@@ -391,7 +391,7 @@ can follow without judgement.
   serially `gen-check`.
 - `make check-all` runs `check`, then in parallel: Go and dependency vulnerabilities, Atlas lint, squawk,
   append-only, Spectral, contract check, knip, deadcode, clone detection, quality-doc shape, harness integrity,
-  orphans, commits, specs. Then serially: integration tests, observability end-to-end, browser e2e.
+  orphans, commits, specs, frozen tests. Then serially: integration tests, observability end-to-end, browser e2e.
 
 **PHP / .NET.** Keep `make` as the entry point (or `just`; on .NET, a Nuke or Cake build works if your team
 lives there, but one command must remain the definition of green). Map each step via
@@ -414,6 +414,7 @@ multi-step work in [exec-plans/](exec-plans/tech-debt-tracker.md); known debt in
 | [docs-claude-imports-agents](harness/rules.md#docs-claude-imports-agents) | every `AGENTS.md` has a sibling `CLAUDE.md` containing `@AGENTS.md` | same |
 | [specs-required-for-features](harness/rules.md#specs-required-for-features) | a `feat` commit touching `apps/` or `api/` must change `specs/` | required `pr-conventions` CI job |
 | [specs-scenarios-tested](harness/rules.md#specs-scenarios-tested) | every acceptance scenario id is named by a test or marked `(untested: <reason>)` | `make check` |
+| [specs-tests-frozen](harness/rules.md#specs-tests-frozen) | no line of a committed `test-writer` test is edited, deleted or skipped later in the branch, until its spec changes; what a later test commit changes or deletes itself is no finding, an added skip always is | `make check-all` |
 | [docs-references-pinned](harness/rules.md#docs-references-pinned) | `docs/references/<tool>-llms.txt` matches the pinned tool version | `make check` |
 | [git-conventional-commits](harness/rules.md#git-conventional-commits) | regex on subject and PR title | `commit-msg` hook, required CI job |
 
@@ -564,15 +565,17 @@ sees a related remediation. Do not promise per-edit rule ids for every linter.
 | [architecture-reviewer](../.claude/agents/architecture-reviewer.md) | Read, Grep, Glob | read-only by tools | Drift linters cannot express: misplaced responsibility, leaky abstraction, decisions without an ADR. Ends with "New sensor candidates". |
 | [reuse-reviewer](../.claude/agents/reuse-reviewer.md) | Read, Grep, Glob | read-only by tools | New code that re-implements something the repo, stdlib or a pinned dependency already has. |
 | [evasion-reviewer](../.claude/agents/evasion-reviewer.md) | Read, Grep, Glob, Bash | **prompt only** | For changes to sensors: tries to make the new sensor pass on bad input (symlinks, comments, build tags, empty listings) in a scratch worktree and reproduces each bypass. |
-| [test-writer](../.claude/agents/test-writer.md) | Read, Grep, Glob, Write, Edit, Bash | hooks: only `make check`, only test files | Writes failing unit tests from the spec before implementation ([ADR 0039](adr/0039-tests-are-written-apart-from-the-implementation.md)). |
+| [test-writer](../.claude/agents/test-writer.md) | Read, Grep, Glob, Write, Edit, Bash | hooks: only `make check`, only test files | Writes failing unit tests from the spec before implementation, or corrects a committed test of its own ([ADR 0039](adr/0039-tests-are-written-apart-from-the-implementation.md)). |
 
 [CLAUDE.md](../CLAUDE.md) says which reviewers to run before calling a change done. All are advisory
 ([ADR 0019](adr/0019-inferential-sensors-are-advisory.md)); "done" still means `make check` is green.
 
-**The test-writer pattern** is worth copying on any stack. It has three layers: the prompt limits scope; a hook
-refuses non-test paths; and `code-reviewer` later compares the committed test commit (trailer
-`Test-Writer: specs/<NNN>`) with the final diff and reports loosened assertions (skips added, expected values
-widened). The evidence for its benefit is still thin (two features per arm; re-measure tracked as TD-126).
+**The test-writer pattern** is worth copying on any stack. It has four layers: the prompt limits scope; a hook
+refuses non-test paths; a sensor (`specs-tests-frozen`) fails when the branch edits, deletes or skips what a
+test commit (line `Test-Writer: specs/<NNN-slug>`) wrote, until the spec changes; what `test-writer` corrects itself is no finding, an added skip always is;
+and `code-reviewer` compares each test commit with the final diff and reports what the sensor cannot see (a test
+loosened through another file). The evidence for its benefit is still thin (two features per arm; re-measure
+tracked as TD-126).
 
 **Reviewers that find the same class twice** feed the ratchet: the finding becomes a rule with a sensor and a
 fixture, via a human-approved harness PR.
@@ -837,6 +840,7 @@ These are stack-independent; reuse them as they are.
 | [specs-structure](harness/rules.md#specs-structure) | CA, R |
 | [specs-required-for-features](harness/rules.md#specs-required-for-features) | CA, R |
 | [specs-scenarios-tested](harness/rules.md#specs-scenarios-tested) | C |
+| [specs-tests-frozen](harness/rules.md#specs-tests-frozen) | CA |
 | [obs-request-queryable](harness/rules.md#obs-request-queryable) | CA |
 | [docs-links-resolve](harness/rules.md#docs-links-resolve) | E, PC, C |
 | [docs-claude-imports-agents](harness/rules.md#docs-claude-imports-agents) | E, PC, C |

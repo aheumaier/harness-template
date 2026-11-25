@@ -141,9 +141,8 @@ func (w world) lsFiles(root string, args ...string) ([]string, error) {
 	return files, nil
 }
 
-// mergeBase is scripts/harness/merge-base.sh in root: the merge base of HEAD with ref (default: origin/main
-// if it exists, else main). A sensor that cannot find its base would compare nothing and pass.
-func (w world) mergeBase(root, ref string) (string, error) {
+// baseRef is the ref the branch is compared with: ref when set, else origin/main if it exists, else main.
+func (w world) baseRef(root, ref string) (string, error) {
 	verify := func(r string) bool {
 		return w.command("git", "-C", root, "rev-parse", "-q", "--verify", r+"^{commit}").Run() == nil
 	}
@@ -158,6 +157,16 @@ func (w world) mergeBase(root, ref string) (string, error) {
 	}
 	if !verify(ref) {
 		return "", fmt.Errorf("BASE_REF '%s' is not a commit in this clone: fetch it (git fetch origin main) or pass BASE_REF=<branch|sha>.", ref)
+	}
+	return ref, nil
+}
+
+// mergeBase is scripts/harness/merge-base.sh in root: the merge base of HEAD with baseRef. A sensor that cannot find
+// its base would compare nothing and pass.
+func (w world) mergeBase(root, ref string) (string, error) {
+	ref, err := w.baseRef(root, ref)
+	if err != nil {
+		return "", err
 	}
 	out, err := w.command("git", "-C", root, "merge-base", "HEAD", ref).Output()
 	if err != nil {

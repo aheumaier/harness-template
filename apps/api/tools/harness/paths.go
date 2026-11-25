@@ -25,6 +25,8 @@ var (
 	// skippedPath is what world.gitFiles and test-file leave out: fixtures hold deliberate violations, and
 	// node_modules is not ours.
 	skippedPath = regexp.MustCompile(`(^|/)(node_modules|fixtures)/`)
+	// specDirRE is a feature's spec; its first group is the feature's number (specs-tested, specs-frozen).
+	specDirRE = regexp.MustCompile(`^specs/([0-9]{3,})-[a-z0-9]+(-[a-z0-9]+)*/spec\.md$`)
 	// commentRE is a line that does nothing: only `#` lines and blank lines are comments. `//` and `/* */` can
 	// comment out a JSONC, JS or Go line without the commented line itself looking like code. A `#` line that
 	// holds another line break (CR, VT, FF, U+0085, U+2028, U+2029; one CR may end it) is not: YAML, SwiftLint

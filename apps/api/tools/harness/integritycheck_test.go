@@ -46,36 +46,6 @@ func integrityRepo(t *testing.T) string {
 	return root
 }
 
-// add appends lines to a file of the repo, creating it.
-func add(t *testing.T, root, p string, lines ...string) {
-	t.Helper()
-	f := filepath.Join(root, p)
-	if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	h, err := os.OpenFile(f, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer h.Close()
-	if _, err := h.WriteString(strings.Join(lines, "\n") + "\n"); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// replace rewrites a file of the repo with old replaced by new.
-func replace(t *testing.T, root, p, old, new string) {
-	t.Helper()
-	f := filepath.Join(root, p)
-	b, err := os.ReadFile(f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(f, []byte(strings.Replace(string(b), old, new, 1)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func clone(t *testing.T, own string) string {
 	t.Helper()
 	pr := filepath.Join(t.TempDir(), "pr")
@@ -155,6 +125,13 @@ func TestIntegrityCheck(t *testing.T) {
 			add(t, own, "a b.go", "f() "+nolint)
 			return ""
 		}, false, []string{"a b.go:2" + noReason}},
+		{"counts the lines between two hunks git joins", func(t *testing.T, own string) string {
+			writeLines(t, own, "x.go", "package y", "a", "b")
+			commitAll(t, own, "two lines")
+			writeLines(t, own, "x.go", "package y", "f() "+nolint, "a", "g() "+nolint, "b")
+			gitT(t, own, "config", "diff.interHunkContext", "5")
+			return ""
+		}, false, []string{"x.go:2" + noReason, "x.go:4" + noReason}},
 		{"ignores fixture overlays in the suppression check (a new fixture is still a harness change)", func(t *testing.T, own string) string {
 			add(t, own, "scripts/harness/fixtures/f/files/x.go", nolint)
 			gitT(t, own, "add", "-A")

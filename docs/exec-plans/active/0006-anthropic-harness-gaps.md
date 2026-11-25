@@ -64,7 +64,7 @@ nothing (0003 loop prompt), orchestrator and lanes, builder and checker kept apa
 | 2 | Done gate at stop (A2) | Stopping the main session with a changed tree and a red `make check` is blocked once with the sensor output; budget and escape rules hold | open |
 | 3 | Agent evals (A3) | `make agent-evals` reports hit rate, false positives, run-to-run flips and cost per agent; result appears in the weekly drift issue once TD-38 is paid | open |
 | 4 | Measure and prune (A4, A5) | Every agent, skill, hook and loop prompt has an assumption row, checked by a sensor; each reviewer has a measured `model:` or is folded; stale rows listed weekly | open |
-| 5 | Frozen tests (A6) | A changed or deleted `test-writer` line without a spec change fails `make check-all`; TD-125 paid | open |
+| 5 | Frozen tests (A6) | A changed or deleted `test-writer` line without a spec change or a later test commit fails `make check-all`; TD-125 paid | open |
 
 Order is by dependency, with the lead item first. Phase 4 needs Phase 3's runner. Phase 3 does not get its
 cases from Phase 1: the trial cases are a product's and stay there (ADR 0046). Phases 2 and 5 are
@@ -216,8 +216,11 @@ and its scenario id, and `make e2e` (in `check-all`) holds the behaviour from th
 journey is deleted, with the reason in the report (ADR 0046). ADR 0019 turns a finding class seen twice into a
 computational rule; here a single accepted finding becomes a test at once, because a journey is cheap and
 specific to the feature. Update `drive-app` §3 and §5 (a journey written to prove an accepted failure is
-kept, not deleted) and `code-reviewer` (how it treats a journey the evaluator added; T1's ADR decides whether
-it is frozen).
+kept, not deleted) and `code-reviewer` (how it treats a journey the evaluator added). The commit carries
+the trailer `App-Evaluator: specs/<NNN-slug>`, and `harness specs-frozen` learns to read it: journeys only (the
+files V2 lets the agent write), and the commit may hold the fix too; a later `App-Evaluator:` commit may change an
+earlier journey only if it changes journeys and nothing else
+([ADR 0047](../../adr/0047-test-writer-tests-are-frozen.md)).
 
 **V4 — wiring (H).** `CLAUDE.md`: a change that alters what the web app shows or how it talks to the API
 also gets `app-evaluator`, before it is called done. The 0003 loop prompt's checker step and the PR template
@@ -304,18 +307,18 @@ component at a time and is a human PR.
 
 ### Phase 5 — frozen tests
 
-**T1 (H).** Sensor `specs-tests-frozen` (`.bin/harness`, in `check-all`, since it reads history). For the
-first commit in `<base>..HEAD` with a `Test-Writer: specs/<slug>` trailer: a line that commit added to a
-test file and that is deleted or changed at `HEAD`, a file of that commit deleted or renamed, or a skip
-marker or build tag added to one, fails unless `specs/<slug>/spec.md` changed in the same range. Added tests
-and added lines pass. This is coarser than `code-reviewer` check 7 by design: the sensor asks "was a
-test-writer line touched without a spec change", the reviewer still judges whether a change the spec diff
-accompanies is explained by it, and loosening through another file (`TestMain`, a config exclude). Fixtures:
-an assertion edited, a case deleted, a `t.Skip` added, and the same three with a spec change. T1 gets its
-own ADR, written with this slice. It also decides whether a journey the evaluator added is frozen in the
-same way, and under which commit trailer.
+**T1 (H).** Sensor `specs-tests-frozen` (`.bin/harness specs-frozen`, in `check-all`, since it reads history):
+what a `Test-Writer: specs/<NNN-slug>` commit wrote in test files may not be edited, deleted or skipped later in
+the branch without a change to that spec. [ADR 0047](../../adr/0047-test-writer-tests-are-frozen.md) decides the
+details, and differs from this slice's first text in five points: every test commit counts, not only the first;
+"changed in the same range" is the range from the test commit to `HEAD`; only what the branch itself did counts;
+a later test commit may change an earlier one's tests; a dropped spec lifts the freeze too. It is coarser than
+`code-reviewer` check 7 by design: the reviewer still judges whether the spec diff explains the change, and
+loosening through another file. Go tests: an assertion edited, a case deleted, a `t.Skip` added, each with and
+without a spec change; one fixture ([ADR 0009](../../adr/0009-harness-selftest.md)) proves the rule
+fires. ADR 0047 also freezes a journey the evaluator added, under `App-Evaluator:`; V3 builds that part.
 
-**T2 (H).** TD-125 as written: `pr-review` passes the since-test-commit diff to the CI reviewer. It lands in
+**T2 (H).** TD-125: `pr-review` passes the diff since each test commit to the CI reviewer. It lands in
 the Go port of `pr-review` (plan 0005), not in the shell script.
 
 ## Open assumptions

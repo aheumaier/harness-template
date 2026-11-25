@@ -22,7 +22,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -41,28 +40,12 @@ var (
 	// non-letters and non-digits there counts, so no invisible character hides a suppression.
 	suppressionRE = regexp.MustCompile(`(//[[:space:]]*(nolint|lint:(file-)?ignore)|eslint-disable|/\*[[:space:]]*eslint[[:space:]]|@ts-expect-error|#[[:space:]]*shellcheck[[:space:]]+disable|atlas:nolint|squawk-ignore|swiftlint:[^\pL\pN]*disable)`)
 	reasonRE      = regexp.MustCompile(`reason: .+\(rule: ([a-z0-9-]+)\)`)
-	hunkRE        = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
 )
 
-// change is one added (+) or removed (-) line; removed lines carry their line number on the base side.
-type change struct {
-	path  string
-	line  int
-	added bool
-	text  string
-}
-
 func init() {
-	commands.register(sensor("integrity-check", "harness integrity-check <root>",
+	commands.register(rootSensor("integrity-check",
 		"harness-suppression-reason, harness-config-not-loosened (make harness-integrity; env BASE_REF, HARNESS_ROOT, HARNESS_CHANGE_APPROVED)",
-		func(w world, args []string) (bool, error) {
-			if len(args) != 1 {
-				return false, errUsage
-			}
-			own, err := w.abs(args[0])
-			if err != nil {
-				return false, err
-			}
+		func(w world, own string) (bool, error) {
 			root, err := w.harnessRoot(own)
 			if err != nil {
 				return false, err
@@ -211,8 +194,7 @@ func modeChanges(w world, root, base string, pathspecs []string) ([][3]string, e
 }
 
 // changes lists the lines added and removed since base in the files matching pathspecs; untracked files
-// count as added. --text --no-textconv: the change's .gitattributes (`-diff`, `binary`, textconv) must not
-// turn a hunk into "Binary files differ".
+// count as added.
 func changes(w world, root, base string, pathspecs []string) ([]change, error) {
 	var rows []change
 	untracked, err := w.git(root, append([]string{"ls-files", "-z", "-o", "--exclude-standard", "--"}, pathspecs...)...)
@@ -231,68 +213,17 @@ func changes(w world, root, base string, pathspecs []string) ([]change, error) {
 			rows = append(rows, change{f, i + 1, true, trimTabs(l)})
 		}
 	}
-	diff, err := w.git(root, append([]string{"diff", "-U0", "--text", "--no-textconv", "--no-color", "--no-ext-diff",
-		"--no-renames", "--src-prefix=a/", "--dst-prefix=b/", base, "--"}, pathspecs...)...)
+	diff, err := diffLines(w, root, []string{base}, pathspecs)
 	if err != nil {
 		return nil, err
 	}
-	return append(rows, parseDiff(diff)...), nil
-}
-
-// parseDiff reads `git diff -U0` output. The path comes from the `--- a/` and `+++ b/` lines (a deleted
-// file's `+++ /dev/null` keeps the `a/` path).
-func parseDiff(diff []byte) []change {
-	var rows []change
-	var path string
-	var old, cur int
-	header := false
-	for _, l := range splitLines(diff) {
-		switch {
-		case strings.HasPrefix(l, "diff --git "):
-			header = true
-		case header && (strings.HasPrefix(l, "--- a/") || strings.HasPrefix(l, "+++ b/") ||
-			strings.HasPrefix(l, `--- "a/`) || strings.HasPrefix(l, `+++ "b/`)):
-			path = diffPath(l[4:])
-		case strings.HasPrefix(l, "@@"):
-			header = false
-			if m := hunkRE.FindStringSubmatch(l); m != nil {
-				old, _ = strconv.Atoi(m[1])
-				cur, _ = strconv.Atoi(m[2])
-			}
-		case header:
-		case strings.HasPrefix(l, "+"):
-			rows = append(rows, change{path, cur, true, trimTabs(l[1:])})
-			cur++
-		case strings.HasPrefix(l, "-"):
-			rows = append(rows, change{path, old, false, trimTabs(l[1:])})
-			old++
-		}
+	for _, c := range diff {
+		c.text = trimTabs(c.text)
+		rows = append(rows, c)
 	}
-	return rows
-}
-
-// diffPath turns `a/x`, `b/x\t` (git appends a tab to paths with spaces) or `"b/x\303\244"` (git's C quoting
-// of unusual characters) into x.
-func diffPath(p string) string {
-	p = strings.TrimSuffix(p, "\t")
-	if strings.HasPrefix(p, `"`) {
-		if u, err := strconv.Unquote(p); err == nil {
-			p = u
-		}
-	}
-	if len(p) < 2 {
-		return p
-	}
-	return p[2:]
+	return rows, nil
 }
 
 // trimTabs strips the leading and trailing tabs that the shell version's `IFS=$'\t' read` dropped, so a
 // Makefile recipe line reads as before.
 func trimTabs(s string) string { return strings.Trim(s, "\t") }
-
-func splitLines(b []byte) []string {
-	if len(b) == 0 {
-		return nil
-	}
-	return strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
-}

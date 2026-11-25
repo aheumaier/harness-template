@@ -1,5 +1,5 @@
 # Single entry point for humans, agents and CI. Every sensor runs through scripts/harness/run.sh:
-# silent on success, actionable on failure. `make help` lists targets.
+# silent on success (but for notices), actionable on failure. `make help` lists targets.
 SHELL := bash
 .SHELLFLAGS := -euo pipefail -c # make ≥3.82; macOS make 3.81 ignores it, recipes stay explicit
 .DEFAULT_GOAL := help
@@ -135,7 +135,7 @@ check: $(HARNESS) ## Fast sensors (warm: <=10s without shell/harness changes, <=
 CHECK_ALL_SKIP ?=
 check-all: export HARNESS_SCOPE := full
 check-all: check ## Everything: check + integration, contract, migration, security, dead code, orphan scripts, clones, e2e
-	@$(MAKE) -k -j4 $(call stacked,$(filter-out $(CHECK_ALL_SKIP),vuln-go vuln-deps lint-migrations squawk migrations-append-only lint-api contract-check knip deadcode-go clones-web docs-quality-shape harness-integrity orphans commits specs))
+	@$(MAKE) -k -j4 $(call stacked,$(filter-out $(CHECK_ALL_SKIP),vuln-go vuln-deps lint-migrations squawk migrations-append-only lint-api contract-check knip deadcode-go clones-web docs-quality-shape harness-integrity orphans commits specs specs-frozen))
 	@$(if $(call stacked,test-integration test-obs e2e),$(MAKE) -k $(call stacked,test-integration test-obs e2e),true)
 
 # A fixture whose target or STACK= tag STACK leaves out is skipped (selftest.sh asks make for STACK_OFF, HOST_OFF and
@@ -502,7 +502,7 @@ swift-resolved: $(HARNESS) ## A Swift package with remote dependencies has its P
 	@$(RUN) swift-resolved deps-swift-resolved -- $(HARNESS) swift-resolved .
 
 ##@ CI and harness integrity (.github/, protected harness files)
-.PHONY: lint-ci layout-check no-new-shell harness-integrity orphans harness-sync-check adoption-probe commits specs specs-tested
+.PHONY: lint-ci layout-check no-new-shell harness-integrity orphans harness-sync-check adoption-probe commits specs specs-frozen specs-tested
 lint-ci: ## actionlint (+ shellcheck on run: blocks) on .github/workflows
 	@$(RUN) actionlint ci-workflows-valid -- actionlint -no-color
 
@@ -533,6 +533,9 @@ commits: $(HARNESS) ## Commit subjects (and PR_TITLE) since BASE_REF follow Conv
 
 specs: ## spec-kit specs/ are well formed; feat changes to PRODUCT_GLOBS (layout.env) come with a spec (vs BASE_REF)
 	@$(RUN) specs specs-structure,specs-required-for-features -- env BASE_REF="$(BASE_REF)" scripts/harness/check-specs.sh
+
+specs-frozen: $(HARNESS) ## Tests committed with Test-Writer: stay unchanged, unless their spec changed or a later test commit changed them (vs BASE_REF)
+	@$(RUN) specs-frozen specs-tests-frozen -- env BASE_REF="$(BASE_REF)" $(HARNESS) specs-frozen .
 
 # In make check, runs only when specs/, a test file or another harness file changed (rules.md#harness-scope).
 specs-tested: $(HARNESS) ## Every acceptance scenario in specs/ is named by a Go, TS or Swift test, or marked (untested: <reason>)
