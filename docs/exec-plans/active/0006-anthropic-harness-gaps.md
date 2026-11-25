@@ -409,3 +409,6 @@ the Go port of `pr-review` (plan 0005), not in the shell script.
   design and pilot are approved, with a trial-only `--settings` file; S1 and D0 are two PRs; ticks keep their
   branch SHAs, whatever the merge method. Confirmed: approval of V1 in two steps; a drop still accepts ADR
   0046; its empty "Trial result" section.
+- 2026-11-25 — owner's ruling of 2026-11-24 on V1's case 019 story 2, whose session detail page has a bug of
+  its own on the pinned commit: the case stays, and a hit counts only if its evidence shows the planted symptom.
+  A `FAIL` whose evidence is that page's bug is not a hit. ADR 0046's keep bar is unchanged.
