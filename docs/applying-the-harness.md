@@ -385,7 +385,7 @@ can follow without judgement.
 
 | Rule | Sensor | Gate |
 |------|--------|------|
-| [harness-stop-is-green](harness/rules.md#harness-stop-is-green) | `Stop` hook [stop-gate.sh](../.claude/hooks/stop-gate.sh), and the stamp `make check` leaves when green | end of a Claude Code turn; blocks once |
+| [harness-stop-is-green](harness/rules.md#harness-stop-is-green) | `Stop` hook [stop-gate.sh](../.claude/hooks/stop-gate.sh), and the stamp `make check` leaves when green | end of a Claude Code turn; blocks once per tree |
 
 **Composition** (from the [Makefile](../Makefile)):
 
@@ -547,15 +547,15 @@ for `Stop`, `stop_hook_active`, `permission_mode` and `background_tasks`).
 `fast-check` and the subagent hooks parse it through `.bin/harness hook-input`; `protect-harness`, `guard-bash` and
 `stop-gate` hand it to the `.bin/harness` subcommand of their name. They fail closed on unparseable input and on a
 missing `.bin/harness` (the message says to run `make setup`), and exit 2 to block. Stderr on exit 2 goes back to the
-agent, so every block message includes what to do instead. `stop-gate` does all of this once per turn, or the session
-could never end ([ADR 0048](adr/0048-stop-gate.md)).
+agent, so every block message includes what to do instead. `stop-gate` blocks once per turn, and once per
+tree that is red or not done, or the session could never end ([ADR 0048](adr/0048-stop-gate.md)).
 
 | Hook | Event / matcher | Scope | What it does | Budget |
 |------|-----------------|-------|--------------|--------|
 | [protect-harness.sh](../.claude/hooks/protect-harness.sh) | PreToolUse `Edit\|Write\|MultiEdit\|NotebookEdit\|Bash` | all agents | Blocks edits to paths matching `protected-paths.txt`, checked in every worktree. For Bash, a heuristic catches redirections, `tee`, `cp/mv/rm/chmod`, `sed -i`, `git checkout/restore`. Escape hatch: `HARNESS_EDIT=1`, set by a human. | 50 ms |
 | [guard-bash.sh](../.claude/hooks/guard-bash.sh) | PreToolUse `Bash` | all agents | Parses the command as a shell AST (Go, `mvdan.cc/sh`, without running it). Blocks force pushes, pushes to `main` (including a bare push while on `main`), `rm -r` outside the repo or with unexpanded paths, any command naming a `.env` file, nested `bash -c`/`eval` up to depth 4, and anything that does not parse. | 50 ms |
 | [fast-check.sh](../.claude/hooks/fast-check.sh) | PostToolUse `Edit\|Write\|MultiEdit`, timeout 120 s | all agents | Dispatches on the edited file's path to the cheapest sensor through `run.sh`: Go → custom golangci-lint on the package; migrations → append-only, hash, squawk; queries → `sqlc compile`; `openapi.yaml` → Spectral; TS → ESLint on the file; shell → shellcheck and shfmt; Markdown → link check; generated files → refuse and say "run `make gen`". Silent on success. | 1 s |
-| [stop-gate.sh](../.claude/hooks/stop-gate.sh) | Stop, timeout 30 s | main session | Silent when `make check` already called this tree green, when it is the merge base's, in plan mode, and while a subagent or a background `make check` runs. Otherwise runs `make check`, 15 s at most, and blocks once when it is red or not done. | 18 s |
+| [stop-gate.sh](../.claude/hooks/stop-gate.sh) | Stop, timeout 30 s | main session | Silent when `make check` already called this tree green, when it is the merge base's, in plan mode, and while a subagent or a background `make check` runs. Otherwise runs `make check`, 15 s at most, and blocks once per tree when it is red or not done. | 18 s |
 | [only-make-check.sh](../.claude/hooks/only-make-check.sh) | PreToolUse `Bash` | `code-reviewer`, `test-writer` (in their frontmatter) | Allows only `^make check(-all)?$`. | — |
 | [only-test-files.sh](../.claude/hooks/only-test-files.sh) | PreToolUse `Edit\|Write\|MultiEdit\|NotebookEdit` | `test-writer` | Allows writes only to product test files, using the same predicate as the `specs-scenarios-tested` sensor. | — |
 

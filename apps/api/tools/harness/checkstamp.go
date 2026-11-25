@@ -36,10 +36,10 @@ func stampOrPrint(w world, args []string) error {
 	case err != nil:
 		return err
 	case len(args) == 1:
-		_, err = fmt.Fprintln(w.stdout, k)
+		_, err = fmt.Fprintln(w.stdout, k.source())
 		return err
-	case k.String() != args[1]:
+	case k.source() != args[1]:
 		return errors.New("it changed while make check ran")
 	}
-	return k.stamp(root)
+	return k.stamp(root, greenStamp)
 }

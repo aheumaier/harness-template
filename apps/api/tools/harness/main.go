@@ -29,8 +29,8 @@
 //   - paths.go: rulesFile, protectedPathsFile, fixturesDir, skippedPath, specDirRE, commentRE, the protectedPath type,
 //     protectedPaths, pathspecMatch, pathspecMatchFold, matchesAny, matchesAnyFold, isRegular, resolveExisting;
 //   - diff.go: the change type, diffLines, splitLines;
-//   - treekey.go: the treeKey type, its methods stamped and stamp, and the world methods treeKey and workingTree
-//     (ADR 0048);
+//   - treekey.go: the treeKey type, its methods source, stamped and stamp, greenStamp, noBase and the world methods
+//     treeKey and workingTree (ADR 0048);
 //   - markdown.go: markdown, plainText, hasLine, the ruleHeading type and ruleHeadings;
 //   - in tests, helpers_test.go: testWorld builds a world from testEnv (the process's environment without a
 //     caller's HARNESS_*, BASE_REF and PR_TITLE, plus the test's variables); runTest and runHook dispatch a

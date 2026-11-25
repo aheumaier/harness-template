@@ -2,26 +2,39 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
+	"time"
 )
 
 // treeKey names what `make check` judges (ADR 0048): the working tree as `git add -A` would stage it, the commit
-// scope `changed` compares it with, and the stack. HEAD is not in it: committing a green tree needs no new check.
+// scope `changed` compares it with, the stack, and what git does not stage as it is on disk. HEAD is not in it:
+// committing a green tree needs no new check.
 type treeKey struct {
-	tree  string
-	base  string // the merge base with BASE_REF, or noBase
-	stack string
+	tree    string
+	base    string // the merge base with BASE_REF, or noBase
+	stack   string
+	disk    string // the files git knows, as they are on disk
+	ignored string // the ignored files, the tools in .bin among them
 }
 
 const noBase = "none"
 
-func (k treeKey) String() string { return "tree=" + k.tree + " base=" + k.base + " stack=" + k.stack }
+func (k treeKey) String() string { return k.source() + " ignored=" + k.ignored }
+
+// source is the part of the key a check must not change. The ignored files are what it left: it may build tools.
+func (k treeKey) source() string {
+	return "tree=" + k.tree + " base=" + k.base + " stack=" + k.stack + " disk=" + k.disk
+}
 
 // treeKey computes the key of root and writes nothing to the repository: the index is a copy, and new objects go
 // to a temporary directory.
@@ -34,8 +47,92 @@ func (w world) treeKey(root string) (treeKey, error) {
 	if base, err := w.mergeBase(root, w.getenv("BASE_REF")); err == nil {
 		k.base = base
 	}
-	k.tree, err = w.workingTree(root)
+	if k.tree, err = w.workingTree(root); err != nil {
+		return treeKey{}, err
+	}
+	w.stderr = io.Discard
+	if k.disk, err = w.diskHash(root); err != nil {
+		return treeKey{}, err
+	}
+	k.ignored, err = w.ignoredHash(root)
 	return k, err
+}
+
+// diskHash hashes the files git knows by content: git stages what filters and core.* settings make of them, and
+// nothing of a change to a skip-worktree or assume-unchanged one.
+func (w world) diskHash(root string) (string, error) {
+	files, err := w.gitKnown(root)
+	if err != nil {
+		return "", err
+	}
+	return w.hashFiles(root, files, func(path string, _ fs.FileInfo) (string, error) {
+		f, err := os.Open(path)
+		if err != nil {
+			return "", err
+		}
+		defer f.Close()
+		if w.ctx != nil {
+			defer context.AfterFunc(w.ctx, func() { _ = f.Close() })() // ends the read of a huge file
+		}
+		h := sha256.New()
+		_, err = io.Copy(h, f)
+		return fmt.Sprintf("%x", h.Sum(nil)), err
+	})
+}
+
+// churn matches ignored files that the work after a check rewrites: caches, logs, SwiftPM and Xcode output, editor
+// state, Claude Code's own settings.
+var churn = regexp.MustCompile(`(^|/)(\.cache|\.turbo|\.vite(st-cache|-temp)?|\.build|\.tmp|\.swiftpm|DerivedData|xcuserdata|\.DS_Store)(/|$)` +
+	`|\.(log|xcuserstate)$|(^|/)\.claude/settings\.local\.json$`)
+
+// ignoredHash hashes the ignored files but churn by size and time: it opens none, as .env.local holds secrets.
+func (w world) ignoredHash(root string) (string, error) {
+	files, err := w.lsFiles(root, "-oi", "--exclude-standard")
+	if err != nil {
+		return "", err
+	}
+	files = slices.DeleteFunc(files, churn.MatchString)
+	return w.hashFiles(root, files, func(_ string, info fs.FileInfo) (string, error) {
+		return fmt.Sprint(info.Size(), info.ModTime().UnixNano()), nil
+	})
+}
+
+// hashFiles hashes files in root by path, mode and what of returns for a regular one or the target of a link.
+// A directory, which is a nested repository, is its path and mode.
+func (w world) hashFiles(root string, files []string, of func(string, fs.FileInfo) (string, error)) (string, error) {
+	slices.Sort(files) // git lists untracked files first, so staging one would change the order
+	h := sha256.New()
+	for _, f := range slices.Compact(files) {
+		if w.ctx != nil && w.ctx.Err() != nil {
+			return "", w.ctx.Err()
+		}
+		path := filepath.Join(root, f)
+		info, err := os.Lstat(path)
+		var content string
+		switch {
+		case err != nil:
+		case info.Mode().IsRegular():
+			content, err = of(path, info)
+		case info.Mode()&fs.ModeSymlink != 0:
+			content, err = os.Readlink(path)
+		}
+		if errors.Is(err, fs.ErrNotExist) {
+			continue // gone since git listed it
+		}
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(h, "%q %v %q\n", f, info.Mode(), content)
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+// treeKeyWithin is treeKey with a limit of its own, for a key taken when the gate's is used up.
+func (w world) treeKeyWithin(root string, limit time.Duration) (treeKey, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	defer cancel()
+	w.ctx = ctx
+	return w.treeKey(root)
 }
 
 // workingTree is the id of the tree `git add -A` would stage.
@@ -96,22 +193,25 @@ func copyIndex(from, to string) error {
 	return os.Chtimes(to, info.ModTime(), info.ModTime())
 }
 
-// checkStampFile holds the key of the tree `make check` last called green.
-const checkStampFile = ".cache/harness/check.stamp"
+// The stamps: the key of the tree `make check` last called green, and of the one the stop gate last held back.
+const (
+	greenStamp = ".cache/harness/check.stamp"
+	heldStamp  = ".cache/harness/stop-gate.stamp"
+)
 
-// stamped reports whether `make check` last called k green.
-func (k treeKey) stamped(root string) bool {
-	b, err := os.ReadFile(filepath.Join(root, checkStampFile))
+// stamped reports whether k is the key in the stamp.
+func (k treeKey) stamped(root, stamp string) bool {
+	b, err := os.ReadFile(filepath.Join(root, stamp))
 	return err == nil && string(b) == k.String()+"\n"
 }
 
-// stamp records k as green. The write is a rename, so two runs at once never leave a mix of both.
-func (k treeKey) stamp(root string) error {
-	file := filepath.Join(root, checkStampFile)
+// stamp writes k to the stamp. The write is a rename, so two runs at once never leave a mix of both.
+func (k treeKey) stamp(root, stamp string) error {
+	file := filepath.Join(root, stamp)
 	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(file), "check.stamp.")
+	tmp, err := os.CreateTemp(filepath.Dir(file), filepath.Base(file)+".")
 	if err != nil {
 		return err
 	}
