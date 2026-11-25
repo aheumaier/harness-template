@@ -93,7 +93,8 @@ PR; **–** needs none.
 - [ ] M2 H model trial per reviewer, numbers in the ledger (`docs/harness/*` is protected)
 - [ ] M3 H `model:` set, reviewers folded or retired as M2 decides; `CLAUDE.md` trigger list updated
 - [ ] M4 H stale assumption rows in the weekly drift report
-- [ ] T1 H `specs-tests-frozen` sensor in `check-all`
+- [x] T1 – ca125d8 — `specs-tests-frozen` in `check-all` and ADR 0047, proposed; time of `make specs-frozen` on
+  2026-11-25: 0.15 s without test commits, 1.4 s with 5 test commits in 105, 2.1 s with 20 loosened lines
 - [ ] T2 H `pr-review` passes the since-test-commit diff (pays TD-125)
 
 ### Phase 0 — decision
