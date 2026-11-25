@@ -237,9 +237,9 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      template's four hooks (`protect-harness.sh`, `guard-bash.sh`, `fast-check.sh`, `stop-gate.sh`) and its
      `permissions.deny` list next to what is there. `stop-gate.sh` needs the last line of the Makefile's `check`, its
      `STAMP` variable, `scripts/harness/hook-bootstrap.sh`, and `.bin/` and `.cache/` in `.gitignore`
-     ([ADR 0048](docs/adr/0048-stop-gate.md)): take all of it or none. Decide per existing hook
-     whether it stays, and say so in the PR. Never drop a Stop or dev-gate hook silently: it may be the repo's
-     definition of done, and a Stop hook of your own runs beside `stop-gate.sh`. Keep one
+     ([ADR 0048](docs/adr/0048-stop-gate.md)): take all of it, its Go tests are red without a part. Decide per
+     existing hook whether it stays, and say so in the PR. Never drop a Stop or dev-gate hook silently: it may be the
+     repo's definition of done, and a Stop hook of your own runs beside `stop-gate.sh`. Keep one
      copy of each `speckit-*` skill. Leave out the stack skills you have no use for: `add-endpoint` without
      the api set, `add-migration` without db, and `new-domain` when you drop `make new-domain` (step 5's table).
    - **`.specify/`.** Keep one copy. A repo that already runs spec-kit keeps its own constitution and

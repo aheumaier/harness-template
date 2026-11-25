@@ -171,11 +171,11 @@ hook only:
   whose ignored files change all the time (a SQLite file or a database's data directory in the checkout) has the check
   run at every stop, and is held back each turn when that is red or slow: it keeps them outside the checkout. A list of
   its own in `layout.env` is worth it only when that is not enough.
-- **Adopters take five things or none:** the hook, its `settings.json` entry, the last line of `check` with `STAMP`,
-  the binary, and `scripts/harness/hook-bootstrap.sh` with `harness_stale`. Their `.gitignore` must name `.bin/` and
-  `.cache/`, or the stamp changes the key it records. Without the Makefile line every stop on a changed tree runs the
-  check. Their own `Stop` hook runs beside it. `make adoption-probe` does not run Claude Code, so it does not exercise
-  the entry.
+- **Adopters take five things, and the Go tests are red without one:** the hook, its `settings.json` entry, the last
+  line of `check` with `STAMP`, the binary, and `scripts/harness/hook-bootstrap.sh` with `harness_stale`. Their
+  `.gitignore` must name `.bin/` and `.cache/`, or the stamp changes the key it records. Without the Makefile line every
+  stop on a changed tree runs the check. Their own `Stop` hook runs beside it. `make adoption-probe` does not run Claude
+  Code, so it does not exercise the entry.
 - **A check that is cut off leaves its sensors' temp logs** in `TMPDIR` (`run.sh` has no trap,
   [TD-177](../exec-plans/tech-debt-tracker.md)).
 - The `harness-latency-budget` warning of NFR-H10 is a warning as everywhere (ADR 0013); the 15 s limit is not a
