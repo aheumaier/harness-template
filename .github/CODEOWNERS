@@ -25,6 +25,7 @@ knip.json                   @aheumaier
 /pnpm-workspace.yaml        @aheumaier
 tsconfig*.json              @aheumaier
 /Makefile                   @aheumaier
+/GNUmakefile                @aheumaier
 /scripts/harness/           @aheumaier
 /scripts/templates/adoption-probe/  @aheumaier
 /scripts/test/              @aheumaier

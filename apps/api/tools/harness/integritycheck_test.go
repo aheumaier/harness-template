@@ -262,6 +262,25 @@ func TestIntegrityCheck(t *testing.T) {
 			}
 			return ""
 		}, false, []string{"apps/.squawk.toml: file mode changed from 000000 to 120000 [harness-config-not-loosened]"}},
+		{"an empty or comment-only config file added is reported (make reads an empty GNUmakefile instead of Makefile)", func(t *testing.T, own string) string {
+			writeLines(t, own, "apps/.squawk.toml", "# nothing")
+			gitT(t, own, "add", "-A")
+			for _, p := range []string{"apps/x/.squawk.toml", "apps/y/.squawk.toml"} {
+				writeLines(t, own, p)
+				if err := os.Truncate(filepath.Join(own, p), 0); err != nil {
+					t.Fatal(err)
+				}
+			}
+			gitT(t, own, "add", "apps/x")
+			if err := os.Chmod(filepath.Join(own, "apps/x/.squawk.toml"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			return ""
+		}, false, []string{
+			"apps/.squawk.toml: empty or comment-only harness config added [harness-config-not-loosened]",
+			"apps/x/.squawk.toml: empty or comment-only harness config added [harness-config-not-loosened]",
+			"apps/y/.squawk.toml: empty or comment-only harness config added [harness-config-not-loosened]",
+		}},
 		{"a config symlink retargeted or deleted is reported, though both targets' names look like comments", func(t *testing.T, own string) string {
 			add(t, own, "apps/#strict", "assume_in_transaction = true")
 			add(t, own, "apps/#loose", "assume_in_transaction = false")

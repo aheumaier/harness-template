@@ -28,6 +28,7 @@ pnpm-workspace.yaml config
 .editorconfig config
 *.gitattributes config
 Makefile config
+GNUmakefile config
 # The harness's own workflows and action, by name (each says "Harness file (protected)" on its first line): a
 # workflow or action not listed here is the product's, until a harness PR lists it here and in CODEOWNERS.
 .github/workflows/ci.yml config
