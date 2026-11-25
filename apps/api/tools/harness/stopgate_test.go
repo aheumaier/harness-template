@@ -176,7 +176,8 @@ func waitEnded(t *testing.T, file string) {
 	}
 }
 
-// TestCheckCommand: only a command that ends when its check ends is one.
+// TestCheckCommand: a command with another one before or after the check is none; the last two trues outlive their
+// check (ADR 0048).
 func TestCheckCommand(t *testing.T) {
 	t.Parallel()
 	for command, want := range map[string]bool{
@@ -186,6 +187,8 @@ func TestCheckCommand(t *testing.T) {
 		"make check > x.log 2>&1":                 true,
 		"make check 2>&1 | tail -40":              true,
 		"make check>x.log":                        true,
+		"make check | sleep 99":                   true,
+		"make check > $(sleep 99)":                true,
 		"make check && make dev":                  false,
 		"make check || make dev":                  false,
 		"make check & make dev":                   false,

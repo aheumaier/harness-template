@@ -66,9 +66,9 @@ func (in stopInput) busy() bool {
 	return false
 }
 
-// checkCommand matches a command that ends when its check ends: `make check` or `make check-all` with a cd or
-// assignments before it and options, assignments, redirections and pipes after it. Anything else (`make check && make
-// dev`) could silence the gate for as long as it runs; a check it misses only costs the gate's own.
+// checkCommand matches `make check` or `make check-all` with a cd or assignments before it and options, assignments,
+// redirections and pipes after it. `make check && make dev` is not one: it would silence the gate for as long as it
+// runs. `make check | sleep 99` is, and does (ADR 0048). A check it misses only costs the gate's own.
 var checkCommand = regexp.MustCompile(`^(cd [^\s;&|]+ && )?(\w+=[^\s;&|]* )*make( -[^\s;&|]+)* check(-all)?` +
 	`( (-|\w+=)[^\s;&|]*)*( ?\d?(>&|>|\|[^;&|\n>])[^;&|\n>]*)*$`)
 

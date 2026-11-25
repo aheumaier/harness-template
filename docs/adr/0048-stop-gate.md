@@ -38,9 +38,8 @@ edit and 173 s on a harness edit, where the shell tests run (2026-10-28 to 2026-
      missing field counts as a repeated stop, so that the gate can never block twice in a row.
   4. A subagent in `background_tasks` is running, or a background shell whose whole command is `make check` or
      `make check-all` (a `cd <dir> &&` or assignments before it; options, assignments, redirections and pipes after
-     it): exit 0, silent. The tree is
-     half-written or about to be judged, and the gate runs again when the task has finished. This is not a pass;
-     nothing is stamped. `make check && make dev` does not count: it would silence the gate until the server ends. A
+     it): exit 0, silent. The tree is half-written or about to be judged, and the gate runs again when the task has
+     finished. This is not a pass; nothing is stamped. `make check && make dev` does not count: it would silence the gate until the server ends. A
      check it does not recognize (`time make check`) costs a second check at the same time, cut off at 15 s.
   5. Otherwise it runs `make check`, without the make variables of the session's environment (`MAKE*`, `MFLAGS`,
      `GNUMAKEFLAGS`; an `-i` there would end a red check green). Green: exit 0, silent. Red: exit 2 with every failed sensor,
@@ -134,6 +133,8 @@ hook only:
   - the environment of the run that left the stamp (`GOFLAGS`, `make check RUN=true`, `MAKE='make -i' make check`,
     `make -i check MAKEFLAGS=`), and a session's own `HARNESS_STACK`, which the gate follows, or `GIT_DIR` with
     `GIT_WORK_TREE`, which point the key at another repository;
+  - a background check that outlives its check (`make check | sleep 99999`, `make check > $(sleep 99999)`): the stops
+    while it runs pass silently, as step 4 says, and nothing is stamped;
   - an untracked `GNUmakefile`, which make reads instead of `Makefile` (TD-178: CI does not see a committed one
     either);
   - the merge base's own tree counts as green. On the default branch without `origin/main`, or with `BASE_REF=HEAD`,
