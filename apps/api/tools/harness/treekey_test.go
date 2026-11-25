@@ -213,6 +213,7 @@ func makeSandbox(t *testing.T) string {
 		t.Fatal(err)
 	}
 	linkHarness(t, dir)
+	writeLines(t, dir, layoutFile, templateLayout...) // not the repo's own: an adopter's STACK may be the test's other one
 	writeLines(t, dir, ".gitignore", ".bin/", ".cache/")
 	commitAll(t, dir, "start")
 	return dir
