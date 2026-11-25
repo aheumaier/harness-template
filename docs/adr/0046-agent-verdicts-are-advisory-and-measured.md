@@ -118,7 +118,8 @@ decision go here as a dated amendment.
 
 Not decided here: the done gate at stop (plan 0006 S2) and the frozen-tests rule (T1). Each gets its own ADR
 with its slice, so that neither waits for this trial. Whether an evaluator journey is frozen like a
-`test-writer` test is T1's question.
+`test-writer` test is T1's question. (2026-11-25, proposed:
+[ADR 0047](0047-test-writer-tests-are-frozen.md) answers it: yes, under the trailer `App-Evaluator:`.)
 
 ## Consequences
 - Until the trial has run, nothing of this is built: no agent file, no hook change, no wiring in

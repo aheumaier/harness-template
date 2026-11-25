@@ -20,6 +20,12 @@ var (
 	// srcs/ by default), a *Tests subfolder too, so a file there ships unless Package.swift says otherwise; a
 	// test target placed there is refused as well (fails closed: move it to Tests/).
 	swiftSourcesRE = regexp.MustCompile(`(?i)(^|/)(sources?|srcs?)/`) // any case: macOS disks fold it, as matchesAnyFold says
+	// What skipsTest reads: the JS, TS and Go markers, the Swift ones (in .swift files only; a test that runs only
+	// under a condition is no evidence) and Swift's compiled-out block (the whole condition: `#if false || os(iOS)`
+	// compiles).
+	skippedTestRE  = regexp.MustCompile(`\.(todo|skip|fixme)\(|\bx(it|test|describe)\(|\bt\.Skip`)
+	swiftSkippedRE = regexp.MustCompile("\\bXCTSkip|\\.`?(disabled|enabled)`?\\s*\\(")
+	swiftIfFalseRE = regexp.MustCompile(`^\s*#if\s+false\s*(//.*)?\r?$`)
 	// testFileForms says in words what testFileRE and swiftTestRE match; TestTestFileForms holds them together.
 	testFileForms = "*_test.go, or *.test.*, *.spec.* or *.e2e.* ending in .js, .ts, .jsx or .tsx (also .mjs, .cjs, .mts, .cts), or *Tests.swift under a *Tests directory, not under Sources/"
 	// testFilePathspecs selects, by name alone, every file the two can match (`*` also matches `/`): git's
@@ -99,6 +105,12 @@ func (pt productTests) why(rel string) string {
 		}
 	}
 	return ""
+}
+
+// skipsTest reports whether a line of the test file rel skips a test, or starts a block that is compiled out: such
+// a test checks nothing.
+func skipsTest(rel string, line []byte) bool {
+	return skippedTestRE.Match(line) || strings.HasSuffix(rel, ".swift") && (swiftSkippedRE.Match(line) || swiftIfFalseRE.Match(line))
 }
 
 func init() {

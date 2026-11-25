@@ -19,9 +19,7 @@ package main
 // files of protected-paths.txt, so the harness's own tests and fixtures cannot satisfy an id. A test
 // names an id when the id appears in it as a whole token (no letter, digit, `_`, `/`, `.` or `-` next to it),
 // in a title, a string or a `// spec: <id>` comment; test syntax is not parsed. A line that also skips or
-// defers its test (`.todo(`, `.skip(`, `.fixme(`, `xit(`, `xtest(`, `xdescribe(`, `t.Skip`; in a .swift file also
-// `XCTSkip` and Swift Testing's `.disabled(` or `.enabled(` (any condition), and every line inside a bare
-// `#if false`) names nothing. Other ways to compile code out are not read (tech-debt TD-150). The check is per line: a skip on another line than
+// defers its test (skipsTest), and in a .swift file every line inside a bare `#if false`, names nothing. Other ways to compile code out are not read (tech-debt TD-150). The check is per line: a skip on another line than
 // the id (an XCTSkip in the test body under a `// spec:` comment) is not seen.
 // Whether a test really checks its scenario is review's call (ADR 0019).
 //
@@ -47,12 +45,8 @@ import (
 const scenarioRule = "specs-scenarios-tested"
 
 var (
-	specDirRE       = regexp.MustCompile(`^specs/([0-9]{3,})-[a-z0-9]+(-[a-z0-9]+)*/spec\.md$`)
 	scenarioIDRE    = regexp.MustCompile(`[0-9]{3,}/US[0-9]+-AS[0-9]+`)
-	skippedTestRE   = regexp.MustCompile(`\.(todo|skip|fixme)\(|\bx(it|test|describe)\(|\bt\.Skip`)
-	swiftSkippedRE  = regexp.MustCompile("\\bXCTSkip|\\.`?(disabled|enabled)`?\\s*\\(") // in .swift files only; a test that runs only under a condition is no evidence
 	swiftIfRE       = regexp.MustCompile(`^\s*#if\b`)
-	swiftIfFalseRE  = regexp.MustCompile(`^\s*#if\s+false\s*(//.*)?\r?$`) // the whole condition: `#if false || os(iOS)` compiles
 	swiftEndifRE    = regexp.MustCompile(`^\s*#endif\b`)
 	swiftElseRE     = regexp.MustCompile(`^\s*#else(if)?\b`)
 	storyRE         = regexp.MustCompile(`(?i)^user story\b`)
@@ -187,7 +181,7 @@ func testedIDs(w world, root string, pt productTests) (map[string]bool, error) {
 					continue
 				}
 			}
-			if skippedTestRE.Match(line) || swift && swiftSkippedRE.Match(line) {
+			if skipsTest(f, line) {
 				continue // a skipped or placeholder test checks nothing
 			}
 			for _, id := range scenarioIDs(line) {

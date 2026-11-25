@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# scripts/harness/run.sh: silent on success; on failure the tool output plus each rule's remediation.
+# scripts/harness/run.sh: silent on success, but for notices; on failure the tool output plus each rule's remediation.
 bats_require_minimum_version 1.5.0
 load helpers
 
@@ -15,6 +15,12 @@ setup() {
 @test "is silent and exits 0 when the sensor passes" {
   run -0 "$RUN" sensor rule-a -- echo noisy
   [ -z "$output" ]
+}
+
+@test "prints the notices of a sensor that passes, and nothing else" {
+  run -0 --separate-stderr "$RUN" sensor rule-a -- bash -c 'printf "a\0b\n"; echo "notice: look"; echo "no notice: x"'
+  [ -z "$output" ]
+  [ "$stderr" = 'notice: look' ]
 }
 
 @test "keeps the exit code and shows the remediation of the rule named in the output" {

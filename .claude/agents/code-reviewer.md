@@ -46,19 +46,28 @@ Check, in this order:
    - A guess and a decision look the same in code, so this check is advisory: its findings alone never turn
      `APPROVE` into `CHANGES REQUESTED`.
 7. Tests written first ([ADR 0039](../../docs/adr/0039-tests-are-written-apart-from-the-implementation.md)):
-   a commit with a `Test-Writer: specs/<NNN-slug>` trailer holds tests `test-writer` wrote before the
-   implementation; a feature may have several (one per story), and the first one counts. You cannot run git,
-   so the caller finds it (`git log --reverse --grep='^Test-Writer: ' <base>..HEAD`) and passes
-   `git diff <first test-writer commit> HEAD -- '*_test.go' '*.test.*' '*.spec.*' '*.e2e.*' '**/testdata/**'
+   a commit with a line `Test-Writer: specs/<NNN-slug>` that changes only test files and `specs/` holds tests
+   `test-writer` wrote from the spec; a feature may have several (one per story, one per corrected test), and
+   each counts. You cannot run git, so the caller finds them
+   (`git log --no-merges --reverse --regexp-ignore-case --grep='^Test-Writer:' <base>..HEAD`, without the commits
+   that change anything else) and passes for each
+   `git diff <test commit> HEAD -- '*_test.go' '*.test.*' '*.spec.*' '*.e2e.*' '*Tests.swift' '**/testdata/**'
    specs/<NNN-slug>/spec.md` (every test file form `harness test-file` accepts) plus the test-runner config
-   (`**/vitest.config.*`, `**/vite.config.*`, whose `test:` block configures Vitest, and `Makefile`). Report
-   each assertion removed or loosened in it as `path:line — test-writer assertion loosened after the test
-   commit — restore it, or change the spec first and say so in the PR (principle 7)`. Loosened means: a case or
+   (`**/vitest.config.*`, `**/vite.config.*`, whose `test:` block configures Vitest, and `Makefile`).
+   `make specs-frozen` fails on a frozen line that changed, a deleted file and an added skip
+   ([ADR 0047](../../docs/adr/0047-test-writer-tests-are-frozen.md)); yours is what it cannot judge: whether a spec
+   change explains the test change, and loosening it does not see (the ADR lists the cases). Report each assertion
+   removed or loosened in it as `path:line — test-writer assertion loosened after the test commit — restore it and
+   change the code; a wrong test goes back to test-writer; a changed requirement changes the spec first, and the PR
+   says so (principle 7)`. Loosened means: a case or
    subtest deleted; an expected value or tolerance widened; an error check dropped; an exact literal replaced
-   by a value computed with the code under test; a skip added (`t.Skip`, `.skip`, `.todo`); a `//go:build`
+   by a value computed with the code under test; a skip added (`t.Skip`, `b.Skip`, `.skip`, `.skipIf`, `.todo`,
+   `.only`, `test.fails`, `{ skip: true }`); a line added inside a frozen block so that it checks less (an early
+   `return`, an `if`); a frozen line changed while its old text is added elsewhere in the file; a `//go:build`
    tag added or the test moved under `integration`; a test or scenario id renamed so it no longer traces to
    the spec; or the same through another file (`TestMain`, `init`, a config exclude). Added tests are fine,
-   and so is a change the spec diff in the same range explains. Run this check only when the caller passes
+   and so is a change the spec diff in the same range explains, or a later test commit that corrects an earlier
+   one without loosening it. Run this check only when the caller passes
    that diff; otherwise skip it silently and do not mention it (no such commit, a caller that did not pass
    it, and CI today, TD-125). Advisory: its findings alone never turn `APPROVE` into `CHANGES REQUESTED`.
 

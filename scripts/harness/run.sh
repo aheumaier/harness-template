@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sensor wrapper: silent on success, verbose and actionable on failure.
+# Sensor wrapper: silent on success (but for a sensor's `notice: ` lines), verbose and actionable on failure.
 #
 #   run.sh <sensor-id> <rule-id>[,<rule-id>...] [--dir <dir>] -- <command...>
 #
@@ -55,6 +55,7 @@ end="$(harness_now_ms)"
 
 if [[ $status -eq 0 ]]; then
   harness_record sensor "$sensor" "$start" "$status" "$(findings_json)" "$end"
+  grep -a '^notice: ' "$log" >&2
   rm -f "$log"
   exit 0
 fi
