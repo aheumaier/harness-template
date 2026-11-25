@@ -53,4 +53,4 @@ you re-measure.
 
 | Id | Requirement | Target | Today | Measured by | On violation |
 |----|-------------|--------|-------|-------------|--------------|
-| NFR-H10 | The Stop hook `stop-gate`, whole call: `make check` with its 15 s limit, the 2 s it may take to end it, and the key before and after (a key that hangs adds up to 4 s more, to 22 s) | ≤ 18 s | 15.3 s at the limit (a harness change), 0.2 s on a stamped tree (0.8 s at load avg 25), 0.2 s on a second stop (2026-11-25, Apple Silicon) | `timing.sh` row `stop-gate`, local only (no Claude Code session stops in CI) | warn |
+| NFR-H10 | The Stop hook `stop-gate`, whole call: `make check` with its 15 s limit, the 2 s it may take to end it, and the key before and after (a key that hangs adds up to 4 s more, to 22 s) | ≤ 18 s | 15.3–15.7 s at the limit (a harness change, or a Go edit with cold caches), 2.6 s on a red and 3.1 s on a green one-file Go edit with warm caches (load avg 35–41), 0.2 s on a stamped tree (0.8 s at load avg 25), 0.2 s on a second stop (2026-11-25, Apple Silicon) | `timing.sh` row `stop-gate`, local only (no Claude Code session stops in CI) | warn |

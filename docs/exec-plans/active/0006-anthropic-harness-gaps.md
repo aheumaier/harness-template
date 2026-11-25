@@ -85,7 +85,9 @@ PR; **–** needs none.
 - [ ] V4 H wiring: `CLAUDE.md`, loop prompts' checker step, PR template line
 - [x] S1 – 2d78eb2 — Stop-hook behaviour taken from a summary → verified against the hooks reference on
   2026-11-24; `stop_hook_active` tells a repeated stop, so no marker file is needed
-- [ ] S2 H `.bin/harness stop-gate`, hook entry in `.claude/settings.json`, rule and tests
+- [x] S2 – 93dc5f2 — `.bin/harness stop-gate`, its Stop hook, rule `harness-stop-is-green` and ADR 0048, proposed;
+  one stop on 2026-11-25: 0.2 s on a stamped tree, 2.6 s (red) and 3.1 s (green) on a one-file Go edit with warm
+  caches, 15.3–15.7 s at the limit (harness edits, cold Go caches)
 - [ ] E1 H eval corpus for `code-reviewer`; case format for product-owned `app-evaluator` cases
 - [ ] E2 H `.bin/harness agent-evals` and `make agent-evals`
 - [ ] E3 H corpora for the other reviewers; weekly run in `drift.yml`
