@@ -174,7 +174,11 @@ func TestTreeKeyWritesNothing(t *testing.T) {
 	t.Parallel()
 	root := stampRepo(t, map[string][]string{"a.go": {"a"}})
 	gitT(t, root, "config", "core.splitIndex", "true")
-	if err := os.Symlink("/usr/bin/touch", filepath.Join(root, ".git/hooks/post-index-change")); err != nil {
+	hooks := filepath.Join(root, ".git/hooks")
+	if err := os.Mkdir(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/usr/bin/touch", filepath.Join(hooks, "post-index-change")); err != nil {
 		t.Fatal(err)
 	}
 	writeLines(t, root, "new.go", "x")

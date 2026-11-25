@@ -431,7 +431,6 @@ func stampRepo(t *testing.T, files map[string][]string) string {
 	t.Helper()
 	root := templateRepo(t, files)
 	writeLines(t, root, ".gitignore", ".bin/", ".cache/")
-	gitT(t, root, "checkout", "-q", "-b", "main")
 	commitAll(t, root, "start")
 	gitT(t, root, "checkout", "-q", "-b", "work")
 	return root
