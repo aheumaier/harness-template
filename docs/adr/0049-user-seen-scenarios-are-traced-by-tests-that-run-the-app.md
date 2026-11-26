@@ -296,7 +296,17 @@ Written to the rulings of 2026-11-26.
   `test-writer`'s reply close that gap; nothing enforces it per story.
 - **Blind spots, left to review** ([ADR 0019](0019-inferential-sensors-are-advisory.md)):
   - the kind is read from the path, the file name and the build line: an integration test in `api/` that never
-    sends a request, or a journey that only checks the page title, counts;
+    sends a request counts;
+  - whether a test checks what its scenario's **Then** says: the sensor proves that a test names the scenario,
+    not that it asserts the outcome. Anthropic's port of its Messages API to Rust
+    ([post](https://www.anthropic.com/research/migrating-api-to-rust), 2026-11-25) shows how far apart the two
+    can be: the new code passed about 98% of its tests while only about a quarter of production inputs matched.
+    The post gives two reasons. Ported tests checked less than the originals: Claude wrote them, and an audit
+    found more than 100 weakened assertions. And tests cover only the cases someone thought of, while one common
+    bug breaks many live requests. The differences were found by a check outside the tests: old and new code
+    compared on production traffic; the weakened assertions, by the audit. Here the check outside the tests is
+    the spec's own scenario, which `code-reviewer` check 8 compares with each test a change touches that names it (a journey that
+    checks only the page title, say). It does not catch a scenario nobody wrote;
   - who wrote the test is not checked: a journey the implementer fitted to its code counts. Keeping tests apart
     rests on `test-writer`'s prompt and `code-reviewer` check 7;
   - whether a `(unit: …)` reason holds is the reviewer's call, as for `(untested: …)`;
@@ -307,6 +317,16 @@ Written to the rulings of 2026-11-26.
 - The wider `test-writer` scope is unmeasured until TD-126 runs (question 5, option A).
 - The caller's manual run to confirm red is provisional (question 4): TD-179 holds the owner's direction, a tester
   agent that runs these tests and judges their red, and is decided with slice V2's hook argument or after it.
+  A check can share that job (proposed 2026-11-26, after V5 was built; not ruled): run the journeys and
+  integration tests of a test commit on that commit, before any implementation, and pass only when each fails
+  inside its own scenario's steps (Given, When or Then), not in
+  shared setup such as sign-in, seed data or server start. For a new page most fail at the When (an element not
+  found), so the Then alone would reject good tests; how a failure is placed (a `test.step` per scenario step, or
+  the failing line) is TD-179's design question, as is a later test commit that corrects a test after the code
+  exists (check 8, question 1): its tests may pass. This adapts the Rust port's rule that each fix comes with "a test
+  that failed on the old code and passed on the new" to tests written before the code. It proves that a test can
+  fail, not that it checks the whole **Then** (check 8) or that it stays unchanged later (`specs-tests-frozen`,
+  TD-176). Its cost, a `make e2e` and `make test-integration` run per test commit, is measured before it is built (TD-179).
 - Not decided here: the evaluator's agent file, its hooks and its wiring (plan 0006, V2 to V4).
 
 ## Alternatives considered

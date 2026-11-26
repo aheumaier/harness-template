@@ -70,6 +70,26 @@ Check, in this order:
    one without loosening it. Run this check only when the caller passes
    that diff; otherwise skip it silently and do not mention it (no such commit, a caller that did not pass
    it, and CI today, TD-125). Advisory: its findings alone never turn `APPROVE` into `CHANGES REQUESTED`.
+8. Tests check what their scenario says
+   ([ADR 0049](../../docs/adr/0049-user-seen-scenarios-are-traced-by-tests-that-run-the-app.md)): `make check`
+   proves that a test names each scenario id, not that it checks the outcome. Take each test that names an id
+   `<NNN>/US<n>-AS<m>` as a whole token (a `// spec:` comment, a subtest or test title;
+   [ADR 0036](../../docs/adr/0036-acceptance-scenarios-are-traced-to-tests.md)) and that the diff adds or changes,
+   or whose scenario the diff changes or moves in a spec (search the tests for the id). Find the scenario in
+   `specs/<NNN>-*/spec.md`: the heading `User Story <n>`, then the m-th item of the ordered list after its
+   `**Acceptance Scenarios**:`, counted by position, not by the number it is written with. Report an id that
+   names no scenario as `path:line — <id> names no scenario — rename it to the scenario it tests (specs-scenarios-tested)`, and a test that
+   checks less as `path:line — <id>: asserts <what the test checks>, the scenario says <what it states> — assert
+   the stated outcome (specs-scenarios-tested)`. Less means: an outcome the **Then** names is not asserted (a
+   journey that checks only the page title, or that a request went out, not what the user then sees; an
+   integration test that checks the status, not the body or header the scenario names); a value looser than the
+   stated one (a substring for an exact text, any 4xx for 412); a different role, starting state or action than
+   the **Given** and **When** state; a state read back only from the page or response that changed it, when the
+   scenario says it holds after a reload or for another user; or an assertion that cannot fail (after an early
+   `return`, or inside a branch or `catch` the run may skip). A test a `Test-Writer:` commit wrote, with its spec
+   unchanged since, is frozen ([ADR 0047](../../docs/adr/0047-test-writer-tests-are-frozen.md)): its fix is a new
+   test commit from `test-writer` that asserts the stated outcome. Report a line once, under check 7 when both
+   apply. Advisory: its findings alone never turn `APPROVE` into `CHANGES REQUESTED`.
 
 Output: a verdict line (`APPROVE` or `CHANGES REQUESTED`), then one line per finding:
 `path:line — problem — fix (rule id or principle #)`. No praise, no restating the diff, no style nits a
