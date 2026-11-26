@@ -85,8 +85,9 @@ PR; **–** needs none.
   0019, 0032 and 0039
 - [ ] V1 – evaluator trial run on a clone of `strength_planner`, numbers recorded in ADR 0046 (run
   2026-11-26; open: hand the cases to the product's owner, then remove the clone)
-- [ ] V5 H scenarios a user sees are proven against the running app, written by `test-writer`; its own ADR
-  (built before V2)
+- [x] V5 H e0d2fab, aa705d0 — with `db`, any test traced a scenario a user sees → only a journey or an
+  integration test does, unless it ends with `(unit: <reason>)`; `test-writer` writes them; ADR 0049, proposed
+  (`specs-tested` 0.03 s → 0.03 s warm on a tree with a spec)
 - [ ] V2 H `app-evaluator` agent file, its hook confinement and a 3 USD cost cap per run
 - [ ] V3 H finding-to-journey rule: `drive-app` skill and `code-reviewer` updated
 - [ ] V4 H wiring: when to run the explorer (`CLAUDE.md`, loop prompts' checker step, PR template line)
@@ -505,6 +506,11 @@ the Go port of `pr-review` (plan 0005), not in the shell script.
   Phase 3's evals instead of a second trial; new slice V5, built first, gives scenarios a user sees tests
   against the running app. Still open from V1: handing the cases to the product's owner, then removing the
   clone.
+- 2026-11-26 — V5 built: ADR 0049 proposed, with the owner's rulings (all A; question 4 for now, TD-179: a
+  later tester agent confirms the red). `specs-tested` traces a scenario a user sees only by a journey or an
+  integration test, `test-writer` writes them, and `specs-tests-frozen` freezes them unchanged. Reviewed in two
+  rounds; the evasion review's bypasses (the race tag, directories `./...` skips, a nested `go.mod`, a marker in
+  a link, disguised placeholders) are closed, except `go.mod` `ignore` lines (TD-180). No budget row: 0.03 s.
 - 2026-11-26 — read The Pragmatic Engineer's newsletter and podcast transcript with Katelyn Lesse and
   Anthropic's Rust migration post (both 2026-11-25); added to Sources. They change no slice. They back the
   explorer override of V1 (QA agents run all the time, not per change; "An always-on QA explorer" above) and
