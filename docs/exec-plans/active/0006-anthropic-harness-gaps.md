@@ -17,6 +17,9 @@ Sources:
 - [How we built our multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) (2025-06-13)
 - [Building a C compiler with a team of parallel Claudes](https://www.anthropic.com/engineering/building-c-compiler) (2026-02-05)
 - [Claude Code best practices](https://code.claude.com/docs/en/best-practices)
+- [How Anthropic builds software in 2026, with Katelyn Lesse](https://newsletter.pragmaticengineer.com/p/how-anthropic-builds-software-in)
+  (The Pragmatic Engineer, 2026-11-25), the newsletter and its podcast transcript
+- [Migrating our Messages API to Rust](https://www.anthropic.com/research/migrating-api-to-rust) (2026-11-25)
 
 The lead item is the **evaluator that runs the app** (owner's ruling, 2026-11-24). Both long-running-harness
 posts report the same thing: unit tests and a read of the diff miss failures a user would see, and an agent
@@ -399,6 +402,11 @@ the Go port of `pr-review` (plan 0005), not in the shell script.
 - **The evaluator in CI.** It needs a running stack next to an agent that holds a secret and reads PR
   content. That is a new confinement question on top of TD-38; revisit once Phase 1 has a kept agent and
   TD-38 is paid.
+- **An always-on QA explorer.** Anthropic runs QA agents, still experimental, that keep testing the running system
+  ("constantly hammering on that thing") against a description a person wrote, and open a PR when something is
+  broken (The Pragmatic Engineer, 2026-11-25). That is the evaluator as a standing explorer, not a gate on each
+  change, which fits the owner's V1 override (explorer on demand, capped per run). A standing run has the same
+  confinement question as the evaluator in CI; revisit with it.
 - **A sprint contract negotiated between builder and evaluator.** Spec-kit's acceptance scenarios with
   traced ids already fix what done means before work starts; the Harness design post itself removed sprints
   as the model improved.
@@ -441,3 +449,8 @@ the Go port of `pr-review` (plan 0005), not in the shell script.
   `harness-stop-is-green`. S2's text above was changed to match. The owner ruled on 2026-11-25:
   an unchanged tree that is red or not done blocks once; the key also covers ignored files, the tools in `.bin/` and git filters
   (0.45 s a stop instead of 0.2 s); TD-178 is a harness PR of its own.
+- 2026-11-26 — read The Pragmatic Engineer's newsletter and podcast transcript with Katelyn Lesse and
+  Anthropic's Rust migration post (both 2026-11-25); added to Sources. They change no slice. They back the
+  explorer override of V1 (QA agents run all the time, not per change; "An always-on QA explorer" above) and
+  keeping human review as a gate (in the Rust migration "the agent found the cheapest way" to match outputs).
+  The migration's lessons on ported tests went to plan 0005's Risks.
