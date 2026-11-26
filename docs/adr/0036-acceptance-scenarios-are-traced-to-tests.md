@@ -1,6 +1,6 @@
 # ADR 0036: Acceptance scenarios are traced to tests by a positional id
 
-Status: accepted · 2026-10-29 · amended 2026-11-01 by [ADR 0041](0041-ios-stack-group.md) (Swift test files in a tests directory count) · amended 2026-11-26 by [ADR 0049](0049-user-seen-scenarios-are-traced-by-tests-that-run-the-app.md) (proposed, rulings pending: which test kinds trace a scenario a user sees)
+Status: accepted · 2026-10-29 · amended 2026-11-01 by [ADR 0041](0041-ios-stack-group.md) (Swift test files in a tests directory count) · amended 2026-11-26 by [ADR 0049](0049-user-seen-scenarios-are-traced-by-tests-that-run-the-app.md) (proposed: with `db` in `STACK`, a scenario a user sees is traced only by a journey or an integration test, unless it ends with `(unit: <reason>)`)
 
 ## Context
 Gap G13 of exec plan 0003 (`docs/exec-plans/*/0003-harness-gap-closure.md`, slice P5.1), from Nandyala and

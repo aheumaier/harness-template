@@ -6,8 +6,8 @@ Status: proposed · 2026-11-26 · amends [ADR 0036](0036-acceptance-scenarios-ar
 Slice V5 of [exec plan 0006](../exec-plans/active/0006-anthropic-harness-gaps.md), gap A1, built first in Phase 1
 by the owner's ruling of 2026-11-26 ([ADR 0046](0046-agent-verdicts-are-advisory-and-measured.md), Outcome of the
 trial). On acceptance the notes on ADR 0036 and ADR 0039 lose their "proposed" and name what was ruled; if this
-ADR is withdrawn, the notes are removed. Each question with two options ends in the owner's ruling. Decision
-follows the recommendations until then, and each ruling rewrites its part.
+ADR is withdrawn, the notes are removed. Each question with two options ends in the owner's ruling; on
+2026-11-26 the owner ruled the recommended option on all five, the fourth for now (question 4).
 
 ## Context
 - **ADR 0036 counts any test.** `specs-scenarios-tested` passes a scenario when its id appears in any product test
@@ -73,7 +73,7 @@ the freeze on every test of that spec (ADR 0047).
 
 A constitution line would cut the cost of either option. It is TD-124's kind of change and not part of this slice.
 
-Ruling: ______
+Ruling (owner, 2026-11-26): A.
 
 ### 2. Which test kinds count
 Both options count journeys: a test file Playwright collects (`apps/web/e2e/*.e2e.ts`), with `db` and `web` in
@@ -100,7 +100,7 @@ Not an option: any Go test that uses `httptest`. `apps/api/cmd/api/main_test.go`
 around its own mux, and `internal/platform/requestid/requestid_test.go` wraps a stub handler; no line tells them
 apart.
 
-Ruling: ______
+Ruling (owner, 2026-11-26): A.
 
 ### 3. How a frozen journey survives the page it was written against
 ADR 0047 already gives a way out: a later test commit may change what an earlier one wrote. So the implementer
@@ -126,7 +126,7 @@ is how to make that rare.
   0047 closed opens again for exactly the tests this ADR adds. It also amends ADR 0047 (its header, a note there,
   this title).
 
-Ruling: ______
+Ruling (owner, 2026-11-26): A.
 
 ### 4. What "confirms red" means for a test of a page that does not exist yet
 - An integration test is type-checked by `make check` (`lint-go` with `build-tags: [integration]`). A pinned name
@@ -162,7 +162,8 @@ added later.
   lands only after [plan 0005](../exec-plans/active/0005-harness-scripts-in-go.md) slice 5 has ported that hook
   (plan 0006, Rules for every slice).
 
-Ruling: ______
+Ruling (owner, 2026-11-26): A, for now. Not the final answer: the owner sees running and judging these tests as
+the job of a tester agent ([TD-179](../exec-plans/tech-debt-tracker.md)).
 
 ### 5. Whether `test-writer`'s wider scope needs its own trial
 ADR 0039 limited the scope to unit tests because its trial covered only those, and plan 0006 makes every new agent
@@ -180,7 +181,7 @@ earn its place by a trial. Widening `test-writer` is not a new agent, but it is 
   question 2 could still be built now. Cost: about what V1 cost (28.15 USD for the round, 1.28 USD for the pilot)
   and a working day, and a product owner's consent. If ruled, V5 writes the design and stops before running it.
 
-Ruling: ______
+Ruling (owner, 2026-11-26): A.
 
 ### 6. What traces these scenarios on a stack without `db` and `web`
 No option needed: a test kind counts only where its make target runs
@@ -216,7 +217,7 @@ warning first fires, with the measurement. When a row warns, first look at runni
 their setup (the Playwright config is protected: a harness PR), before raising the budget.
 
 ## Decision
-Follows the recommendations until the rulings are in; each ruling rewrites its part.
+Written to the rulings of 2026-11-26.
 
 - **`specs-scenarios-tested` gains one finding** (question 1 A, 2 A, 6). With `db` in `STACK`, a scenario that
   carries neither `(unit: …)` nor `(untested: …)` passes only when a test of a kind question 6 allows names its id.
@@ -299,6 +300,8 @@ Follows the recommendations until the rulings are in; each ruling rewrites its p
 - An adopter with specs pays once on upgrade, and each new spec pays one pass over its markers (question 1,
   option A). The finding names each scenario and the fix.
 - The wider `test-writer` scope is unmeasured until TD-126 runs (question 5, option A).
+- The caller's manual run to confirm red is provisional (question 4): TD-179 holds the owner's direction, a tester
+  agent that runs these tests and judges their red, and is decided with slice V2's hook argument or after it.
 - Not decided here: the evaluator's agent file, its hooks and its wiring (plan 0006, V2 to V4).
 
 ## Alternatives considered
