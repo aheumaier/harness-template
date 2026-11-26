@@ -235,12 +235,13 @@ func templateRepo(t *testing.T, files map[string][]string) string {
 	return linkRepo(t, all)
 }
 
-// gitT runs git in dir as a fixed author with no signing, and fails the test when git fails. Go tests run git
-// only through it, execIn and execInput; testscript scripts run it with their own exec.
+// gitT runs git in dir as a fixed author with no signing and no background maintenance, and fails the test when
+// git fails. A commit otherwise starts a detached "git maintenance run", whose lock file copyOf can list and then
+// not find. Go tests run git only through it, execIn and execInput; testscript scripts run it with their own exec.
 func gitT(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@localhost",
-		"-c", "commit.gpgsign=false"}, args...)...)
+		"-c", "commit.gpgsign=false", "-c", "maintenance.auto=false"}, args...)...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v: %s", args, err, out)
 	}
