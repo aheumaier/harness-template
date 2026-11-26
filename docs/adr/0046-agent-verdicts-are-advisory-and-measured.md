@@ -150,7 +150,8 @@ catches. So the weight moves from the agent's verdict to those tests: Decision,
   - **Direction: scenarios a user sees are tested against the running app.** A scenario about what the web
     app shows, or what the API returns to it, would be proven by a journey or an API test against the running
     server, written by `test-writer` from the spec before the implementation. Whether and how a unit test
-    stops counting for such a scenario is decided by V5's own ADR, amending ADR 0036 and ADR 0039, not here.
+    stops counting for such a scenario is decided by V5's own ADR, amending ADR 0036 and ADR 0039, not here. (2026-11-26, proposed:
+    [ADR 0049](0049-user-seen-scenarios-are-traced-by-tests-that-run-the-app.md) answers it; rulings pending.)
 - **Agent evals are a drift report**, like coverage ([ADR 0020](0020-test-coverage-is-a-trend.md)) and
   mutation testing ([ADR 0023](0023-mutation-testing-is-a-drift-report.md)). `make agent-evals` runs each
   agent on a small set of cases and reports, per agent, the cases hit in every run, in some and in none, the
