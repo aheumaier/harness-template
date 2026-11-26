@@ -488,6 +488,19 @@ Each PR updates every reference to the files it moves:
 
 ## Risks
 
+- **A ported test checks less than the bats test it replaces.** In Anthropic's port of its Messages API to Rust
+  ([post](https://www.anthropic.com/research/migrating-api-to-rust), 2026-11-25), the new code passed about
+  98% of its tests while only about 24% of production inputs gave the same output. Claude wrote the ported
+  tests, and an audit of the about 700 ported tests found more than 100 weakened assertions; the post does not
+  say who audited them or how. The one-to-one case list (A5) proves no case is dropped. It does not prove a case
+  still checks as much. Proposed, not decided (the owner rules whether any of these becomes a criterion for a
+  slice PR):
+  1. While a slice is open, run the bash script and the subcommand on the same inputs (the selftest fixtures
+     and this repo) and record only where they first differ: exit code, stream, first differing byte.
+  2. A reviewer compares each ported assertion with the bats line it replaces and looks for a looser match, a
+     dropped stderr or exit-code check, or a case that now passes on any output.
+  3. A fix to a script while its port is open lands in both versions in the same PR. Anthropic used a merge
+     check for this; here the freeze in "Hand ports into products" would also apply to the template.
 - **A port changes behaviour.** Bash quirks (word splitting, `set -e` gaps, `sed` differences) are part of
   today's behaviour, and some callers may rely on them. Mitigation: one-to-one case lists (A5), the selftest
   fixtures, and the nightly determinism run.
@@ -686,3 +699,5 @@ template's subcommand uncalled; the analyzers plugin already registers from `ini
     `noshell_test.go` (among them a link to `/dev/zero`, dotfiles, `.SH`, no or an empty `#!` line, a shell name
     after byte 256, harness Go running a script kept beside it). The rest are declared under "Not caught" in
     `rules.md`; the three ways past `orphans` only keep a dead subcommand alive.
+- 2026-11-26: Risks gained "A ported test checks less than the bats test it replaces", from Anthropic's Rust
+  migration post (2026-11-25), read for plan 0006. Its three mitigations are proposals for the owner.
