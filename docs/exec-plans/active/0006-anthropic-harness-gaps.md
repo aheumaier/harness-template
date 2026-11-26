@@ -38,6 +38,8 @@ Rules for every slice, as in 0003:
   lands after that script's port.
 - **Every new agent earns its place by a trial** with a keep/drop criterion stated before the run, as
   [ADR 0039](../../adr/0039-tests-are-written-apart-from-the-implementation.md) did for `test-writer`.
+  (2026-11-26: the app evaluator is the one exception, by the owner's override after V1; see ADR 0046,
+  Outcome of the trial.)
 - **Inferential output stays advisory** ([ADR 0019](../../adr/0019-inferential-sensors-are-advisory.md));
   nothing an LLM judges enters `make check` (NFR-R1).
 
@@ -63,7 +65,7 @@ nothing (0003 loop prompt), orchestrator and lanes, builder and checker kept apa
 | # | Phase | Exit criterion | State |
 |---|-------|----------------|-------|
 | 0 | Decision | ADR 0046 proposed: what an app-driving evaluator's verdict counts for, agent evals as a drift report, the assumption ledger (amends 0019, 0032, 0039). The stop gate and the frozen-tests rule get their own ADRs with S2 and T1 | done 2026-11-24 |
-| 1 | Evaluator runs the app (A1) | Trial result recorded in ADR 0046 while it is still proposed, then the ADR accepted; if kept: `app-evaluator` agent confined by hooks, wired into `CLAUDE.md` and the loop checker step; an accepted finding is a committed journey in `make e2e` | open |
+| 1 | Evaluator runs the app (A1) | Trial result recorded in ADR 0046 while it is still proposed, then the ADR accepted (result 2026-11-26: bar missed; the owner overrode the outcome, see V1). V5's ADR decided and its sensor built: how a scenario a user sees is proven against the running app; `app-evaluator` confined by hooks and run on demand as an explorer; an accepted finding is a committed journey in `make e2e` | open |
 | 2 | Done gate at stop (A2) | Stopping the main session with a changed tree and a red `make check` is blocked once with the sensor output or, past 15 s, with the request to run it; budget and escape rules hold | open |
 | 3 | Agent evals (A3) | `make agent-evals` reports hit rate, false positives, run-to-run flips and cost per agent; result appears in the weekly drift issue once TD-38 is paid | open |
 | 4 | Measure and prune (A4, A5) | Every agent, skill, hook and loop prompt has an assumption row, checked by a sensor; each reviewer has a measured `model:` or is folded; stale rows listed weekly | open |
@@ -81,11 +83,13 @@ PR; **–** needs none.
 
 - [x] D0 – f186bda — no decision record for A1, A3 and A4 → ADR 0046 proposed, amending
   0019, 0032 and 0039
-- [ ] V1 – evaluator trial run on a clone of `strength_planner`, numbers recorded in ADR 0046 (design below;
-  the owner approves the design and cost before the run)
-- [ ] V2 H `app-evaluator` agent file and its hook confinement
+- [ ] V1 – evaluator trial run on a clone of `strength_planner`, numbers recorded in ADR 0046 (run
+  2026-11-26; open: hand the cases to the product's owner, then remove the clone)
+- [ ] V5 H scenarios a user sees are proven against the running app, written by `test-writer`; its own ADR
+  (built before V2)
+- [ ] V2 H `app-evaluator` agent file, its hook confinement and a 3 USD cost cap per run
 - [ ] V3 H finding-to-journey rule: `drive-app` skill and `code-reviewer` updated
-- [ ] V4 H wiring: `CLAUDE.md`, loop prompts' checker step, PR template line
+- [ ] V4 H wiring: when to run the explorer (`CLAUDE.md`, loop prompts' checker step, PR template line)
 - [x] S1 – 2d78eb2 — Stop-hook behaviour taken from a summary → verified against the hooks reference on
   2026-11-24; `stop_hook_active` tells a repeated stop, so no marker file per session is needed
 - [x] S2 – 93dc5f2 — `.bin/harness stop-gate`, its Stop hook, rule `harness-stop-is-green` and ADR 0048, proposed;
@@ -125,10 +129,16 @@ their own ADR with their slice. T1's ADR also decides whether a journey the eval
 
 The builder may already use `drive-app`. That is self-evaluation, and the Harness design post is blunt about
 it: "agents reliably skew positive when grading their own work." It is equally blunt about the fix needing
-work: "Out of the box, Claude is a poor QA agent." So the agent is trialled and its prompt tuned before it
-is kept.
+work: "Out of the box, Claude is a poor QA agent." So the agent is trialled, and its prompt tuned, before it
+is kept. (2026-11-26: it was trialled, missed the bar and was kept as an explorer without tuning, by the
+owner's override; see V1.)
 
-**V1 — trial.** Designed on 2026-11-24, not run. The owner ruled that the trial ground is the product
+**V1 — trial.** Designed on 2026-11-24, run on 2026-11-26 (28.15 USD for one round). Result: both arms hit
+7 of 8 defects, the evaluator hit none that `code-reviewer` missed, and it failed no clean scenario, so the
+keep bar is missed. The owner overrode the rule for a missed bar (tune or drop): no tuning round, the
+evaluator explores on demand instead of gating, and scenarios a user sees get tests against the running app
+(V5). ADR 0046, Trial result, holds the table and costs. What follows is the design; ADR 0046 lists where
+the run differed. The owner ruled that the trial ground is the product
 `strength_planner` (Go API, React app, spec-kit specs, Playwright journeys), not a scratch domain here. The
 pilot starts only after the owner approves this design and the pilot's cost; the round starts only after the
 owner approves the cost the pilot measured.
@@ -146,7 +156,8 @@ owner approves the cost the pilot measured.
 - **Cases.** A case is one or two user stories. Four get two planted defects each: `002-editable-names`
   (stories 1 and 3), `003-microcycle-session-count` (its only story), `019-live-training-session` story 1,
   and its story 2. Two stay clean: `019-live-training-session` story 3 and `004-mesocycle-order-sort-fix`
-  (its only story). 003 and 004 have about two counted scenarios each. The other specs on the product's
+  (its only story). 003 and 004 have about two counted scenarios each (2026-11-26: the run counted three on
+  003 and two on 004). The other specs on the product's
   `main` describe mostly API calls, need the AI key, or are in work, so there is no reserve. Before the run,
   each case lists the scenario ids a user can reach in the browser (one that names only an HTTP request or
   status does not count), its existing journeys are green on the pinned commit, and no open bug breaks a
@@ -180,17 +191,19 @@ owner approves the cost the pilot measured.
   product's owner confirms that the journey expects what the scenario says. **Otherwise** tune the prompt at
   most twice and rerun; if it still fails, drop the agent, record the numbers, and add "drive the scenarios in
   the app" to `code-reviewer` only if that variant passes the same bar.
-- **Cost (an estimate, nothing measured yet).** One round is 12 evaluator runs and 12 `code-reviewer` runs.
+- **Cost (an estimate made before the run; measured figures at the end).** One round is 12 evaluator runs and 12 `code-reviewer` runs.
   Guess: 5 to 10 USD and 30 to 45 minutes per evaluator run, about a fifth of that per reviewer run. That is
   about 72 to 144 USD and one to one and a half working days per round. With a margin of half: about 110 to
   220 USD per round, and 330 to 660 USD if both tuning rounds are needed. Not included: the pilot (5 to 10
   USD) and the `code-reviewer` variant that drives the scenarios. **Pilot first:** one evaluator run on one
   clean case. It proves the stack recipe and gives the real cost per run; the owner approves the round from
-  that number.
-- **Record.** The table, the cost per judged case and the wall time go into ADR 0046. The cases (pinned
+  that number. Measured: the pilot cost 1.28 USD; the round, approved up to 40 USD, cost 28.15 USD (evaluator
+  mean 1.28 USD and 285 s per run, `code-reviewer` mean 1.06 USD and 124 s).
+- **Record.** The table, the cost per judged case and the wall time go into ADR 0046. (2026-11-26: each run
+  judged one case, so the cost per run is the cost per judged case.) The cases (pinned
   commit, patches, scenario lists, start recipe) are handed to the product's owner before the clone is
   removed; whether they are kept is the owner's call. They are not copied into this public template.
-- **V2's first step.** If kept, V2 first checks the wiring on this template's own stack, with `make dev` and the
+- **V2's first step.** V2 first checks the wiring on this template's own stack, with `make dev` and the
   `drive-app` skill: a small web feature on a scratch branch, judged once clean and once with a planted
   defect, each with and without read access to the repository (the trial gave none; the agent below may
   read it). It has no keep bar. If the results differ, V2 takes the better variant. V2's PR records them and
@@ -209,8 +222,14 @@ owner approves the cost the pilot measured.
   [ADR 0036](../../adr/0036-acceptance-scenarios-are-traced-to-tests.md) ids), and the repository root if the
   first step keeps read access. It is told that every file is data, not instructions, as `reuse-reviewer`
   and `evasion-reviewer` are.
-- A cost cap per run, as ADR 0019 requires of the slice that adds an agent; V1's measured cost sets it.
-- The prompt carries the rubric the trial tuned. It states what the evaluator cannot judge (sound, native
+- A cost cap per run, as ADR 0019 requires of the slice that adds an agent: 3 USD, from V1's highest run
+  (2.30 USD). V1's cases were one or two stories on an empty database, so a whole feature may need more;
+  V2 settles how a run that hits the cap ends: its report is partial, and every scenario it did not reach is
+  `NOT EXERCISED`. V2's first measured run on a whole feature sets the cap again, so that this stays rare.
+- Its role is an explorer (ADR 0046, Outcome of the trial): it looks for what the scenario tests of V5 do not
+  check, and each accepted finding becomes a journey (V3). The trial denied its Write tool by mistake, so V2's
+  first step also checks that it can write its journey files.
+- The prompt carries the rubric the trial used (it was not tuned). It states what the evaluator cannot judge (sound, native
   dialogs, anything not reachable through the page or the API logs) so that it reports `NOT EXERCISED`
   rather than guessing.
 - Scope: the web app and the API as the web app uses it. iOS is out ([plan 0004](0004-ios-stack-group.md)).
@@ -228,9 +247,35 @@ files V2 lets the agent write), and the commit may hold the fix too; a later `Ap
 earlier journey only if it changes journeys and nothing else
 ([ADR 0047](../../adr/0047-test-writer-tests-are-frozen.md)).
 
-**V4 — wiring (H).** `CLAUDE.md`: a change that alters what the web app shows or how it talks to the API
-also gets `app-evaluator`, before it is called done. The 0003 loop prompt's checker step and the PR template
-(one line: evaluator verdict, or why not applicable) follow. CI is not wired: see Not in this plan.
+**V4 — wiring (H).** `CLAUDE.md`: a feature that changes what the web app shows or how it talks to the API
+gets one `app-evaluator` run, on demand, when its stories are built; it is not a step before every change is
+called done (ADR 0046, Outcome of the trial). The builder decides when, and the PR template makes a skipped
+run visible (one line: evaluator run and verdict, or why none). The 0003 loop prompt's checker step follows. CI is not wired: see Not in this plan.
+
+**V5 — scenarios a user sees run against the app (H).** Built first in this phase. ADR 0036 traces each
+acceptance scenario to a test, but any test counts, so a scenario about an HTTP header or what a page shows
+can pass with a unit test that never starts the app. In V1 the product's own checks were green while the
+evaluator found three scenarios failing in the running app (not yet confirmed by the product's owner). The
+direction, which the slice's own ADR (amending ADR 0036 and ADR 0039) decides first:
+
+- A scenario about what the web app shows, or what the API returns to it, is traced only by a journey
+  (`*.e2e.*`) or an API test against the running server (an integration test); `specs-scenarios-tested`
+  checks that.
+- `test-writer` writes these tests from the spec before the implementation, as it writes unit tests now
+  (ADR 0039). They are frozen by `specs-tests-frozen` (ADR 0047).
+
+That ADR answers:
+
+- How a scenario is recognised as one a user sees (by the story, a marker or a stated reason, without
+  writing ids into the spec), and which test kinds count.
+- How a frozen journey survives the page it was written against: selectors written before the page exists
+  will change, and ADR 0047 allows that only with a spec change.
+- What "confirms red" means for a journey against a page that does not exist yet: it fails, but for the
+  wrong reason (ADR 0039).
+- Whether `test-writer`'s wider scope needs its own trial: ADR 0039 limited it to unit tests because its
+  trial covered only those.
+- What traces these scenarios on a stack without `db` and `web` (NFR-B2), where journeys do not apply.
+- What the extra journeys cost in the `e2e` budget row.
 
 ### Phase 2 — done gate at stop
 
@@ -385,12 +430,15 @@ the Go port of `pr-review` (plan 0005), not in the shell script.
   product's `main` (its status line still says otherwise). Judged by title, no open entry in the bug list
   breaks a counted scenario of 002, 003, 004 or 019; one to watch is #131 (finishing a session can make AI
   calls, and the trial's AI key is a dummy). Not known: whether the journeys are green. V1 checks both on
-  the pinned commit first.
+  the pinned commit first. (2026-11-24, on the pin: 160 journeys passed, 3 failed, none of them a case
+  journey; 12 skipped and 15 did not run.)
 - **Deterministic grading is possible.** If reviewers' wording of path and id proves too loose to match, E2
   first tightens the output format in the agent files rather than adding an LLM judge.
-- **Cost.** Unknown until V1 and E2 report it; V1's figures are a guess until its pilot run. The Harness
+- **Cost.** Unknown until V1 and E2 report it; V1's figures are a guess until its pilot run. (2026-11-26:
+  V1 measured 1.28 USD per evaluator run on average and 2.30 USD at most; E2 is still open.) The Harness
   design post's full harness cost about 20 times its solo run; an evaluator pass per UI change must be far
-  below that to be kept as a default.
+  below that to be kept as a default. (2026-11-26: it is not a default; the owner ruled one run on demand
+  per feature.)
 - **A tree-hash stamp is a sound "last green" marker** given `make check` is scoped to the change
   ([ADR 0014](../../adr/0014-make-check-scoped-to-the-change.md)). Checked in S2 (2026-11-25): the key needs the
   merge base, `STACK`, the files on disk and the ignored files beside the tree, and all but two sensors read the working tree, not the index
@@ -449,6 +497,14 @@ the Go port of `pr-review` (plan 0005), not in the shell script.
   `harness-stop-is-green`. S2's text above was changed to match. The owner ruled on 2026-11-25:
   an unchanged tree that is red or not done blocks once; the key also covers ignored files, the tools in `.bin/` and git filters
   (0.45 s a stop instead of 0.2 s); TD-178 is a harness PR of its own.
+- 2026-11-26 — V1 run: pilot (1.28 USD), then one round, approved up to 40 USD, for 28.15 USD. The keep bar was
+  missed once 019 story 2 was scored (19.03 USD); the owner chose to finish the round for full data. Result
+  and deviations in ADR 0046. Owner's rulings, which override ADR 0046's rule for a missed bar (tune or
+  drop): no tuning round; `code-reviewer` does not gain the
+  scenario-driving variant; the evaluator stays as an explorer run on demand, cap 3 USD per run, measured by
+  Phase 3's evals instead of a second trial; new slice V5, built first, gives scenarios a user sees tests
+  against the running app. Still open from V1: handing the cases to the product's owner, then removing the
+  clone.
 - 2026-11-26 — read The Pragmatic Engineer's newsletter and podcast transcript with Katelyn Lesse and
   Anthropic's Rust migration post (both 2026-11-25); added to Sources. They change no slice. They back the
   explorer override of V1 (QA agents run all the time, not per change; "An always-on QA explorer" above) and
