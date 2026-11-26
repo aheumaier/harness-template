@@ -23,8 +23,11 @@ package main
 // the id (an XCTSkip in the test body under a `// spec:` comment) is not seen.
 // Whether a test really checks its scenario is review's call (ADR 0019).
 //
-// A scenario passes when a test names its id or its text ends with `(untested: <reason>)` (the reason may hold
-// one level of parentheses); an empty or placeholder reason (n/a, tbd, todo, …) is a finding. Run from
+// A scenario passes when its text ends with `(untested: <reason>)`, or a test names its id. With db in STACK, a
+// scenario that does not end with `(unit: <reason>)` is one a user sees, and only a test that runs the app
+// counts (scenariokinds.go, ADR 0049); one only other tests name is a finding that names one of them. A reason
+// may hold one level of parentheses; an empty or placeholder reason (n/a, tbd, todo, …) is a finding, and so
+// are both markers in one scenario. Run from
 // `make specs-tested` (make check when specs/ or a test file changed, make check-all). Fails closed (exit 2) on
 // an unreadable layout, protected-paths.txt or spec, or when git fails; no specs is a pass.
 
@@ -34,9 +37,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
@@ -52,10 +57,23 @@ var (
 	storyRE         = regexp.MustCompile(`(?i)^user story\b`)
 	storyNumberRE   = regexp.MustCompile(`(?i)^user story[ \t]+([0-9]+)\b`)
 	scenariosRE     = regexp.MustCompile(`(?i)^acceptance scenarios\b`)
-	untestedRE      = regexp.MustCompile(`\(untested:((?:[^()]|\([^()]*\))*)\)[ \t]*$`)
+	markerRE        = regexp.MustCompile(`(?:^|[^\]])\((untested|unit):((?:[^()]|\([^()]*\))*)\)[ \t]*$`)
+	markerNameRE    = regexp.MustCompile(`\((untested|unit):`)
 	whitespaceRuns  = regexp.MustCompile(`\s+`)
-	placeholderWhys = map[string]bool{"n/a": true, "na": true, "tbd": true, "todo": true, "none": true, "-": true, "x": true, "?": true}
+	placeholderWhys = map[string]bool{"": true, "na": true, "tbd": true, "todo": true, "none": true, "x": true} // keyed by placeholderKey
+	htmlTagRE       = regexp.MustCompile(`<[^>]*>`)
 )
+
+// markerWhy says what the reason of each marker gives.
+var markerWhy = map[string]string{"untested": "write why no test can check it", "unit": "write why a unit test proves it"}
+
+// tracing is what the product's tests say about the scenario ids they name.
+type tracing struct {
+	named    map[string]string // id → the first test file naming it
+	app      map[string]bool   // ids a test that runs the app names
+	at       appTests          // with at.integration (db), a scenario without (unit: …) needs such a test
+	unmarked bool              // a scenario without a marker was read: without db, the notice is due
+}
 
 // scenario is one acceptance scenario: its id, where it starts and its source text (lines joined).
 type scenario struct {
@@ -79,7 +97,7 @@ func scenariosTested(w world, root string) (bool, error) {
 		return false, err
 	}
 	sort.Strings(specs)
-	var named map[string]bool // read lazily: no spec, no test scan
+	var tr *tracing // read lazily: no spec, no test scan
 	bad := false
 	for _, spec := range specs {
 		m := specDirRE.FindStringSubmatch(spec)
@@ -103,13 +121,17 @@ func scenariosTested(w world, root string) (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("%s: %w", spec, err)
 		}
-		if named == nil && len(scenarios) > 0 {
-			if named, err = testedIDs(w, root, pt); err != nil {
+		if tr == nil && len(scenarios) > 0 {
+			at, err := loadAppTests(w, root)
+			if err != nil {
+				return false, err
+			}
+			if tr, err = testedIDs(w, root, pt, at); err != nil {
 				return false, err
 			}
 		}
 		for _, s := range scenarios {
-			if f, ok := untested(s, named); ok {
+			if f, ok := tr.finding(s); ok {
 				findings = append(findings, f)
 			}
 		}
@@ -119,35 +141,69 @@ func scenariosTested(w world, root string) (bool, error) {
 			printFinding(w.stdout, spec, f.line, scenarioRule, "%s", f.msg)
 		}
 	}
+	if tr != nil && tr.unmarked && !tr.at.integration {
+		fmt.Fprintln(w.stdout, tr.at.notice())
+	}
 	return bad, nil
 }
 
-// untested returns the finding for s, if any: no test names it and it carries no exemption, or the exemption
-// gives no reason.
-func untested(s scenario, named map[string]bool) (finding, bool) {
-	if m := untestedRE.FindStringSubmatch(s.text); m != nil {
-		why := strings.TrimSpace(m[1])
+// finding returns the finding for s, if any: it carries both markers, a marker that does not end it or gives no
+// reason, no marker and no test naming it, or no (unit: …) marker in a STACK that runs the app and no test that
+// runs it naming it.
+func (tr *tracing) finding(s scenario) (finding, bool) {
+	names := markerNameRE.FindAllStringSubmatch(s.text, -1)
+	if len(names) > 1 && slices.ContainsFunc(names, func(m []string) bool { return m[1] != names[0][1] }) {
+		return finding{s.line, s.id + ": carries both (unit: …) and (untested: …); keep the one that holds"}, true
+	}
+	marker := ""
+	if m := markerRE.FindStringSubmatch(s.text); m != nil {
+		why := strings.TrimSpace(m[2])
+		marker = m[1]
 		switch {
 		case why == "":
-			return finding{s.line, s.id + ": (untested: …) gives no reason; write why no test can check it"}, true
-		case placeholderWhys[strings.ToLower(strings.TrimRight(why, "."))]:
-			return finding{s.line, fmt.Sprintf("%s: (untested: %s) is a placeholder, not a reason; write why no test can check it", s.id, why)}, true
+			return finding{s.line, fmt.Sprintf("%s: (%s: …) gives no reason; %s", s.id, marker, markerWhy[marker])}, true
+		case placeholderWhys[placeholderKey(why)]:
+			return finding{s.line, fmt.Sprintf("%s: (%s: %s) is a placeholder, not a reason; %s", s.id, marker, why, markerWhy[marker])}, true
+		case marker == "untested":
+			return finding{}, false
 		}
+	} else if len(names) > 0 && strings.Contains(s.text, "]("+names[0][1]+":") {
+		return finding{s.line, fmt.Sprintf("%s: (%s: …) in a link target is no marker; end the scenario with (%s: <reason>)", s.id, names[0][1], names[0][1])}, true
+	} else if len(names) > 0 {
+		return finding{s.line, fmt.Sprintf("%s: (%s: …) must end the scenario, with at most one level of parentheses in its reason", s.id, names[0][1])}, true
+	} else {
+		tr.unmarked = true
+	}
+	file, ok := tr.named[s.id]
+	switch {
+	case !ok:
+		return finding{s.line, fmt.Sprintf("%s has no test naming it: %s", s.id, s.text)}, true
+	case marker == "unit" || !tr.at.integration || tr.app[s.id]:
 		return finding{}, false
 	}
-	if named[s.id] {
-		return finding{}, false
-	}
-	return finding{s.line, fmt.Sprintf("%s has no test naming it: %s", s.id, s.text)}, true
+	return finding{s.line, fmt.Sprintf("%s is a scenario a user sees and only other tests name it (%s); name it in %s, or end it with (unit: <reason>); "+
+		"a marker added after the test commit lifts the freeze on this spec's tests (specs-tests-frozen), so prefer a new test commit", s.id, file, tr.at.kinds())}, true
 }
 
-// testedIDs returns the scenario ids named in the product's test files.
-func testedIDs(w world, root string, pt productTests) (map[string]bool, error) {
+// placeholderKey keeps a reason's letters and digits, lowercased, so no punctuation, symbol, invisible character
+// or HTML tag makes a placeholder a reason.
+func placeholderKey(why string) string {
+	return strings.ToLower(strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return r
+		}
+		return -1
+	}, htmlTagRE.ReplaceAllString(why, "")))
+}
+
+// testedIDs reads the scenario ids the product's test files name, and which of them a test that runs the app
+// names.
+func testedIDs(w world, root string, pt productTests, at appTests) (*tracing, error) {
 	files, err := w.gitFiles(root, testFilePathspecs...)
 	if err != nil {
 		return nil, err
 	}
-	named := map[string]bool{}
+	tr := &tracing{named: map[string]string{}, app: map[string]bool{}, at: at}
 	for _, f := range files {
 		if pt.why(f) != "" {
 			continue
@@ -163,33 +219,54 @@ func testedIDs(w world, root string, pt productTests) (map[string]bool, error) {
 		if err != nil {
 			return nil, err
 		}
-		swift := strings.HasSuffix(f, ".swift")
-		off := 0 // #if depth inside a Swift `#if false`: compiled out, so it names nothing
-		for _, line := range bytes.Split(b, []byte("\n")) {
-			if swift {
-				switch {
-				case off > 0 && swiftIfRE.Match(line):
-					off++
-				case off > 0 && swiftEndifRE.Match(line):
-					off--
-				case off == 1 && swiftElseRE.Match(line):
-					off = 0 // the #else branch of `#if false` is compiled
-				case off == 0 && swiftIfFalseRE.Match(line):
-					off = 1
-				}
-				if off > 0 {
-					continue
-				}
-			}
-			if skipsTest(f, line) {
-				continue // a skipped or placeholder test checks nothing
-			}
-			for _, id := range scenarioIDs(line) {
-				named[id] = true
+		ids := fileIDs(f, b)
+		if len(ids) == 0 {
+			continue
+		}
+		app := false
+		if tr.at.integration {
+			if app, err = at.runsApp(root, f); err != nil {
+				return nil, fmt.Errorf("%s: %w", f, err)
 			}
 		}
+		for _, id := range ids {
+			if _, ok := tr.named[id]; !ok {
+				tr.named[id] = f
+			}
+			tr.app[id] = tr.app[id] || app
+		}
 	}
-	return named, nil
+	return tr, nil
+}
+
+// fileIDs returns the scenario ids the test file f with content b names, on lines that skip no test and are not
+// compiled out.
+func fileIDs(f string, b []byte) []string {
+	var ids []string
+	swift := strings.HasSuffix(f, ".swift")
+	off := 0 // #if depth inside a Swift `#if false`: compiled out, so it names nothing
+	for _, line := range bytes.Split(b, []byte("\n")) {
+		if swift {
+			switch {
+			case off > 0 && swiftIfRE.Match(line):
+				off++
+			case off > 0 && swiftEndifRE.Match(line):
+				off--
+			case off == 1 && swiftElseRE.Match(line):
+				off = 0 // the #else branch of `#if false` is compiled
+			case off == 0 && swiftIfFalseRE.Match(line):
+				off = 1
+			}
+			if off > 0 {
+				continue
+			}
+		}
+		if skipsTest(f, line) {
+			continue // a skipped or placeholder test checks nothing
+		}
+		ids = append(ids, scenarioIDs(line)...)
+	}
+	return ids
 }
 
 // scenarioIDs returns the ids in b that stand as whole tokens: `001/US1-AS1-old` or `x001/US1-AS1` name nothing.

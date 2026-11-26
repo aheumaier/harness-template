@@ -18,7 +18,9 @@ while Swift code stays and `ios` is gone, and while `ios` stays without a `Packa
   scenario it checks in its title, `@Test("001/US1-AS2 signs out")`; an XCTest UI test, whose method names
   cannot hold `/`, in a `// spec: 001/US1-AS2` comment
   ([specs-scenarios-tested](../../docs/harness/rules.md#specs-scenarios-tested)). Skip on the same line,
-  `@Test("001/US1-AS2 signs out", .disabled("why"))`: a skip on another line is not seen.
+  `@Test("001/US1-AS2 signs out", .disabled("why"))`: a skip on another line is not seen. With `db` in
+  `STACK`, a Swift test alone does not trace a scenario a user sees: it needs a journey or an integration test,
+  or ends with `(unit: <reason>)` ([ADR 0049](../../docs/adr/0049-user-seen-scenarios-are-traced-by-tests-that-run-the-app.md)).
 - `make check` runs the package's tests with `swift test` (`make test-ios`) on macOS, with Xcode or with only
   Apple's command-line tools (XCTest needs Xcode selected; only Swift Testing runs with the command-line tools
   alone); on another host it says it leaves `test-ios` out

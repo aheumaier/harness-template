@@ -137,7 +137,7 @@ func TestProductTestFileVectors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	named, err := testedIDs(w, root, pt)
+	tr, err := testedIDs(w, root, pt, appTests{}) // no db: which tests run the app does not matter here
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,8 +145,8 @@ func TestProductTestFileVectors(t *testing.T) {
 		if err := testFile(w, root, filepath.Join(root, r.path)); (err == nil) != r.allow {
 			t.Errorf("%s: harness test-file: %v; want allow=%v", r.path, err, r.allow)
 		}
-		if named[r.id] != r.allow {
-			t.Errorf("%s: specs-tested reads it: %v; want %v", r.path, named[r.id], r.allow)
+		if _, read := tr.named[r.id]; read != r.allow {
+			t.Errorf("%s: specs-tested reads it: %v; want %v", r.path, read, r.allow)
 		}
 	}
 }

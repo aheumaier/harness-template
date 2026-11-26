@@ -418,7 +418,7 @@ multi-step work in [exec-plans/](exec-plans/tech-debt-tracker.md); known debt in
 | [docs-links-resolve](harness/rules.md#docs-links-resolve) | link and anchor checker | per edit of any `.md`, pre-commit, `make check` |
 | [docs-claude-imports-agents](harness/rules.md#docs-claude-imports-agents) | every `AGENTS.md` has a sibling `CLAUDE.md` containing `@AGENTS.md` | same |
 | [specs-required-for-features](harness/rules.md#specs-required-for-features) | a `feat` commit touching `apps/` or `api/` must change `specs/` | required `pr-conventions` CI job |
-| [specs-scenarios-tested](harness/rules.md#specs-scenarios-tested) | every acceptance scenario id is named by a test or marked `(untested: <reason>)` | `make check` |
+| [specs-scenarios-tested](harness/rules.md#specs-scenarios-tested) | every acceptance scenario id is named by a test or marked `(untested: <reason>)`; with `db`, one a user sees by a journey or an integration test, unless marked `(unit: <reason>)` | `make check` |
 | [specs-tests-frozen](harness/rules.md#specs-tests-frozen) | no line of a committed `test-writer` test is edited, deleted or skipped later in the branch, until its spec changes; what a later test commit changes or deletes itself is no finding, an added skip always is | `make check-all` |
 | [docs-references-pinned](harness/rules.md#docs-references-pinned) | `docs/references/<tool>-llms.txt` matches the pinned tool version | `make check` |
 | [git-conventional-commits](harness/rules.md#git-conventional-commits) | regex on subject and PR title | `commit-msg` hook, required CI job |
@@ -577,7 +577,7 @@ sees a related remediation. Do not promise per-edit rule ids for every linter.
 | [architecture-reviewer](../.claude/agents/architecture-reviewer.md) | Read, Grep, Glob | read-only by tools | Drift linters cannot express: misplaced responsibility, leaky abstraction, decisions without an ADR. Ends with "New sensor candidates". |
 | [reuse-reviewer](../.claude/agents/reuse-reviewer.md) | Read, Grep, Glob | read-only by tools | New code that re-implements something the repo, stdlib or a pinned dependency already has. |
 | [evasion-reviewer](../.claude/agents/evasion-reviewer.md) | Read, Grep, Glob, Bash | **prompt only** | For changes to sensors: tries to make the new sensor pass on bad input (symlinks, comments, build tags, empty listings) in a scratch worktree and reproduces each bypass. |
-| [test-writer](../.claude/agents/test-writer.md) | Read, Grep, Glob, Write, Edit, Bash | hooks: only `make check`, only test files | Writes failing unit tests from the spec before implementation, or corrects a committed test of its own ([ADR 0039](adr/0039-tests-are-written-apart-from-the-implementation.md)). |
+| [test-writer](../.claude/agents/test-writer.md) | Read, Grep, Glob, Write, Edit, Bash | hooks: only `make check`, only test files | Writes failing tests from the spec before implementation (unit tests; with `db`, journeys (with `web` too) in `apps/web/e2e/**/*.e2e.ts` and integration tests in a domain's `api` package for scenarios a user sees), or corrects a committed test of its own ([ADR 0039](adr/0039-tests-are-written-apart-from-the-implementation.md), [ADR 0049](adr/0049-user-seen-scenarios-are-traced-by-tests-that-run-the-app.md)). |
 
 [CLAUDE.md](../CLAUDE.md) says which reviewers to run before calling a change done. All are advisory
 ([ADR 0019](adr/0019-inferential-sensors-are-advisory.md)); "done" still means `make check` is green.

@@ -76,14 +76,15 @@ A constitution line would cut the cost of either option. It is TD-124's kind of 
 Ruling (owner, 2026-11-26): A.
 
 ### 2. Which test kinds count
-Both options count journeys: a test file Playwright collects (`apps/web/e2e/*.e2e.ts`), with `db` and `web` in
+Both options count journeys: a test file Playwright collects (`apps/web/e2e/**/*.e2e.ts`), with `db` and `web` in
 `STACK`. A journey's `request` fixture also checks what the API returns, as `critical-path.e2e.ts` does for
 `/healthz`. They differ in the Go tests that count for what the API returns.
 
-- **Option A (recommended): integration tests in a domain's `api` package.** A `*_test.go` under
+- **Option A (recommended): integration tests in a domain's `api` package.** A `*_test.go` directly in
   `apps/api/internal/<domain>/api/` whose build constraint selects it with the tag `integration` and drops it
-  without (decided as `go test -tags=integration` decides, by `go/build` on the host's OS and architecture; a
-  `//go:build` line below `package` is no constraint). Example: the scaffold's `api_integration_test.go`, which
+  without (decided as `go test -race -tags=integration ./...` decides: by `go/build` for `GOOS` and `GOARCH`
+  with the race tag, in a directory `./...` walks; a `//go:build` line below `package` is no constraint).
+  Example: the scaffold's `api_integration_test.go`, which
   sends `GET /<domain>/status` through the domain's routes against Postgres. It runs in `make check-all`. Cost:
   the kind is read from the path and the build line, not from what the test does. A test there that calls the
   service instead of sending a request counts too. `cmd/api`'s middleware chain (authentication, logging,
@@ -223,21 +224,22 @@ Written to the rulings of 2026-11-26.
   carries neither `(unit: …)` nor `(untested: …)` passes only when a test of a kind question 6 allows names its id.
   A scenario named only by other tests is a finding:
   `specs/<NNN-slug>/spec.md:<line>: <id> is a scenario a user sees and only other tests name it (<file>); name it
-  in a journey (apps/web/e2e/*.e2e.ts) or an integration test in internal/<domain>/api/ (//go:build integration),
+  in a journey (apps/web/e2e/**/*.e2e.ts) or an integration test in <domains dir>/<domain>/api/ (//go:build integration),
   or end it with (unit: <reason>); a marker added after the test commit lifts the freeze on this spec's tests
   (specs-tests-frozen), so prefer a new test commit [specs-scenarios-tested]`.
   A scenario no test names keeps today's finding. Both markers on one scenario, found anywhere in its text, is a
   finding. Same rule id, same sensor (`.bin/harness specs-tested`, [ADR 0045](0045-harness-scripts-and-tests-in-go.md)),
   same place in `make check`.
-- **Why the same rule id.** It reads the same input with the same marker family, and the sensor already counts
-  tests per stack group (Swift tests only with `ios`). The cost: [ADR 0032](0032-rules-that-never-fire-are-a-drift-report.md)
+- **Why the same rule id.** It reads the same input with the same marker family, and the Makefile already runs
+  tests per stack group (`test-integration` and `e2e` only with `db`). The cost: [ADR 0032](0032-rules-that-never-fire-are-a-drift-report.md)
   counts findings per rule id, so its drift report cannot tell whether the new finding ever fires on an adopter.
   Accepted: the fixture and the Go tests prove it fires, and an adopter sees it in `make check`'s output.
 - **It ships complete** (plan 0006, Rules for every slice):
   - rules.md: the rule text, the remediation, and the Status line linking this ADR next to ADR 0036;
-  - Go tests in `scenarios_test.go` for each branch: journey, integration test in `api/`, one outside `api/`, a
-    negated tag, a tag below `package`, unit test only, each marker, both markers, a stack without `db`, one
-    without `web`; with `GOOS` and `GOARCH` fixed, so they pass alike on every machine;
+  - Go tests in `scenariokinds_test.go` for each branch: journey, integration test in `api/`, one outside `api/`, a
+    negated tag, `!race`, a tag below `package`, a domain directory `./...` skips (`_`, `.`, `vendor`, `testdata`, its
+    own `go.mod`), unit test only, each marker, a marker that does not end its scenario, a placeholder in markdown
+    emphasis, both markers, a stack without `db`, one without `web`; with `GOOS` and `GOARCH` fixed, so they pass alike on every machine;
   - the fixture `scripts/harness/fixtures/specs-user-scenario-unit-tested` with `STACK=db` in its `fixture.conf`
     ([ADR 0009](0009-harness-selftest.md)), so a stack without `db` skips it;
   - a Go test that keeps the sensor's table equal to what runs it: `test-integration` in `DB_TARGETS`, `e2e` in
@@ -265,9 +267,10 @@ Written to the rulings of 2026-11-26.
 - **`specs-tests-frozen` needs no code.** A journey or an integration test in a test commit is frozen like a unit test.
   A Go test in `specsfrozen_test.go` proves it for an edited journey line.
 - **Tracker edits:** TD-126's re-measure covers journeys and integration tests, and a loss narrows the scope back
-  instead of dropping the agent; TD-124's proposed constitution and CLAUDE.md lines also name the `(unit: …)`
-  marker and the routes, roles, accessible names and sign-in plan.md pins; TD-46 adds the sensor to the places
-  that name `apps/web`; TD-149 stays open, with the stack-group test as a second user of its pattern.
+  instead of dropping the agent; TD-124's proposed CLAUDE.md line also names journeys and integration tests, and its
+  constitution line the `(unit: …)` marker and the routes, roles, accessible names, texts and sign-in plan.md pins; TD-46 adds the sensor to the places
+  that name `apps/web`; TD-149 stays open, with the stack-group test as a second user of its pattern; new: TD-179 (the caller
+  confirms red, question 4) and TD-180 (go.mod `ignore` lines).
 
 ## What this changes in ADR 0036 and ADR 0039
 - **ADR 0036, "any whole-token occurrence in a test file counts".** With `db` in `STACK`, for a scenario without
@@ -296,7 +299,9 @@ Written to the rulings of 2026-11-26.
     sends a request, or a journey that only checks the page title, counts;
   - who wrote the test is not checked: a journey the implementer fitted to its code counts. Keeping tests apart
     rests on `test-writer`'s prompt and `code-reviewer` check 7;
-  - whether a `(unit: …)` reason holds is the reviewer's call, as for `(untested: …)`.
+  - whether a `(unit: …)` reason holds is the reviewer's call, as for `(untested: …)`;
+  - an integration test that an `ignore` line of `apps/api/go.mod` hides, or that needs cgo a cross build lacks,
+    still counts ([TD-180](../exec-plans/tech-debt-tracker.md)).
 - An adopter with specs pays once on upgrade, and each new spec pays one pass over its markers (question 1,
   option A). The finding names each scenario and the fix.
 - The wider `test-writer` scope is unmeasured until TD-126 runs (question 5, option A).

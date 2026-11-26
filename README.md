@@ -341,7 +341,7 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      | [.dependency-cruiser.cjs](.dependency-cruiser.cjs) | the web layers (`packages/domain`, `packages/api-client`, apps) | web-layers judges the wrong files; record your layering decision in an ADR |
      | [jscpd.json](scripts/harness/jscpd.json) | ignores `**/packages/api-client/src/gen/**` | your generated client counts as duplicated code |
      | [pnpm-workspace.yaml](pnpm-workspace.yaml), [knip.json](knip.json) | the workspaces `apps/web`, `packages/*`; knip's ignores | `pnpm install` and knip miss your workspaces; keep them in step with `WEB_GLOBS` |
-     | The web app `apps/web` (tracker TD-46) | the `dev`, `e2e` and `e2e-deps` Makefile targets; Playwright in [install-tools.sh](scripts/install-tools.sh) (`browsers`) and the setup action's `Locked Playwright version` step; the hints in `coverage.sh` and `mutation.sh` | `make dev` and `make e2e` fail; with input `browser`, CI's `check-all` job fails in setup |
+     | The web app `apps/web` (tracker TD-46) | the `dev`, `e2e` and `e2e-deps` Makefile targets; Playwright in [install-tools.sh](scripts/install-tools.sh) (`browsers`) and the setup action's `Locked Playwright version` step; the hints in `coverage.sh` and `mutation.sh`; the journey directory `apps/web/e2e/` in `scenariokinds.go` and `TestAppTestKindsMatchMake` | `make dev` and `make e2e` fail; with input `browser`, CI's `check-all` job fails in setup; journeys at another path stop counting, so a scenario a user sees that only a journey traces becomes a `specs-scenarios-tested` finding, and `test-harness` fails |
      | The iOS app's shape, with `ios` in `STACK` ([ADR 0044](docs/adr/0044-ios-ci-on-macos.md)) | the scheme `App` in the Makefile's `build-ios`; the app's sources in `App/` in the `ios-app-build-broken` fixture | `build-ios` fails on a missing scheme; the selftest fails until the app keeps that shape |
      | [action.yml](.github/actions/setup/action.yml) | the `Install JS dependencies` step (`make deps`, a no-op without `web` in `STACK`); node is set up in every job | with `web`, every CI job fails in setup without a root `package.json` and lockfile |
      | [install-tools.sh](scripts/install-tools.sh) | with `web` in `STACK`: installs pnpm and exits 1 unless the root `package.json` pins `packageManager` | `make setup` aborts after the other tools land; leave `web` out of `STACK` if you have no JS workspaces |
@@ -375,7 +375,9 @@ template changed since. Adopt by hand, in one reviewed harness PR:
      | ios | `ios-*` (5) | `IOS_TARGETS` (macOS only): `test-ios`, `lint-ios`, `fmt-check-ios` (`IOS_SWIFT_TARGETS`, in `make check`), `xcode-pinned`, `build-ios` (`IOS_XCODE_TARGETS`, in `make check-ios`, need Xcode) | Swift from Xcode or Apple's command-line tools (XCTest, `xcode-pinned` and `build-ios` need Xcode selected), SwiftLint, swift-format and XcodeGen from `install-tools.sh`, `.swiftlint.yml`, `.swift-format`, `scripts/swift-format/Package.resolved` |
 
      The ios set grows with [exec plan 0004](docs/exec-plans/active/0004-ios-stack-group.md); it also counts
-     Swift tests for [specs-scenarios-tested](docs/harness/rules.md#specs-scenarios-tested), and without it
+     Swift tests for [specs-scenarios-tested](docs/harness/rules.md#specs-scenarios-tested) (with `db`, only for a
+     scenario that ends with `(unit: <reason>)`; `db` and `web` decide which tests trace one a user sees,
+     [ADR 0049](docs/adr/0049-user-seen-scenarios-are-traced-by-tests-that-run-the-app.md)), and without it
      any Swift under a `PRODUCT_GLOBS` or `WEB_GLOBS` entry fails `layout-check`. A product that runs `make harness-selftest` on
      Linux with `ios` in `STACK` sets `SELFTEST_SKIP_SWIFT=1` there, and on a Mac with only the command-line tools
      `SELFTEST_SKIP_XCODE=1`. With ios, the app keeps `IOS_DIR/project.yml` with its sources in `App/` and its scheme
