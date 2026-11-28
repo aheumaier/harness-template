@@ -97,15 +97,30 @@ func TestScenariosTested(t *testing.T) {
 				"5. **Given** g (untested: TBD)",
 				"6. **Given** h (untested:  todo. )",
 				"7. **Given** i (untested: -)",
-				"8. **Given** j (untested: ?)")),
+				"8. **Given** j (untested: ?)",
+				"9. **Given** k (untested: tbd?)",
+				"10. **Given** l (untested: --)",
+				"11. **Given** m (untested: t.b.d.)",
+				"12. **Given** n (untested: <em>tbd</em>)",
+				"13. **Given** o (untested: \"n/a\")",
+				"14. **Given** p (untested: tbd\u200b)",
+				"15. **Given** q (untested: \uff0atbd\uff0a)",
+				"16. **Given** r (untested: a real reason: payment is manual)")),
 		}, []string{
 			specFinding(13, "001/US1-AS2: (untested: …) gives no reason; write why no test can check it"),
-			untestedAt(14, "001/US1-AS3", "**Given** e (untested: x) and more"),
+			specFinding(14, "001/US1-AS3: (untested: …) must end the scenario, with at most one level of parentheses in its reason"),
 			specFinding(15, "001/US1-AS4: (untested: n/a) is a placeholder, not a reason; write why no test can check it"),
 			specFinding(16, "001/US1-AS5: (untested: TBD) is a placeholder, not a reason; write why no test can check it"),
 			specFinding(17, "001/US1-AS6: (untested: todo.) is a placeholder, not a reason; write why no test can check it"),
 			specFinding(18, "001/US1-AS7: (untested: -) is a placeholder, not a reason; write why no test can check it"),
 			specFinding(19, "001/US1-AS8: (untested: ?) is a placeholder, not a reason; write why no test can check it"),
+			specFinding(20, "001/US1-AS9: (untested: tbd?) is a placeholder, not a reason; write why no test can check it"),
+			specFinding(21, "001/US1-AS10: (untested: --) is a placeholder, not a reason; write why no test can check it"),
+			specFinding(22, "001/US1-AS11: (untested: t.b.d.) is a placeholder, not a reason; write why no test can check it"),
+			specFinding(23, "001/US1-AS12: (untested: <em>tbd</em>) is a placeholder, not a reason; write why no test can check it"),
+			specFinding(24, "001/US1-AS13: (untested: \"n/a\") is a placeholder, not a reason; write why no test can check it"),
+			specFinding(25, "001/US1-AS14: (untested: tbd\u200b) is a placeholder, not a reason; write why no test can check it"),
+			specFinding(26, "001/US1-AS15: (untested: \uff0atbd\uff0a) is a placeholder, not a reason; write why no test can check it"),
 		}},
 		{"ids match as whole tokens only", map[string][]string{
 			"specs/001-demo/spec.md": spec(story("User Story 1 - Pay", g1)),
@@ -203,8 +218,25 @@ func TestScenariosTested(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			root := templateRepo(t, tt.files)
-			wantFindings(t, func(w io.Writer) (bool, error) { return scenariosTested(testWorld(t, w), root) }, tt.want)
+			wantFindings(t, anyTestTraces(t, root), tt.want)
 		})
+	}
+}
+
+// anyTestTraces runs specs-tested on root with a STACK without db, where any test traces a scenario (ADR 0049),
+// and drops the notice that says so: the cases above read how a test names an id, scenariokinds_test.go which
+// test runs the app.
+func anyTestTraces(t *testing.T, root string) func(io.Writer) (bool, error) {
+	t.Helper()
+	return func(w io.Writer) (bool, error) {
+		var out bytes.Buffer
+		bad, err := scenariosTested(testWorld(t, &out, "HARNESS_STACK=go:web:ios"), root)
+		for line := range strings.Lines(out.String()) {
+			if !strings.HasPrefix(line, "notice: ") {
+				fmt.Fprint(w, line)
+			}
+		}
+		return bad, err
 	}
 }
 
@@ -243,7 +275,7 @@ func TestScenariosTestedLinks(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	wantFindings(t, func(w io.Writer) (bool, error) { return scenariosTested(testWorld(t, w), root) }, []string{
+	wantFindings(t, anyTestTraces(t, root), []string{
 		"specs/001-a/spec.md:1: is not a regular file (a symlink?); commit the spec itself [specs-scenarios-tested]",
 		"specs/002-b/spec.md:11: 002/US1-AS1 has no test naming it: **Given** b [specs-scenarios-tested]",
 	})

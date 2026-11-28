@@ -153,6 +153,15 @@ func TestSpecsFrozen(t *testing.T) {
 		"the file deleted after a spec change": {func(t *testing.T, root string) {
 			impl(t, root, func() { editSpec(t, root); gitT(t, root, "rm", "-qf", frozenTest) })
 		}, []string{lifted}},
+		"a journey's locator edited (ADR 0049)": {func(t *testing.T, root string) {
+			tester(t, root, func() {
+				writeLines(t, root, "apps/web/e2e/pay.e2e.ts", "test('001/US1-AS1 pays', async ({ page }) => {",
+					"  await page.getByRole('button', { name: 'Pay' }).click()", "})")
+			})
+			impl(t, root, func() {
+				replace(t, root, "apps/web/e2e/pay.e2e.ts", "getByRole('button', { name: 'Pay' })", "locator('.btn')")
+			})
+		}, []string{`apps/web/e2e/pay\.e2e\.ts:2: commit [0-9a-f]{7} changed or removed this line of test commit [0-9a-f]{7}: "await page\.getByRole`}},
 		"an assertion edited in a file with an odd name": {func(t *testing.T, root string) {
 			tester(t, root, func() { writeLines(t, root, "apps/web/src/[id] ü.test.ts", "expect(3)") })
 			impl(t, root, func() {

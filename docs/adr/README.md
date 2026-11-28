@@ -54,3 +54,4 @@ only through a new ADR. Architectural PRs link an ADR in the PR template.
 | [0046](0046-agent-verdicts-are-advisory-and-measured.md) | Agent verdicts stay advisory and are measured: the app evaluator, agent evals, the assumption ledger (amends 0019, 0032, 0039) | proposed |
 | [0047](0047-test-writer-tests-are-frozen.md) | The test writer's tests are frozen until the spec changes (amends 0039, 0046) | proposed |
 | [0048](0048-stop-gate.md) | A session that stops on an unchecked or red tree is held back once (amends 0013, 0045) | proposed |
+| [0049](0049-user-seen-scenarios-are-traced-by-tests-that-run-the-app.md) | Scenarios a user sees are traced by tests that run the app (amends 0036, 0039) | proposed |

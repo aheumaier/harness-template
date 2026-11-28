@@ -547,7 +547,7 @@ specs-frozen: $(HARNESS) ## Tests committed with Test-Writer: stay unchanged, un
 	@$(RUN) specs-frozen specs-tests-frozen -- env BASE_REF="$(BASE_REF)" $(HARNESS) specs-frozen .
 
 # In make check, runs only when specs/, a test file or another harness file changed (rules.md#harness-scope).
-specs-tested: $(HARNESS) ## Every acceptance scenario in specs/ is named by a Go, TS or Swift test, or marked (untested: <reason>)
+specs-tested: $(HARNESS) ## Every acceptance scenario in specs/ is named by a test (with db, one a user sees by a journey or integration test), or marked (untested: <reason>); (unit: <reason>) lets a unit test trace it
 	@if scripts/harness/unchanged.sh 'specs/*' '*_test.go' '*.test.*' '*.spec.*' '*.e2e.*' '*Tests.swift'; then \
 	  echo "$@: skipped, neither specs/ nor a test file changed (make check-all runs it)"; \
 	else $(RUN) specs-tested specs-scenarios-tested -- $(HARNESS) specs-tested .; fi
