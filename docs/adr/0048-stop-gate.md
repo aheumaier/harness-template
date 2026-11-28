@@ -160,8 +160,7 @@ hook only:
     `GIT_WORK_TREE`, which point the key at another repository;
   - a background check that outlives its check (`make check | sleep 99999`, `make check > $(sleep 99999)`): the stops
     while it runs pass silently, as step 4 says, and nothing is stamped;
-  - an untracked `GNUmakefile`, which make reads instead of `Makefile` (TD-178: CI does not see a committed one
-    either);
+  - an untracked `GNUmakefile`, which make reads instead of `Makefile`;
   - the merge base's own tree counts as green: only `tree` is compared there, not `disk` and `ignored`. On the default
     branch without `origin/main`, or with `BASE_REF=HEAD`, that is the last commit, red or not.
   Each needs a deliberate step, a rare setting or bad timing.

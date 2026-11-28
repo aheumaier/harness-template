@@ -7,9 +7,10 @@ package main
 //	                               id that is not a `### <id>` heading in docs/harness/rules.md, or is an
 //	                               @ts-ignore/@ts-nocheck/jscpd:ignore/swift-format-ignore (never allowed)
 //	[harness-config-not-loosened]  a harness config (`config` in protected-paths.txt) gained or lost a
-//	                               non-comment line (a shebang is not a comment), or changed its file
-//	                               mode (a hook without its x bit no longer runs). Waived only by a human: HARNESS_CHANGE_APPROVED=1 (CI:
-//	                               the `harness-change-approved` PR label).
+//	                               non-comment line (a shebang is not a comment), was added without one, or
+//	                               changed its file mode (a hook without its x bit no longer runs).
+//	                               Waived only by a human: HARNESS_CHANGE_APPROVED=1 (CI: the
+//	                               `harness-change-approved` PR label).
 //
 // The binary, its marker lists, protected-paths.txt and the rules.md that rule ids are looked up in come from
 // its own checkout (own); the change is read from HARNESS_ROOT (default: the same repo). CI builds the binary
@@ -108,11 +109,13 @@ func integrityCheck(w world, own, root, baseRef string, approved bool) (bool, er
 		if err != nil {
 			return false, err
 		}
+		seen := map[string]bool{}
 		for _, c := range rows {
 			// A shebang is code: `#!/usr/bin/true` turns a sensor script into a pass.
 			if commentRE.MatchString(c.text) && (c.line != 1 || !strings.HasPrefix(c.text, "#!")) {
 				continue
 			}
+			seen[c.path] = true
 			what := "removed"
 			if c.added {
 				what = "added"
@@ -124,7 +127,11 @@ func integrityCheck(w world, own, root, baseRef string, approved bool) (bool, er
 			return false, err
 		}
 		for _, m := range modes {
-			if m[0] == m[1] {
+			if m[0] == "000000" && m[1] != "120000" { // a regular file, reported above when it has a config line
+				if !seen[m[2]] {
+					report("%s: empty or comment-only harness config added [harness-config-not-loosened]", m[2])
+				}
+			} else if m[0] == m[1] {
 				report("%s: symlink target changed [harness-config-not-loosened]", m[2])
 			} else {
 				report("%s: file mode changed from %s to %s [harness-config-not-loosened]", m[2], m[0], m[1])
@@ -160,9 +167,10 @@ func configPatterns(file string) ([]string, error) {
 }
 
 // modeChanges lists [old mode, new mode, path] for the files matching pathspecs whose mode changed since
-// base; a diff without content lines (`chmod -x`) has no rows in changes. Added and deleted files (mode
-// 000000 on one side) are left to changes. A symlink (120000 on either side) is listed whenever it changed:
-// its one line is the target's name, which can look like a comment (`#notes`) while the tool reads the target.
+// base; a diff without content lines (`chmod -x`, an added empty file) has no rows in changes: make reads an empty
+// `GNUmakefile` instead of `Makefile`. Deleted files are left to changes. A symlink (120000 on either side) is listed
+// whenever it changed: its one line is the target's name, which can look like a comment (`#notes`) while the tool
+// reads the target.
 func modeChanges(w world, root, base string, pathspecs []string) ([][3]string, error) {
 	out, err := w.git(root, append([]string{"diff", "--raw", "-z", "--no-renames", "--no-ext-diff", base, "--"}, pathspecs...)...)
 	if err != nil {
@@ -176,19 +184,25 @@ func modeChanges(w world, root, base string, pathspecs []string) ([][3]string, e
 			continue
 		}
 		link := meta[0] == "120000" || meta[1] == "120000"
-		if link || meta[0] != meta[1] && meta[0] != "000000" && meta[1] != "000000" {
+		if link || meta[0] != meta[1] && meta[1] != "000000" {
 			modes = append(modes, [3]string{meta[0], meta[1], f[i+1]})
 		}
 	}
-	// An untracked symlink has no raw row, and changes reads its target.
+	// An untracked file has no raw row, and changes reads a symlink's target.
 	untracked, err := w.git(root, append([]string{"ls-files", "-z", "-o", "--exclude-standard", "--"}, pathspecs...)...)
 	if err != nil {
 		return nil, err
 	}
 	for _, p := range strings.Split(string(untracked), "\x00") {
-		if fi, err := os.Lstat(filepath.Join(root, p)); p != "" && err == nil && fi.Mode()&os.ModeSymlink != 0 {
-			modes = append(modes, [3]string{"000000", "120000", p})
+		fi, err := os.Lstat(filepath.Join(root, p))
+		if p == "" || err != nil {
+			continue
 		}
+		mode := "100644"
+		if fi.Mode()&os.ModeSymlink != 0 {
+			mode = "120000"
+		}
+		modes = append(modes, [3]string{"000000", mode, p})
 	}
 	return modes, nil
 }

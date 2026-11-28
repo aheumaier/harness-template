@@ -65,7 +65,7 @@ func TestProtectHarness(t *testing.T) {
 			".golangci.yml", "apps/api/.go-arch-lint.yml", "apps/web/eslint.config.js", ".claude/settings.json",
 			".claude/hooks/guard-bash.sh", ".github/workflows/ci.yml", ".github/workflows/pr-review.yml",
 			".github/actions/setup/action.yml", ".github/CODEOWNERS", ".github/pull_request_template.md",
-			"scripts/harness/run.sh", "AGENTS.md", root + "/Makefile", "scripts/tool-versions.env",
+			"scripts/harness/run.sh", "AGENTS.md", root + "/Makefile", "GNUmakefile", "scripts/tool-versions.env",
 			"apps/web/tsconfig.json", "scripts/test/timing.bats"}},
 		{name: "Write", tool: "Write", blocked: true, args: []string{"atlas.hcl"}},
 		{name: "MultiEdit", tool: "MultiEdit", blocked: true, args: []string{".spectral.yaml"}},
@@ -85,7 +85,7 @@ func TestProtectHarness(t *testing.T) {
 			"perl -ne print Makefile", "echo x >"}},
 		// Stricter than the bash version (exec plan 0005, pilot 2).
 		{name: "any case: macOS's disk folds it", tool: "Edit", blocked: true, args: []string{
-			"agents.md", ".GOLANGCI.yml", strings.ToUpper("scripts/harness/run.sh")}},
+			"agents.md", ".GOLANGCI.yml", "makefile", strings.ToUpper("scripts/harness/run.sh")}},
 		{name: "a symlink or a `..` through one does not carry the write past the list", tool: "Edit", blocked: true,
 			args: []string{tmp + "/agents", tmp + "/scripts/harness/run.sh", tmp + "/harness/../../AGENTS.md",
 				"nothere/../AGENTS.md"}},
